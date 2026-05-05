@@ -76,3 +76,45 @@ As a viewer, I can browse photos by tag, and only see photos that belong to at l
 
 **US-V4 — Access denied**
 As a viewer, I cannot access an album I have not been granted access to, even if I know its URL.
+
+---
+
+## Feature: Nextcloud Integration
+
+**US-NC1 — Link a photo to Nextcloud**
+As an editor, I can attach a Nextcloud share link to a photo, so viewers can download the original high-quality file directly from Nextcloud.
+
+**US-NC2 — Download original from photo page**
+As a viewer, I can click a "Download original" button on a photo page to be redirected to the Nextcloud link, so I can get the full-resolution file without it being stored on this server.
+
+**US-NC3 — Manage Nextcloud link**
+As an editor, I can update or remove the Nextcloud link on any of my photos at any time.
+
+---
+
+## Feature: GPS & Map
+
+**US-GPS1 — Add GPS coordinates to a photo**
+As an editor, I can enter a latitude and longitude on a photo (at upload time or by editing it later), so the location where the photo was taken is recorded.
+
+**US-GPS2 — View a photo's location**
+As a viewer, I can see a small map on the photo detail page showing where the photo was taken, when GPS coordinates are available.
+
+**US-GPS3 — Browse photos on a map**
+As a viewer, I can open a full map view that shows pins for all photos I have access to that have GPS coordinates, and click a pin to open the photo.
+
+**US-GPS4 — Filter map by album or tag**
+As a viewer, I can filter the map to show only photos from a specific album or tag, so I can explore a particular set of locations.
+
+---
+
+## Feature: Timeline
+
+**US-TL1 — View photos in a timeline**
+As a viewer, I can browse all photos I have access to in chronological order, grouped by month and year, so I can explore them as a story over time.
+
+**US-TL2 — Filter timeline by album or tag**
+As a viewer, I can filter the timeline to a specific album or tag to see only the relevant photos in chronological order.
+
+**US-TL3 — Photo date**
+As an editor, I can set a "taken on" date on a photo (separate from the upload date), so the timeline reflects when the photo was actually taken rather than when it was uploaded.
