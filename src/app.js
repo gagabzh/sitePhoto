@@ -20,6 +20,7 @@ app.use(requireAuth);
 app.use(require('./routes/account'));
 app.use('/photos', require('./routes/photos'));
 app.use('/albums', require('./routes/albums'));
+app.use('/tags', require('./routes/tags'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
 
 module.exports = app;

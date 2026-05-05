@@ -46,3 +46,9 @@ CREATE TABLE IF NOT EXISTS album_photos (
   added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (album_id, photo_id)
 );
+
+CREATE TABLE IF NOT EXISTS album_access (
+  album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  viewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (album_id, viewer_id)
+);

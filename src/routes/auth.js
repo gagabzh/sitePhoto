@@ -30,7 +30,7 @@ router.post('/login', async (req, res) => {
     req.session.userId = user.id;
     req.session.name = user.name;
     req.session.role = user.role;
-    res.redirect('/photos');
+    res.redirect(user.role === 'viewer' ? '/albums' : '/photos');
   } else {
     res.redirect('/login?error=1');
   }

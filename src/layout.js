@@ -13,7 +13,8 @@ function page(title, body, session) {
       <div class="nav-right">
         ${session.role === 'admin' ? '<a href="/admin/users">Users</a>' : ''}
         ${session.role !== 'viewer' ? '<a href="/photos">Photos</a>' : ''}
-        ${session.role !== 'viewer' ? '<a href="/albums">Albums</a>' : ''}
+        <a href="/albums">Albums</a>
+        <a href="/tags">Tags</a>
         <a href="/account/password">My account</a>
         <form method="POST" action="/logout">
           <button class="btn-nav">Logout</button>
@@ -85,6 +86,11 @@ function page(title, body, session) {
     .album-meta { padding: 0.85rem; }
     .album-meta strong { display: block; margin-bottom: 0.2rem; font-size: 1rem; }
     .album-meta small { color: #888; font-size: 0.8rem; }
+    .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+    .tag-cloud a { background: #f0f0f0; border-radius: 20px; padding: 0.3rem 0.9rem; font-size: 0.9rem; color: #444; text-decoration: none; }
+    .tag-cloud a:hover { background: #1a1a1a; color: white; }
+    .tag-count { font-size: 0.75rem; color: #888; margin-left: 0.3rem; }
+    .access-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
   </style>
 </head>
 <body>
