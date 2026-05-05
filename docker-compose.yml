@@ -24,6 +24,9 @@ services:
       SEED_NAME: ${SEED_NAME:-Saev}
       SEED_EMAIL: ${SEED_EMAIL:-saev.bzh@pm.me}
       SEED_PASS: ${SEED_PASS:-changeme}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy

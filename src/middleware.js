@@ -8,4 +8,9 @@ function requireAdmin(req, res, next) {
   res.status(403).send('Access denied');
 }
 
-module.exports = { requireAuth, requireAdmin };
+function requireEditor(req, res, next) {
+  if (req.session.role === 'admin' || req.session.role === 'editor') return next();
+  res.status(403).send('Access denied');
+}
+
+module.exports = { requireAuth, requireAdmin, requireEditor };
