@@ -227,7 +227,7 @@ router.get('/:id', requireEditor, async (req, res) => {
         </div>` : ''}
     </div>
     ${photoGrid}
-    <a href="/albums" style="color:#888;font-size:0.9rem;text-decoration:none">← Back to albums</a>
+    <a class="btn btn-secondary" href="/albums" style="margin-top:1.5rem;display:inline-block">← Back to albums</a>
   `, req.session));
 });
 

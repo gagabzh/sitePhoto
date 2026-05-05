@@ -23,7 +23,7 @@ describe('GET /login', () => {
 });
 
 describe('POST /login', () => {
-  it('redirects to / on valid credentials', async () => {
+  it('redirects to /photos on valid credentials', async () => {
     db.query.mockResolvedValue({ rows: [FAKE_USER] });
     bcrypt.compare.mockResolvedValue(true);
 
@@ -32,7 +32,7 @@ describe('POST /login', () => {
       .send('email=saev%40test.com&password=secret');
 
     expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('/');
+    expect(res.headers.location).toBe('/photos');
   });
 
   it('redirects to /login?error=1 when password is wrong', async () => {
