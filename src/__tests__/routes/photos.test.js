@@ -297,3 +297,121 @@ describe('US-P4: POST /photos/:id/delete — delete photo', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── Bulk tag ─────────────────────────────────────────────────────────────────
+
+describe('POST /photos/bulk-tag — apply tag to multiple photos', () => {
+  it('adds tag to all selected photos owned by the editor', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })  // SELECT allowed photos
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })              // INSERT tag
+      .mockResolvedValueOnce({ rows: [] });                       // INSERT photo_tags bulk
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-tag')
+      .send('tag=Paris&photo_ids=1&photo_ids=2');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id FROM photos WHERE id = ANY'),
+      [[1, 2], 10]
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO tags'),
+      ['paris']
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photo_tags'),
+      [[1, 2], 5]
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/photos');
+  });
+
+  it('admin can tag photos from any owner', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })  // SELECT without user_id filter
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(ADMIN_SESSION))
+      .post('/photos/bulk-tag')
+      .send('tag=sunset&photo_ids=3');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id FROM photos WHERE id = ANY'),
+      [[3]]
+    );
+  });
+
+  it('works with a single photo_id (not array)', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-tag')
+      .send('tag=beach&photo_ids=1');
+
+    expect(res.status).toBe(302);
+  });
+
+  it('redirects without DB calls when no tag provided', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-tag')
+      .send('photo_ids=1');
+
+    expect(res.status).toBe(302);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('redirects without DB calls when no photos selected', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-tag')
+      .send('tag=Paris');
+
+    expect(res.status).toBe(302);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('redirects without inserting when no allowed photos found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-tag')
+      .send('tag=Paris&photo_ids=99');
+
+    expect(res.status).toBe(302);
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/photos/bulk-tag')
+      .send('tag=Paris&photo_ids=1');
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /photos — photo list shows checkboxes', () => {
+  it('shows checkboxes on photos the editor owns', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
+    expect(res.text).toContain('<input type="checkbox"');
+    expect(res.text).toContain('action="/photos/bulk-tag"');
+  });
+
+  it('does not show checkbox on photos owned by others', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
+    expect(res.text).not.toContain('<input type="checkbox"');
+  });
+
+  it('admin sees checkboxes on all photos', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
+    const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
+    expect(res.text).toContain('<input type="checkbox"');
+  });
+});
