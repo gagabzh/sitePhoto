@@ -156,6 +156,9 @@ router.get('/upload', requireEditor, (req, res) => {
         <label>Tags <small>(comma-separated, e.g. Paris, John Doe)</small>
           <input type="text" name="tags" placeholder="Paris, John Doe">
         </label>
+        <label>Date taken <small>(optional)</small>
+          <input type="date" name="taken_at">
+        </label>
         <div class="row">
           <button class="btn" type="submit">Upload</button>
           <a class="btn btn-secondary" href="/photos">Cancel</a>
@@ -171,13 +174,13 @@ router.post('/upload', requireEditor, (req, res, next) => {
     if (err && err.code === 'LIMIT_FILE_SIZE') return res.redirect('/photos/upload?error=size');
     if (err || !req.file) return res.redirect('/photos/upload?error=type');
 
-    const { title, description, tags } = req.body;
+    const { title, description, tags, taken_at } = req.body;
     try {
       const filepath = path.join(UPLOAD_DIR, req.file.filename);
       const finalSize = await optimizePhoto(filepath, req.file.mimetype);
       const { rows } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize]
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, taken_at || null]
       );
       if (tags) await setTags(rows[0].id, tags);
       res.redirect(`/photos/${rows[0].id}`);
@@ -258,6 +261,9 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
           <label>Tags <small>(comma-separated)</small>
             <input type="text" name="tags" value="${esc(photo.tags.join(', '))}">
           </label>
+          <label>Date taken
+            <input type="date" name="taken_at" value="${photo.taken_at ? new Date(photo.taken_at).toISOString().split('T')[0] : ''}">
+          </label>
           <div class="row">
             <button class="btn" type="submit">Save</button>
             <a class="btn btn-secondary" href="/photos/${photo.id}">Cancel</a>
@@ -275,10 +281,10 @@ router.post('/:id', requireEditor, async (req, res) => {
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
-  const { title, description, tags } = req.body;
+  const { title, description, tags, taken_at } = req.body;
   await db.query(
-    'UPDATE photos SET title = $1, description = $2, updated_at = NOW() WHERE id = $3',
-    [title, description || null, req.params.id]
+    'UPDATE photos SET title = $1, description = $2, taken_at = $3, updated_at = NOW() WHERE id = $4',
+    [title, description || null, taken_at || null, req.params.id]
   );
   await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);

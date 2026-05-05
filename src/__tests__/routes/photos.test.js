@@ -117,7 +117,7 @@ describe('US-P1/P2: POST /photos/upload — upload handling', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/42');
@@ -229,7 +229,7 @@ describe('US-P3: POST /photos/:id — save edits', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
-      ['Updated Title', 'New desc', '1']
+      ['Updated Title', 'New desc', null, '1']
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/1');
