@@ -21,7 +21,8 @@ services:
     environment:
       DATABASE_URL: postgres://sitephoto:${DB_PASSWORD:-changeme}@db:5432/sitephoto
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret}
-      SEED_USER: ${SEED_USER:-saev}
+      SEED_NAME: ${SEED_NAME:-Saev}
+      SEED_EMAIL: ${SEED_EMAIL:-saev.bzh@pm.me}
       SEED_PASS: ${SEED_PASS:-changeme}
     depends_on:
       db:
