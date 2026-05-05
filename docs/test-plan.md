@@ -98,7 +98,97 @@
 
 ---
 
-## Access control checks
+---
+
+## Feature: Photos (US-P1 to US-P4)
+
+### Preconditions
+- Logged in as an **editor** (or admin).
+- At least one other editor account exists for ownership tests.
+
+---
+
+### US-P1 — Upload a photo
+
+**Steps:**
+1. Click **Photos** in the navigation bar → click **+ Upload**.
+2. Choose an image file (JPEG, PNG, GIF or WebP).
+3. Fill in a title and optional description.
+4. Click **Upload**.
+
+**Expected:**
+- You are redirected to the photo detail page.
+- The photo is displayed with its title and description.
+
+**Edge cases:**
+- Upload a non-image file (e.g. `.pdf`) → error "Only JPEG, PNG, GIF and WebP images are accepted."
+- Upload a file larger than 10 MB → error "File is too large."
+- Leave the title empty → browser blocks submission.
+
+---
+
+### US-P2 — Tag a photo
+
+**Steps:**
+1. On the upload form, enter tags in the Tags field, comma-separated (e.g. `Paris, John Doe`).
+2. Click **Upload**.
+
+**Expected:**
+- Tags appear on the photo detail page as grey pills.
+- Tags are stored in lowercase.
+
+**Also test editing tags (see US-P3).**
+
+---
+
+### US-P3 — Edit a photo
+
+**Steps:**
+1. Open a photo you own → click **Edit**.
+2. Change the title, description, or tags.
+3. Click **Save**.
+
+**Expected:**
+- You are redirected back to the photo detail page.
+- Updated values are displayed.
+- Removed tags no longer appear; new tags are shown.
+
+**Edge cases:**
+- Try to navigate to `/photos/:id/edit` for a photo owned by another editor → 403 error.
+- Admin can edit any photo regardless of owner.
+
+---
+
+### US-P4 — Delete a photo
+
+**Steps:**
+1. Open a photo you own → click **Delete**.
+2. Confirm the browser dialog.
+
+**Expected:**
+- You are redirected to the photo list.
+- The photo no longer appears in the list.
+
+**Edge cases:**
+- Try to POST to `/photos/:id/delete` for a photo owned by another editor → 403 error.
+- Admin can delete any photo.
+- Deleting a photo that doesn't exist → 404 error.
+
+---
+
+### Photo access control
+
+| Action | Admin | Editor (owner) | Editor (other) | Viewer |
+|---|---|---|---|---|
+| View photo list `/photos` | ✅ | ✅ | ✅ | ❌ 403 |
+| Upload photo | ✅ | ✅ | ✅ | ❌ 403 |
+| View photo detail | ✅ | ✅ | ✅ | ✅ |
+| Edit photo | ✅ | ✅ | ❌ 403 | ❌ 403 |
+| Delete photo | ✅ | ✅ | ❌ 403 | ❌ 403 |
+
+---
+
+## Access control checks — User Management
 
 | Action | Admin | Editor | Viewer | Unauthenticated |
 |---|---|---|---|---|

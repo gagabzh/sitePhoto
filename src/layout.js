@@ -12,6 +12,7 @@ function page(title, body, session) {
       <strong><a href="/">sitephoto</a></strong>
       <div class="nav-right">
         ${session.role === 'admin' ? '<a href="/admin/users">Users</a>' : ''}
+        ${session.role !== 'viewer' ? '<a href="/photos">Photos</a>' : ''}
         <a href="/account/password">My account</a>
         <form method="POST" action="/logout">
           <button class="btn-nav">Logout</button>
@@ -62,6 +63,17 @@ function page(title, body, session) {
     .badge-editor { background: #3b82f6; color: white; }
     .badge-viewer { background: #e5e7eb; color: #555; }
     .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.25rem; }
+    .photo-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .photo-card a { text-decoration: none; color: inherit; }
+    .photo-card img { width: 100%; height: 180px; object-fit: cover; display: block; }
+    .photo-meta { padding: 0.75rem; }
+    .photo-meta strong { display: block; margin-bottom: 0.2rem; }
+    .uploader { color: #888; font-size: 0.8rem; }
+    .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
+    .tag { background: #f0f0f0; border-radius: 20px; padding: 0.15rem 0.6rem; font-size: 0.75rem; color: #555; }
+    textarea { padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; width: 100%; font-family: inherit; }
+    textarea:focus { outline: 2px solid #1a1a1a; border-color: transparent; }
   </style>
 </head>
 <body>
