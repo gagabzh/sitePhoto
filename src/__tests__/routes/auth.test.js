@@ -23,7 +23,7 @@ describe('GET /login', () => {
 });
 
 describe('POST /login', () => {
-  it('redirects to /photos on valid credentials', async () => {
+  it('redirects to /photos for admin/editor on valid credentials', async () => {
     db.query.mockResolvedValue({ rows: [FAKE_USER] });
     bcrypt.compare.mockResolvedValue(true);
 
@@ -33,6 +33,18 @@ describe('POST /login', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos');
+  });
+
+  it('redirects to /albums for viewer on valid credentials', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_USER, role: 'viewer' }] });
+    bcrypt.compare.mockResolvedValue(true);
+
+    const res = await request(app)
+      .post('/login')
+      .send('email=saev%40test.com&password=secret');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums');
   });
 
   it('redirects to /login?error=1 when password is wrong', async () => {
