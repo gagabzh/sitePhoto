@@ -45,10 +45,11 @@ async function fetchPhotos(session, albumFilter, tagFilter) {
     conditions.push(`t.name = $${params.length}`);
   }
 
-  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  conditions.push('p.taken_at IS NOT NULL');
+  const where = 'WHERE ' + conditions.join(' AND ');
   const { rows } = await db.query(`
     SELECT DISTINCT p.id, p.filename, p.title, u.name AS uploader,
-      COALESCE(p.taken_at, p.created_at::date) AS display_date
+      p.taken_at AS display_date
     FROM photos p
     JOIN users u ON u.id = p.user_id
     ${joins.join('\n    ')}

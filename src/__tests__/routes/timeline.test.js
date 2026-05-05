@@ -93,6 +93,14 @@ describe('TL1: GET /timeline — timeline view', () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain('May 2024');
   });
+
+  it('always filters to photos with taken_at set (metadata only)', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    const sql = db.query.mock.calls[0][0];
+    expect(sql).toContain('taken_at IS NOT NULL');
+    expect(sql).not.toContain('COALESCE');
+  });
 });
 
 // ── TL2: Viewer access ────────────────────────────────────────────────────────

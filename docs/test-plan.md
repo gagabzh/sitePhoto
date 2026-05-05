@@ -375,12 +375,16 @@
 2. Navigate to the Timeline.
 
 **Expected:**
-- The photo appears under the "January 2023" heading, not under the current month.
+- The photo appears under the "January 2023" heading.
 3. Edit the photo and clear the **Date taken** field. Save.
 4. Reload the Timeline.
 
 **Expected:**
-- The photo now appears under the month matching its upload date.
+- The photo no longer appears in the Timeline at all (only photos with an explicit date are shown).
+5. Upload a second photo without setting a Date taken.
+
+**Expected:**
+- The second photo does not appear in the Timeline.
 
 ---
 
