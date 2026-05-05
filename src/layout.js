@@ -51,6 +51,10 @@ function page(title, body, session) {
     .btn-secondary:hover { background: #444; }
     .btn-danger { background: #b00; }
     .btn-danger:hover { background: #900; }
+    .btn-icon { display:inline-flex; align-items:center; justify-content:center; padding:0.35rem 0.6rem; }
+    .btn-icon svg { width:1rem; height:1rem; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .btn-sm.btn-icon { padding:0.2rem 0.4rem; }
+    .btn-sm.btn-icon svg { width:0.85rem; height:0.85rem; }
     form.inline { display: inline; }
     .form-col { display: flex; flex-direction: column; gap: 1rem; max-width: 400px; }
     label { font-size: 0.9rem; font-weight: 500; display: flex; flex-direction: column; gap: 0.3rem; }

@@ -65,7 +65,7 @@ router.get('/', requireEditor, async (req, res) => {
               <a class="btn btn-sm btn-secondary" href="/albums/${a.id}/edit">Edit</a>
               <form class="inline" method="POST" action="/albums/${a.id}/delete"
                 onsubmit="return confirm('Delete album \\'${esc(a.title)}\\'?')">
-                <button class="btn btn-sm btn-danger">Delete</button>
+                <button class="btn btn-sm btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
               </form>
             </div>` : ''}
         </div>`).join('')}
@@ -201,7 +201,7 @@ router.get('/:id', requireEditor, async (req, res) => {
               <form class="inline" method="POST" action="/albums/${album.id}/photos/remove"
                 onsubmit="return confirm('Remove from album?')">
                 <input type="hidden" name="photo_id" value="${p.id}">
-                <button class="btn btn-sm btn-danger" style="width:100%">Remove</button>
+                <button class="btn btn-sm btn-danger btn-icon" style="width:100%" title="Remove"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
               </form>
             </div>` : ''}
         </div>`).join('')}
@@ -222,7 +222,7 @@ router.get('/:id', requireEditor, async (req, res) => {
           <a class="btn btn-secondary" href="/albums/${album.id}/edit">Edit</a>
           <form class="inline" method="POST" action="/albums/${album.id}/delete"
             onsubmit="return confirm('Delete this album?')">
-            <button class="btn btn-danger">Delete</button>
+            <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
           </form>
         </div>` : ''}
     </div>

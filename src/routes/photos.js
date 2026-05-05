@@ -169,7 +169,7 @@ router.get('/:id', async (req, res) => {
             <a class="btn btn-secondary" href="/photos/${photo.id}/edit">Edit</a>
             <form class="inline" method="POST" action="/photos/${photo.id}/delete"
               onsubmit="return confirm('Delete this photo permanently?')">
-              <button class="btn btn-danger">Delete</button>
+              <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
             </form>
           </div>` : ''}
       </div>
