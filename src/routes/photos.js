@@ -62,17 +62,23 @@ router.get('/', requireEditor, async (req, res) => {
 
   const grid = rows.length === 0
     ? '<p>No photos yet. <a href="/photos/upload">Upload the first one.</a></p>'
-    : `<div class="photo-grid">${rows.map(p => `
-        <div class="photo-card">
-          <a href="/photos/${p.id}">
+    : `<div class="photo-grid">${rows.map(p => {
+        const owns = canModify(req.session, p);
+        return `
+        <div class="photo-card${owns ? ' photo-card-selectable' : ''}">
+          ${owns ? `<label class="photo-select">
+            <input type="checkbox" name="photo_ids" value="${p.id}">
             <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
-            <div class="photo-meta">
-              <strong>${esc(p.title)}</strong>
-              <span class="uploader">by ${esc(p.uploader)}</span>
-              ${p.tags.length ? `<div class="tags">${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
-            </div>
-          </a>
-        </div>`).join('')}
+          </label>` : `<a href="/photos/${p.id}">
+            <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+          </a>`}
+          <div class="photo-meta">
+            <a href="/photos/${p.id}" style="text-decoration:none;color:inherit"><strong>${esc(p.title)}</strong></a>
+            <span class="uploader">by ${esc(p.uploader)}</span>
+            ${p.tags.length ? `<div class="tags">${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
       </div>`;
 
   res.send(page('Photos', `
@@ -80,8 +86,44 @@ router.get('/', requireEditor, async (req, res) => {
       <h1>Photos</h1>
       <a class="btn" href="/photos/upload">+ Upload</a>
     </div>
-    ${grid}
+    <form method="POST" action="/photos/bulk-tag">
+      <div class="bulk-bar">
+        <span style="font-size:0.9rem;font-weight:500">Tag selected:</span>
+        <input type="text" name="tag" placeholder="e.g. Paris" required
+          style="width:180px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid #ccc;border-radius:4px">
+        <button class="btn btn-sm" type="submit">Apply to selected</button>
+      </div>
+      ${grid}
+    </form>
   `, req.session));
+});
+
+// Bulk tag selected photos
+router.post('/bulk-tag', requireEditor, async (req, res) => {
+  const tag = (req.body.tag || '').trim().toLowerCase();
+  const raw = req.body.photo_ids;
+  if (!tag || !raw) return res.redirect('/photos');
+
+  const ids = [].concat(raw).map(Number).filter(n => n > 0);
+  if (!ids.length) return res.redirect('/photos');
+
+  const { rows: allowed } = req.session.role === 'admin'
+    ? await db.query('SELECT id FROM photos WHERE id = ANY($1::int[])', [ids])
+    : await db.query('SELECT id FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
+
+  if (!allowed.length) return res.redirect('/photos');
+
+  const { rows: [tagRow] } = await db.query(
+    'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+    [tag]
+  );
+  const allowedIds = allowed.map(r => r.id);
+  await db.query(
+    'INSERT INTO photo_tags (photo_id, tag_id) SELECT unnest($1::int[]), $2 ON CONFLICT DO NOTHING',
+    [allowedIds, tagRow.id]
+  );
+
+  res.redirect('/photos');
 });
 
 // US-P1: Upload form
