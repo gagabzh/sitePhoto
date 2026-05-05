@@ -1,4 +1,26 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
+jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('fs', () => ({
+  mkdirSync: jest.fn(),
+  promises: { unlink: jest.fn().mockResolvedValue() },
+}));
+jest.mock('multer', () => {
+  const m = jest.fn().mockReturnValue({
+    single: jest.fn().mockReturnValue((req, res, cb) => {
+      req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
+      cb();
+    }),
+    array: jest.fn().mockReturnValue((req, res, cb) => {
+      req.files = [
+        { filename: 'uuid-1.jpg', originalname: 'beach.jpg', mimetype: 'image/jpeg', size: 5000 },
+        { filename: 'uuid-2.jpg', originalname: 'sunset.png', mimetype: 'image/png', size: 3000 },
+      ];
+      cb();
+    }),
+  });
+  m.diskStorage = jest.fn().mockReturnValue({});
+  return m;
+});
 
 const request = require('supertest');
 const express = require('express');
@@ -54,6 +76,12 @@ describe('GET /albums — album list', () => {
     const res = await request(makeApp(ADMIN_SESSION)).get('/albums');
     expect(res.status).toBe(200);
     expect(res.text).toContain('No albums yet');
+  });
+
+  it('shows "+ From folder" button', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums');
+    expect(res.text).toContain('/albums/new/folder');
   });
 
   it('shows Edit/Delete buttons to album owner', async () => {
@@ -132,6 +160,83 @@ describe('US-A1: POST /albums — create album', () => {
   });
 });
 
+// ── Create album from folder ─────────────────────────────────────────────────
+
+describe('GET /albums/new/folder — folder upload form', () => {
+  it('returns 200 with multi-file input for editor', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/new/folder');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('New album from folder');
+    expect(res.text).toContain('action="/albums/new/folder"');
+    expect(res.text).toContain('multiple');
+    expect(res.text).toContain('webkitdirectory');
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).get('/albums/new/folder');
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /albums/new/folder — create album from folder', () => {
+  it('creates album, inserts optimized photos, and redirects to album', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })   // INSERT album
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // INSERT photo 1
+      .mockResolvedValueOnce({ rows: [] })             // INSERT album_photos 1
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] })  // INSERT photo 2
+      .mockResolvedValueOnce({ rows: [] });            // INSERT album_photos 2
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/new/folder')
+      .send('title=Beach+Trip&description=Summer');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO albums'),
+      [10, 'Beach Trip', 'Summer']
+    );
+    // first photo title derived from filename
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000]
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO album_photos'),
+      [3, 11]
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/3');
+  });
+
+  it('creates album with no photos if no files uploaded', async () => {
+    const multer = require('multer');
+    multer.mockReturnValue({
+      single: jest.fn(),
+      array: jest.fn().mockReturnValue((req, res, cb) => {
+        req.files = [];
+        cb();
+      }),
+    });
+
+    db.query.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/new/folder')
+      .send('title=Empty+Album');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/5');
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/albums/new/folder')
+      .send('title=X');
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
 // ── Album detail ─────────────────────────────────────────────────────────────
 
 describe('GET /albums/:id — album detail', () => {
@@ -146,12 +251,13 @@ describe('GET /albums/:id — album detail', () => {
     expect(res.text).toContain('Sunset');
   });
 
-  it('shows Add/Edit/Delete controls to album owner', async () => {
+  it('shows Upload/Add/Edit/Delete controls to album owner', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.text).toContain('/albums/1/photos/upload');
     expect(res.text).toContain('/albums/1/photos/add');
     expect(res.text).toContain('/albums/1/edit');
   });
@@ -162,6 +268,7 @@ describe('GET /albums/:id — album detail', () => {
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.text).not.toContain('/albums/1/photos/upload');
     expect(res.text).not.toContain('/albums/1/photos/add');
     expect(res.text).not.toContain('/albums/1/edit');
   });
@@ -172,6 +279,7 @@ describe('GET /albums/:id — album detail', () => {
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(ADMIN_SESSION)).get('/albums/1');
+    expect(res.text).toContain('/albums/1/photos/upload');
     expect(res.text).toContain('/albums/1/photos/add');
   });
 
@@ -320,6 +428,15 @@ describe('US-A2: GET /albums/:id/photos/add — add photos page', () => {
     expect(res.text).toContain('+ Add');
   });
 
+  it('shows "Upload new photo" button on add page', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/add');
+    expect(res.text).toContain('/albums/1/photos/upload');
+  });
+
   it('shows empty state when all photos already in album', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
@@ -432,5 +549,120 @@ describe('US-A2: POST /albums/:id/photos/remove — remove photo from album', ()
       .post('/albums/999/photos/remove')
       .send('photo_id=5');
     expect(res.status).toBe(404);
+  });
+});
+
+// ── Upload photo directly into album ────────────────────────────────────────
+
+describe('GET /albums/:id/photos/upload — upload form', () => {
+  it('returns 200 with upload form for album owner', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_ALBUM] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/upload');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Upload photo to');
+    expect(res.text).toContain('Summer 2024');
+    expect(res.text).toContain('action="/albums/1/photos/upload"');
+    expect(res.text).toContain('enctype="multipart/form-data"');
+  });
+
+  it('shows size error message', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_ALBUM] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/upload?error=size');
+    expect(res.text).toContain('too large');
+  });
+
+  it('shows type error message', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_ALBUM] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/upload?error=type');
+    expect(res.text).toContain('JPEG, PNG, GIF and WebP');
+  });
+
+  it('returns 403 for non-owner editor', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_ALBUM, user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/upload');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for unknown album', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/999/photos/upload');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1/photos/upload');
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /albums/:id/photos/upload — upload photo to album', () => {
+  it('inserts photo and album link, redirects to album', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // SELECT album
+      .mockResolvedValueOnce({ rows: [{ id: 20 }] })       // INSERT photo
+      .mockResolvedValueOnce({ rows: [] });                 // INSERT album_photos
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/upload')
+      .send('title=Beach+Sunset&description=Nice+view');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', 'Nice view', 'image/jpeg', 4000]
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO album_photos'),
+      ['1', 20]
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/1');
+  });
+
+  it('saves tags when provided', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })   // SELECT album
+      .mockResolvedValueOnce({ rows: [{ id: 21 }] })        // INSERT photo
+      .mockResolvedValueOnce({ rows: [] })                   // DELETE photo_tags
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })         // INSERT tag 'paris'
+      .mockResolvedValueOnce({ rows: [] })                   // INSERT photo_tag paris
+      .mockResolvedValueOnce({ rows: [{ id: 6 }] })         // INSERT tag 'sunset'
+      .mockResolvedValueOnce({ rows: [] })                   // INSERT photo_tag sunset
+      .mockResolvedValueOnce({ rows: [] });                  // INSERT album_photos
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/upload')
+      .send('title=Beach&tags=Paris%2CSunset');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO tags'),
+      expect.any(Array)
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/1');
+  });
+
+  it('returns 403 for non-owner editor before running upload', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/upload')
+      .send('title=X');
+    expect(res.status).toBe(403);
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 404 for unknown album', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/999/photos/upload')
+      .send('title=X');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/albums/1/photos/upload')
+      .send('title=X');
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
