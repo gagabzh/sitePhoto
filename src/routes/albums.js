@@ -1,11 +1,33 @@
 const router = require('express').Router();
+const multer = require('multer');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
+const { optimizePhoto } = require('../imageOptimizer');
 
 function canModify(session, album) {
   return session.role === 'admin' || album.user_id === session.userId;
 }
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, uuidv4() + ext);
+  },
+});
+
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, ALLOWED_TYPES.includes(file.mimetype)),
+});
 
 // ── Album list ───────────────────────────────────────────────────────────────
 
@@ -52,7 +74,10 @@ router.get('/', requireEditor, async (req, res) => {
   res.send(page('Albums', `
     <div class="top-bar">
       <h1>Albums</h1>
-      <a class="btn" href="/albums/new">+ New album</a>
+      <div class="row">
+        <a class="btn" href="/albums/new">+ New album</a>
+        <a class="btn btn-secondary" href="/albums/new/folder">+ From folder</a>
+      </div>
     </div>
     ${grid}
   `, req.session));
@@ -74,6 +99,60 @@ router.get('/new', requireEditor, (req, res) => {
       </form>
     </div>
   `, req.session));
+});
+
+// ── Create album from folder ─────────────────────────────────────────────────
+
+router.get('/new/folder', requireEditor, (req, res) => {
+  res.send(page('New album from folder', `
+    <h1>New album from folder</h1>
+    <div class="card" style="max-width:520px">
+      <form class="form-col" method="POST" action="/albums/new/folder" enctype="multipart/form-data">
+        <label>Album title <input type="text" name="title" required autofocus></label>
+        <label>Description <textarea name="description" rows="3"></textarea></label>
+        <label>
+          Photos
+          <small>Select a folder or multiple image files (JPEG, PNG, GIF, WebP · max 10 MB each)</small>
+          <input type="file" name="photos" accept="image/*" multiple webkitdirectory required>
+        </label>
+        <div class="row">
+          <button class="btn" type="submit">Create album</button>
+          <a class="btn btn-secondary" href="/albums">Cancel</a>
+        </div>
+      </form>
+    </div>
+  `, req.session));
+});
+
+router.post('/new/folder', requireEditor, (req, res, next) => {
+  upload.array('photos', 200)(req, res, async (err) => {
+    if (err) return next(err);
+    const { title, description } = req.body;
+    try {
+      const { rows: [album] } = await db.query(
+        'INSERT INTO albums (user_id, title, description) VALUES ($1, $2, $3) RETURNING id',
+        [req.session.userId, title, description || null]
+      );
+
+      for (const file of (req.files || [])) {
+        const filepath = path.join(UPLOAD_DIR, file.filename);
+        const finalSize = await optimizePhoto(filepath, file.mimetype);
+        const photoTitle = path.basename(file.originalname, path.extname(file.originalname));
+        const { rows: [photo] } = await db.query(
+          'INSERT INTO photos (user_id, filename, original_filename, title, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+          [req.session.userId, file.filename, file.originalname, photoTitle, file.mimetype, finalSize]
+        );
+        await db.query(
+          'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)',
+          [album.id, photo.id]
+        );
+      }
+
+      res.redirect(`/albums/${album.id}`);
+    } catch (e) {
+      next(e);
+    }
+  });
 });
 
 router.post('/', requireEditor, async (req, res) => {
@@ -138,7 +217,8 @@ router.get('/:id', requireEditor, async (req, res) => {
       </div>
       ${canEdit ? `
         <div class="row">
-          <a class="btn" href="/albums/${album.id}/photos/add">+ Add photos</a>
+          <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload photo</a>
+          <a class="btn btn-secondary" href="/albums/${album.id}/photos/add">+ Add photos</a>
           <a class="btn btn-secondary" href="/albums/${album.id}/edit">Edit</a>
           <form class="inline" method="POST" action="/albums/${album.id}/delete"
             onsubmit="return confirm('Delete this album?')">
@@ -241,7 +321,10 @@ router.get('/:id/photos/add', requireEditor, async (req, res) => {
   res.send(page(`Add photos — ${esc(album.title)}`, `
     <div class="top-bar">
       <h1>Add photos to <em>${esc(album.title)}</em></h1>
-      <a class="btn btn-secondary" href="/albums/${album.id}">← Back to album</a>
+      <div class="row">
+        <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload new photo</a>
+        <a class="btn btn-secondary" href="/albums/${album.id}">← Back to album</a>
+      </div>
     </div>
     ${grid}
   `, req.session));
@@ -273,6 +356,89 @@ router.post('/:id/photos/remove', requireEditor, async (req, res) => {
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}`);
+});
+
+// ── Upload photo directly into album ────────────────────────────────────────
+
+router.get('/:id/photos/upload', requireEditor, async (req, res) => {
+  const { rows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
+  const album = rows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  const errors = {
+    type: 'Only JPEG, PNG, GIF and WebP images are accepted.',
+    size: 'File is too large (max 10 MB).',
+    fail: 'Upload failed. Please try again.',
+  };
+  const error = errors[req.query.error]
+    ? `<p class="msg-error">${errors[req.query.error]}</p>` : '';
+
+  res.send(page(`Upload — ${esc(album.title)}`, `
+    <h1>Upload photo to <em>${esc(album.title)}</em></h1>
+    <div class="card" style="max-width:520px">
+      ${error}
+      <form class="form-col" method="POST" action="/albums/${album.id}/photos/upload"
+        enctype="multipart/form-data">
+        <label>Photo <input type="file" name="photo" accept="image/*" required></label>
+        <label>Title <input type="text" name="title" required></label>
+        <label>Description <textarea name="description" rows="3"></textarea></label>
+        <label>Tags <small>(comma-separated, e.g. Paris, John Doe)</small>
+          <input type="text" name="tags" placeholder="Paris, John Doe">
+        </label>
+        <div class="row">
+          <button class="btn" type="submit">Upload</button>
+          <a class="btn btn-secondary" href="/albums/${album.id}">Cancel</a>
+        </div>
+      </form>
+    </div>
+  `, req.session));
+});
+
+router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
+  const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
+  const album = rows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  upload.single('photo')(req, res, async (err) => {
+    const albumId = req.params.id;
+    if (err && err.code === 'LIMIT_FILE_SIZE')
+      return res.redirect(`/albums/${albumId}/photos/upload?error=size`);
+    if (err || !req.file)
+      return res.redirect(`/albums/${albumId}/photos/upload?error=type`);
+
+    const { title, description, tags } = req.body;
+    try {
+      const filepath = path.join(UPLOAD_DIR, req.file.filename);
+      const finalSize = await optimizePhoto(filepath, req.file.mimetype);
+      const { rows: [photo] } = await db.query(
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize]
+      );
+      if (tags) {
+        await db.query('DELETE FROM photo_tags WHERE photo_id = $1', [photo.id]);
+        const names = String(tags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+        for (const name of names) {
+          const { rows: [tag] } = await db.query(
+            'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+            [name]
+          );
+          await db.query(
+            'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [photo.id, tag.id]
+          );
+        }
+      }
+      await db.query(
+        'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)',
+        [albumId, photo.id]
+      );
+      res.redirect(`/albums/${albumId}`);
+    } catch (e) {
+      next(e);
+    }
+  });
 });
 
 module.exports = router;
