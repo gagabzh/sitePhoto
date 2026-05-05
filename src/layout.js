@@ -13,6 +13,7 @@ function page(title, body, session) {
       <div class="nav-right">
         ${session.role === 'admin' ? '<a href="/admin/users">Users</a>' : ''}
         ${session.role !== 'viewer' ? '<a href="/photos">Photos</a>' : ''}
+        ${session.role !== 'viewer' ? '<a href="/albums">Albums</a>' : ''}
         <a href="/account/password">My account</a>
         <form method="POST" action="/logout">
           <button class="btn-nav">Logout</button>
@@ -74,6 +75,12 @@ function page(title, body, session) {
     .tag { background: #f0f0f0; border-radius: 20px; padding: 0.15rem 0.6rem; font-size: 0.75rem; color: #555; }
     textarea { padding: 0.5rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; width: 100%; font-family: inherit; }
     textarea:focus { outline: 2px solid #1a1a1a; border-color: transparent; }
+    .album-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); text-decoration: none; color: inherit; display: block; }
+    .album-cover { width: 100%; height: 160px; object-fit: cover; display: block; }
+    .album-cover-empty { width: 100%; height: 160px; background: #e8e8e8; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 2rem; }
+    .album-meta { padding: 0.85rem; }
+    .album-meta strong { display: block; margin-bottom: 0.2rem; font-size: 1rem; }
+    .album-meta small { color: #888; font-size: 0.8rem; }
   </style>
 </head>
 <body>

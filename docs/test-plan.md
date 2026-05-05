@@ -188,6 +188,119 @@
 
 ---
 
+## Feature: Albums (US-A1 to US-A3)
+
+### Preconditions
+- Logged in as an **editor** (or admin).
+- At least one other editor account exists for ownership tests.
+- At least two photos have been uploaded.
+
+---
+
+### US-A1 — Create an album
+
+**Steps:**
+1. Click **Albums** in the navigation bar → click **+ New album**.
+2. Enter a title (required) and an optional description.
+3. Click **Create**.
+
+**Expected:**
+- You are redirected to the album detail page.
+- The album title and description are displayed.
+- The album shows "No photos yet. Add some."
+
+**Edge cases:**
+- Leave the title empty → browser blocks submission.
+
+---
+
+### US-A1 — View album list
+
+**Steps:**
+1. Click **Albums** in the navigation bar.
+
+**Expected:**
+- Each album shows a cover image (first photo added), title, photo count, and creator name.
+- Albums you own (or all albums if admin) show **Edit** and **Delete** buttons.
+- Albums owned by others do not show Edit/Delete buttons.
+
+---
+
+### US-A2 — Add photos to an album
+
+**Steps:**
+1. Open an album you own → click **+ Add photos**.
+2. Click **+ Add** on one or more photos.
+
+**Expected:**
+- After each click you stay on the "Add photos" page.
+- The added photo disappears from the available list.
+- Go back to the album → the photo now appears in the grid.
+
+**Edge cases:**
+- When all photos are already in the album, the page shows "All photos are already in this album."
+
+---
+
+### US-A2 — Remove a photo from an album
+
+**Steps:**
+1. Open an album you own that has at least one photo.
+2. Click **Remove** under a photo and confirm the dialog.
+
+**Expected:**
+- The page reloads and the removed photo is no longer in the album grid.
+- The photo still exists in the Photos list (removing from album does not delete the photo).
+
+---
+
+### US-A3 — Edit an album
+
+**Steps:**
+1. Open an album you own → click **Edit**.
+2. Change the title and/or description.
+3. Click **Save**.
+
+**Expected:**
+- You are redirected to the album detail page.
+- Updated title and description are displayed.
+
+**Edge cases:**
+- Try navigating to `/albums/:id/edit` for an album you do not own → 403 error.
+- Admin can edit any album.
+
+---
+
+### US-A3 — Delete an album
+
+**Steps:**
+1. Open an album you own → click **Delete** and confirm the dialog.
+
+**Expected:**
+- You are redirected to the album list.
+- The deleted album no longer appears.
+- Photos that were in the album still exist in the Photos list.
+
+**Edge cases:**
+- Try POSTing to `/albums/:id/delete` for an album you do not own → 403 error.
+- Admin can delete any album.
+
+---
+
+### Album access control
+
+| Action | Admin | Editor (owner) | Editor (other) | Viewer |
+|---|---|---|---|---|
+| View album list `/albums` | ✅ | ✅ | ✅ | ❌ 403 |
+| Create album | ✅ | ✅ | ✅ | ❌ 403 |
+| View album detail | ✅ | ✅ | ✅ | ❌ 403 |
+| Edit album | ✅ | ✅ | ❌ 403 | ❌ 403 |
+| Delete album | ✅ | ✅ | ❌ 403 | ❌ 403 |
+| Add photos to album | ✅ | ✅ | ❌ 403 | ❌ 403 |
+| Remove photo from album | ✅ | ✅ | ❌ 403 | ❌ 403 |
+
+---
+
 ## Access control checks — User Management
 
 | Action | Admin | Editor | Viewer | Unauthenticated |
