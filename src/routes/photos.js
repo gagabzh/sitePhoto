@@ -87,7 +87,7 @@ router.get('/', requireEditor, async (req, res) => {
       <a class="btn" href="/photos/upload">+ Upload</a>
     </div>
     <form method="POST" action="/photos/bulk-tag">
-      <div class="bulk-bar">
+      <div class="bulk-bar" id="bulk-bar" style="display:none">
         <span style="font-size:0.9rem;font-weight:500">Tag selected:</span>
         <input type="text" name="tag" placeholder="e.g. Paris" required
           style="width:180px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid #ccc;border-radius:4px">
@@ -95,6 +95,16 @@ router.get('/', requireEditor, async (req, res) => {
       </div>
       ${grid}
     </form>
+    <script>
+      (function () {
+        var bar = document.getElementById('bulk-bar');
+        var boxes = document.querySelectorAll('input[name="photo_ids"]');
+        function update() {
+          bar.style.display = Array.prototype.some.call(boxes, function (b) { return b.checked; }) ? 'flex' : 'none';
+        }
+        boxes.forEach(function (b) { b.addEventListener('change', update); });
+      })();
+    </script>
   `, req.session));
 });
 

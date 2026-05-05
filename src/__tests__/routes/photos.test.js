@@ -399,19 +399,19 @@ describe('GET /photos — photo list shows checkboxes', () => {
   it('shows checkboxes on photos the editor owns', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
-    expect(res.text).toContain('name="photo_ids"');
+    expect(res.text).toContain('<input type="checkbox"');
     expect(res.text).toContain('action="/photos/bulk-tag"');
   });
 
   it('does not show checkbox on photos owned by others', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
-    expect(res.text).not.toContain('name="photo_ids"');
+    expect(res.text).not.toContain('<input type="checkbox"');
   });
 
   it('admin sees checkboxes on all photos', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
-    expect(res.text).toContain('name="photo_ids"');
+    expect(res.text).toContain('<input type="checkbox"');
   });
 });
