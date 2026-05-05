@@ -29,25 +29,49 @@ const upload = multer({
   fileFilter: (req, file, cb) => cb(null, ALLOWED_TYPES.includes(file.mimetype)),
 });
 
-// ── Album list ───────────────────────────────────────────────────────────────
+const TRASH = `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
 
-router.get('/', requireEditor, async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
-      COUNT(DISTINCT ap.photo_id)::int AS photo_count,
-      (SELECT p.filename FROM photos p
-       JOIN album_photos ap2 ON ap2.photo_id = p.id
-       WHERE ap2.album_id = a.id
-       ORDER BY ap2.added_at ASC LIMIT 1) AS cover_filename
-    FROM albums a
-    JOIN users u ON u.id = a.user_id
-    LEFT JOIN album_photos ap ON ap.album_id = a.id
-    GROUP BY a.id, u.name
-    ORDER BY a.created_at DESC
-  `);
+// ── Album list (all roles) ───────────────────────────────────────────────────
+
+router.get('/', async (req, res) => {
+  const isViewer = req.session.role === 'viewer';
+
+  const { rows } = isViewer
+    ? await db.query(`
+        SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
+          COUNT(DISTINCT ap.photo_id)::int AS photo_count,
+          (SELECT p.filename FROM photos p
+           JOIN album_photos ap2 ON ap2.photo_id = p.id
+           WHERE ap2.album_id = a.id
+           ORDER BY ap2.added_at ASC LIMIT 1) AS cover_filename
+        FROM albums a
+        JOIN users u ON u.id = a.user_id
+        JOIN album_access aa ON aa.album_id = a.id
+        LEFT JOIN album_photos ap ON ap.album_id = a.id
+        WHERE aa.viewer_id = $1
+        GROUP BY a.id, u.name
+        ORDER BY a.created_at DESC
+      `, [req.session.userId])
+    : await db.query(`
+        SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
+          COUNT(DISTINCT ap.photo_id)::int AS photo_count,
+          (SELECT p.filename FROM photos p
+           JOIN album_photos ap2 ON ap2.photo_id = p.id
+           WHERE ap2.album_id = a.id
+           ORDER BY ap2.added_at ASC LIMIT 1) AS cover_filename
+        FROM albums a
+        JOIN users u ON u.id = a.user_id
+        LEFT JOIN album_photos ap ON ap.album_id = a.id
+        GROUP BY a.id, u.name
+        ORDER BY a.created_at DESC
+      `);
+
+  const emptyMsg = isViewer
+    ? '<p>You haven\'t been granted access to any albums yet.</p>'
+    : '<p>No albums yet. <a href="/albums/new">Create the first one.</a></p>';
 
   const grid = rows.length === 0
-    ? '<p>No albums yet. <a href="/albums/new">Create the first one.</a></p>'
+    ? emptyMsg
     : `<div class="photo-grid">${rows.map(a => `
         <div class="album-card">
           <a href="/albums/${a.id}">
@@ -65,19 +89,22 @@ router.get('/', requireEditor, async (req, res) => {
               <a class="btn btn-sm btn-secondary" href="/albums/${a.id}/edit">Edit</a>
               <form class="inline" method="POST" action="/albums/${a.id}/delete"
                 onsubmit="return confirm('Delete album \\'${esc(a.title)}\\'?')">
-                <button class="btn btn-sm btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                <button class="btn btn-sm btn-danger btn-icon" title="Delete">${TRASH}</button>
               </form>
             </div>` : ''}
         </div>`).join('')}
       </div>`;
 
+  const controls = isViewer ? '' : `
+    <div class="row">
+      <a class="btn" href="/albums/new">+ New album</a>
+      <a class="btn btn-secondary" href="/albums/new/folder">+ From folder</a>
+    </div>`;
+
   res.send(page('Albums', `
     <div class="top-bar">
       <h1>Albums</h1>
-      <div class="row">
-        <a class="btn" href="/albums/new">+ New album</a>
-        <a class="btn btn-secondary" href="/albums/new/folder">+ From folder</a>
-      </div>
+      ${controls}
     </div>
     ${grid}
   `, req.session));
@@ -164,9 +191,9 @@ router.post('/', requireEditor, async (req, res) => {
   res.redirect(`/albums/${rows[0].id}`);
 });
 
-// ── Album detail ─────────────────────────────────────────────────────────────
+// ── Album detail (all roles) ─────────────────────────────────────────────────
 
-router.get('/:id', requireEditor, async (req, res) => {
+router.get('/:id', async (req, res) => {
   const [albumRes, photosRes] = await Promise.all([
     db.query(
       'SELECT a.*, u.name AS creator FROM albums a JOIN users u ON u.id = a.user_id WHERE a.id = $1',
@@ -185,6 +212,14 @@ router.get('/:id', requireEditor, async (req, res) => {
   const album = albumRes.rows[0];
   if (!album) return res.status(404).send('Album not found');
 
+  if (req.session.role === 'viewer') {
+    const { rows: access } = await db.query(
+      'SELECT 1 FROM album_access WHERE album_id = $1 AND viewer_id = $2',
+      [req.params.id, req.session.userId]
+    );
+    if (!access.length) return res.status(403).send('Access denied');
+  }
+
   const photos = photosRes.rows;
   const canEdit = canModify(req.session, album);
 
@@ -201,7 +236,7 @@ router.get('/:id', requireEditor, async (req, res) => {
               <form class="inline" method="POST" action="/albums/${album.id}/photos/remove"
                 onsubmit="return confirm('Remove from album?')">
                 <input type="hidden" name="photo_id" value="${p.id}">
-                <button class="btn btn-sm btn-danger btn-icon" style="width:100%" title="Remove"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+                <button class="btn btn-sm btn-danger btn-icon" style="width:100%" title="Remove">${TRASH}</button>
               </form>
             </div>` : ''}
         </div>`).join('')}
@@ -219,10 +254,11 @@ router.get('/:id', requireEditor, async (req, res) => {
         <div class="row">
           <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload photo</a>
           <a class="btn btn-secondary" href="/albums/${album.id}/photos/add">+ Add photos</a>
+          <a class="btn btn-secondary" href="/albums/${album.id}/access">Access</a>
           <a class="btn btn-secondary" href="/albums/${album.id}/edit">Edit</a>
           <form class="inline" method="POST" action="/albums/${album.id}/delete"
             onsubmit="return confirm('Delete this album?')">
-            <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+            <button class="btn btn-danger btn-icon" title="Delete">${TRASH}</button>
           </form>
         </div>` : ''}
     </div>
@@ -252,6 +288,95 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
       </form>
     </div>
   `, req.session));
+});
+
+// ── AC1-AC2: Manage viewer access ────────────────────────────────────────────
+
+router.get('/:id/access', requireEditor, async (req, res) => {
+  const { rows: albumRows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
+  const album = albumRows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  const [withAccess, withoutAccess] = await Promise.all([
+    db.query(
+      `SELECT u.id, u.name, u.email FROM users u
+       JOIN album_access aa ON aa.viewer_id = u.id
+       WHERE aa.album_id = $1 ORDER BY u.name`,
+      [req.params.id]
+    ),
+    db.query(
+      `SELECT u.id, u.name, u.email FROM users u
+       WHERE u.role = 'viewer'
+       AND u.id NOT IN (SELECT viewer_id FROM album_access WHERE album_id = $1)
+       ORDER BY u.name`,
+      [req.params.id]
+    ),
+  ]);
+
+  const currentList = withAccess.rows.length === 0
+    ? '<p style="color:#888">No viewers have access yet.</p>'
+    : `<ul class="access-list">${withAccess.rows.map(u => `
+        <li style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #eee">
+          <span>${esc(u.name)} <small style="color:#888">${esc(u.email)}</small></span>
+          <form class="inline" method="POST" action="/albums/${album.id}/access/remove">
+            <input type="hidden" name="viewer_id" value="${u.id}">
+            <button class="btn btn-sm btn-danger btn-icon" title="Revoke">${TRASH}</button>
+          </form>
+        </li>`).join('')}
+      </ul>`;
+
+  const addSection = withoutAccess.rows.length === 0
+    ? '<p style="color:#888">All viewers already have access.</p>'
+    : `<form method="POST" action="/albums/${album.id}/access/add" style="display:flex;gap:0.5rem;margin-top:0.5rem">
+        <select name="viewer_id" style="flex:1;padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-size:1rem">
+          ${withoutAccess.rows.map(u => `<option value="${u.id}">${esc(u.name)} — ${esc(u.email)}</option>`).join('')}
+        </select>
+        <button class="btn" type="submit">Grant access</button>
+      </form>`;
+
+  res.send(page(`Access — ${esc(album.title)}`, `
+    <div class="top-bar">
+      <h1>Access — <em>${esc(album.title)}</em></h1>
+      <a class="btn btn-secondary" href="/albums/${album.id}">← Back to album</a>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
+      <div class="card">
+        <h2 style="margin-top:0;font-size:1rem">Who has access</h2>
+        ${currentList}
+      </div>
+      <div class="card">
+        <h2 style="margin-top:0;font-size:1rem">Grant access to a viewer</h2>
+        ${addSection}
+      </div>
+    </div>
+  `, req.session));
+});
+
+router.post('/:id/access/add', requireEditor, async (req, res) => {
+  const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
+  const album = rows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  await db.query(
+    'INSERT INTO album_access (album_id, viewer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [req.params.id, req.body.viewer_id]
+  );
+  res.redirect(`/albums/${req.params.id}/access`);
+});
+
+router.post('/:id/access/remove', requireEditor, async (req, res) => {
+  const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
+  const album = rows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  await db.query(
+    'DELETE FROM album_access WHERE album_id = $1 AND viewer_id = $2',
+    [req.params.id, req.body.viewer_id]
+  );
+  res.redirect(`/albums/${req.params.id}/access`);
 });
 
 router.post('/:id', requireEditor, async (req, res) => {
