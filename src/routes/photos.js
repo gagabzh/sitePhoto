@@ -6,6 +6,7 @@ const fs = require('fs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
+const { optimizePhoto } = require('../imageOptimizer');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -120,9 +121,11 @@ router.post('/upload', requireEditor, (req, res, next) => {
 
     const { title, description, tags } = req.body;
     try {
+      const filepath = path.join(UPLOAD_DIR, req.file.filename);
+      const finalSize = await optimizePhoto(filepath, req.file.mimetype);
       const { rows } = await db.query(
         'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, req.file.size]
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize]
       );
       if (tags) await setTags(rows[0].id, tags);
       res.redirect(`/photos/${rows[0].id}`);

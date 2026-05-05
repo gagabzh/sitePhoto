@@ -1,4 +1,5 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
+jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
 jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
@@ -116,7 +117,7 @@ describe('US-P1/P2: POST /photos/upload — upload handling', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 5000]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/42');
