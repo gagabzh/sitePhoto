@@ -102,6 +102,9 @@ function page(title, body, session) {
     .filter-bar select { padding:0.4rem 0.6rem; font-size:0.9rem; border:1px solid #ccc; border-radius:4px; }
     .timeline-month { font-size:1.1rem; font-weight:600; margin:2rem 0 0.75rem; padding-bottom:0.4rem; border-bottom:2px solid #eee; color:#333; }
     .timeline-month:first-child { margin-top:0; }
+    .photo-exif { display:grid; grid-template-columns:max-content 1fr; gap:0.2rem 0.75rem; margin:0.75rem 0 0; font-size:0.85rem; }
+    .photo-exif dt { color:#888; font-weight:500; }
+    .photo-exif dd { margin:0; color:#333; }
   </style>
 </head>
 <body>

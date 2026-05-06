@@ -7,6 +7,7 @@ const db = require('../db');
 const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
+const { extractMetadata } = require('../extractMetadata');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -188,11 +189,13 @@ router.post('/upload', requireEditor, (req, res, next) => {
     const { title, description, tags, taken_at, nextcloud_url } = req.body;
     try {
       const filepath = path.join(UPLOAD_DIR, req.file.filename);
+      const exif = await extractMetadata(filepath);
       const finalSize = await optimizePhoto(filepath, req.file.mimetype);
       const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
+      const resolvedTakenAt = taken_at || (exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null);
       const { rows } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, taken_at || null, ncUrl]
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, ncUrl]
       );
       if (tags) await setTags(rows[0].id, tags);
       res.redirect(`/photos/${rows[0].id}`);
@@ -230,6 +233,12 @@ router.get('/:id', async (req, res) => {
           <p style="color:#888;margin-top:0;font-size:0.9rem">by ${esc(photo.uploader)}</p>
           ${photo.description ? `<p>${esc(photo.description)}</p>` : ''}
           ${photo.tags.length ? `<div class="tags">${photo.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${(photo.taken_at || photo.exposure_time || photo.focal_length) ? `
+          <dl class="photo-exif">
+            ${photo.taken_at ? `<dt>Date de prise</dt><dd>${esc(new Date(photo.taken_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }))}</dd>` : ''}
+            ${photo.exposure_time ? `<dt>Exposition</dt><dd>${esc(photo.exposure_time)}</dd>` : ''}
+            ${photo.focal_length ? `<dt>Focale</dt><dd>${esc(String(photo.focal_length))} mm</dd>` : ''}
+          </dl>` : ''}
           ${photo.nextcloud_url ? `<div style="margin-top:1rem"><a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a></div>` : ''}
         </div>
         ${canEdit ? `
