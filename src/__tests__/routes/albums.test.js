@@ -1,5 +1,6 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../components', () => ({
   photoThumb: jest.fn((p, { owns } = {}) =>
     `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
@@ -697,6 +698,107 @@ describe('POST /albums/:id/photos/bulk-delete', () => {
     const res = await request(makeApp(VIEWER_SESSION))
       .post('/albums/1/photos/bulk-delete')
       .send('photo_ids=5');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── IMP-2: Batch upload ───────────────────────────────────────────────────────
+
+describe('GET /albums/:id/photos/batch — batch upload form', () => {
+  it('returns 200 with multi-file form for owner', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_ALBUM] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/batch');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Batch upload');
+    expect(res.text).toContain('multiple');
+    expect(res.text).toContain('action="/albums/1/photos/batch"');
+  });
+
+  it('returns 403 for non-owner editor', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_ALBUM, user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1/photos/batch');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1/photos/batch');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for unknown album', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/999/photos/batch');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /albums/:id/photos/batch — batch upload', () => {
+  it('inserts all uploaded photos with album_id and redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // auth check
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })        // INSERT photo 1
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] });       // INSERT photo 2
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/batch')
+      .send('');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, '1', null, null, null]
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/1');
+  });
+
+  it('applies shared tags to all photos', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })   // photo 1
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // tag upsert
+      .mockResolvedValueOnce({ rows: [] })              // photo_tags 1
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] })   // photo 2
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // tag upsert
+      .mockResolvedValueOnce({ rows: [] });             // photo_tags 2
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/batch')
+      .send('tags=paris');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO tags'),
+      ['paris']
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photo_tags'),
+      [11, 1]
+    );
+  });
+
+  it('applies shared GPS to photos without EXIF GPS', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/batch')
+      .send('lat=48.8566&lng=2.3522');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, '1', null, 48.8566, 2.3522]
+    );
+  });
+
+  it('returns 403 for non-owner editor', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/albums/1/photos/batch').send('');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).post('/albums/1/photos/batch').send('');
     expect(res.status).toBe(403);
   });
 });
