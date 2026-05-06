@@ -740,6 +740,67 @@ function page(title, body, session) {
     }
     .ac-cand-nm { font-family: 'Caveat', cursive; font-size: 1.05rem; font-weight: 700; line-height: 1; }
     .ac-cand-em { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--ink-soft); }
+
+    /* ── Users Ledger ── */
+    .ul-page-h {
+      display: flex; justify-content: space-between; align-items: flex-end; gap: 1.5rem;
+      padding-bottom: 1.25rem; border-bottom: 1.5px dashed var(--ink); flex-wrap: wrap;
+      margin-bottom: 0;
+    }
+    .ul-page-h h1 { font-family: 'Caveat', cursive; font-size: 3.8rem; font-weight: 700; line-height: 0.95; margin: 0; }
+    .ul-page-h h1 em { font-style: italic; color: var(--accent); }
+    .ul-sub { font-family: 'Kalam', cursive; font-size: 0.9rem; color: var(--ink-soft); margin: 0.4rem 0 0; }
+    .ul-table {
+      width: 100%; border-collapse: collapse;
+      border: none; box-shadow: none; background: transparent;
+    }
+    .ul-table th {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; letter-spacing: 0.12em;
+      color: var(--ink-faint); font-weight: 600; text-align: left;
+      padding: 1rem 1.125rem 0.5rem; border-bottom: 1.5px solid var(--ink);
+      background: transparent;
+    }
+    .ul-table td {
+      padding: 0.875rem 1.125rem; border-bottom: 1px dashed var(--ink-faint);
+      vertical-align: middle; background: transparent;
+    }
+    .ul-table tbody tr:hover td { background: var(--paper-2); }
+    .ul-table tbody tr:last-child td { border-bottom: 1.5px solid var(--ink); }
+    .ul-name-cell { display: flex; align-items: center; gap: 0.75rem; }
+    .ul-av {
+      width: 38px; height: 38px; border-radius: 50%; border: 1.5px solid var(--ink);
+      background: var(--paper-2); display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Caveat', cursive; font-size: 1.1rem; font-weight: 700; flex: none;
+    }
+    .ul-nm { font-family: 'Caveat', cursive; font-size: 1.3rem; font-weight: 700; line-height: 1; }
+    .ul-you {
+      font-family: 'Caveat', cursive; font-size: 0.85rem; color: var(--accent);
+      margin-left: 0.4rem; transform: rotate(-3deg); display: inline-block;
+    }
+    .ul-email { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--ink-soft); margin-top: 2px; }
+    .ul-since { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--ink-soft); }
+    .ul-chip {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em;
+      padding: 3px 10px; border: 1.5px solid var(--ink); display: inline-block;
+    }
+    .ul-chip-admin  { background: var(--ink); color: var(--paper); }
+    .ul-chip-editor { background: var(--accent-cool); color: var(--paper); }
+    .ul-chip-viewer { background: var(--paper); color: var(--ink); }
+    .ul-acts { display: flex; gap: 0.4rem; align-items: center; opacity: 0.2; transition: opacity 0.15s; }
+    .ul-table tbody tr:hover .ul-acts { opacity: 1; }
+    .ul-pill {
+      font-family: 'Kalam', cursive; font-size: 0.78rem;
+      padding: 2px 9px; border: 1.5px solid var(--ink); border-radius: 999px;
+      background: var(--paper); color: var(--ink); text-decoration: none;
+      cursor: pointer; white-space: nowrap; display: inline-block;
+    }
+    .ul-pill:hover { background: var(--paper-2); }
+    .ul-pill-danger { color: var(--accent); border-color: var(--accent); }
+    .ul-pill-danger:hover { background: oklch(97% 0.03 35); }
+    .ul-foot {
+      padding: 0.875rem 1.125rem;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--ink-faint);
+    }
   </style>
 </head>
 <body>
