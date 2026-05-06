@@ -97,7 +97,13 @@ router.get('/', async (req, res) => {
 
   const groups = groupByMonth(photos);
 
-  // Filter bar
+  // Stats derived from fetched photos — no extra DB query
+  const totalPhotos = photos.length;
+  const uniqueUploaders = new Set(photos.map(p => p.uploader)).size;
+  const years = photos.map(p => new Date(p.display_date).getUTCFullYear());
+  const firstYear = years.length ? Math.min(...years) : null;
+
+  // Filter selects
   const albumOptions = albums.map(a =>
     `<option value="${a.id}" ${String(albumFilter) === String(a.id) ? 'selected' : ''}>${esc(a.title)}</option>`
   ).join('');
@@ -106,16 +112,14 @@ router.get('/', async (req, res) => {
   ).join('');
 
   const filterBar = `
-    <form class="filter-bar" method="GET" action="/timeline">
-      <label style="font-size:0.9rem;font-weight:500;display:flex;align-items:center;gap:0.4rem">
-        Album
+    <form class="tl-filter-bar" method="GET" action="/timeline">
+      <label>Album
         <select name="album">
           <option value="">All</option>
           ${albumOptions}
         </select>
       </label>
-      <label style="font-size:0.9rem;font-weight:500;display:flex;align-items:center;gap:0.4rem">
-        Tag
+      <label>Tag
         <select name="tag">
           <option value="">All</option>
           ${tagOptions}
@@ -125,25 +129,83 @@ router.get('/', async (req, res) => {
       ${albumFilter || tagFilter ? '<a class="btn btn-sm btn-secondary" href="/timeline">Clear</a>' : ''}
     </form>`;
 
+  // "When" label helpers
+  const today = new Date();
+  const nowKey = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
+  const prevDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
+  const prevKey = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, '0')}`;
+
+  function whenLabel(key) {
+    if (key === nowKey) return 'now';
+    if (key === prevKey) return 'last mo.';
+    const [y, m] = key.split('-');
+    return new Date(Date.UTC(+y, +m - 1, 1))
+      .toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+      .toLowerCase();
+  }
+
+  // Grid variant and render
+  function gridVariant(n) {
+    if (n <= 1) return 'k1';
+    if (n === 2) return 'k2';
+    if (n === 3) return 'k3';
+    if (n >= 5) return 'k5';
+    return 'k4';
+  }
+
+  function renderGrid(gp) {
+    const n = gp.length;
+    const v = gridVariant(n);
+    const maxShown = { k1: 1, k2: 2, k3: 3, k4: 4, k5: 5 }[v];
+    const shown = gp.slice(0, maxShown);
+    const extra = n - maxShown;
+
+    const cells = shown.map(p => `
+      <div class="tl-cell">
+        <a href="/photos/${p.id}">
+          <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+        </a>
+      </div>`).join('');
+
+    const moreCell = extra > 0 ? `
+      <div class="tl-cell">
+        <a class="tl-more" href="/timeline${albumFilter ? '?album=' + albumFilter : tagFilter ? '?tag=' + encodeURIComponent(tagFilter) : ''}">+${extra} more</a>
+      </div>` : '';
+
+    return `<div class="tl-grid ${v}">${cells}${moreCell}</div>`;
+  }
+
   const content = groups.length === 0
-    ? '<p style="color:#888">No photos found.</p>'
-    : groups.map(({ label, photos: groupPhotos }) => `
-        <h2 class="timeline-month">${esc(label)}</h2>
-        <div class="photo-grid">${groupPhotos.map(p => `
-          <div class="photo-card">
-            <a href="/photos/${p.id}">
-              <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
-              <div class="photo-meta">
-                <strong>${esc(p.title)}</strong>
-                <span class="uploader">by ${esc(p.uploader)}</span>
-              </div>
-            </a>
-          </div>`).join('')}
-        </div>`).join('');
+    ? '<p class="tl-empty">No photos found.</p>'
+    : `<div class="tl-timeline">${groups.map(({ key, label, photos: gp }) => {
+        const uploaders = [...new Set(gp.map(p => p.uploader))].join(' · ');
+        return `
+          <div class="tl-entry">
+            <div class="tl-when">
+              <span class="tl-when-dot"></span>${whenLabel(key)}
+              <span class="tl-when-yr">${key.split('-')[0]}</span>
+            </div>
+            <div>
+              <h3>${esc(label)}</h3>
+              <p class="tl-meta">${gp.length} photo${gp.length !== 1 ? 's' : ''} · <em>${esc(uploaders)}</em></p>
+              ${renderGrid(gp)}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
 
   res.send(page('Timeline', `
-    <div class="top-bar">
-      <h1>Timeline</h1>
+    <div class="tl-hero">
+      <div>
+        <h1>Timeline</h1>
+        <p class="tl-headline">everything we've <em>seen together,</em><br>in order.</p>
+        <p class="tl-lede">a shared archive — scroll backwards in time.</p>
+      </div>
+      <div class="tl-stats">
+        <b>${totalPhotos}</b> photo${totalPhotos !== 1 ? 's' : ''}<br>
+        <b>${uniqueUploaders}</b> ${uniqueUploaders === 1 ? 'person' : 'people'}<br>
+        ${firstYear ? `<b>${firstYear}</b> first photo` : ''}
+      </div>
     </div>
     ${filterBar}
     ${content}

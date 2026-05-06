@@ -291,13 +291,97 @@ function page(title, body, session) {
       flex-direction: row; align-items: center; gap: 0.4rem;
     }
 
-    /* ── Timeline ── */
+    /* ── Timeline (legacy class kept for any external use) ── */
     .timeline-month {
       font-family: 'Caveat', cursive; font-size: 1.8rem; font-weight: 700;
       margin: 2rem 0 0.75rem; padding-bottom: 0.4rem;
       border-bottom: 1.5px dashed var(--ink); color: var(--ink);
     }
     .timeline-month:first-child { margin-top: 0; }
+
+    /* ── Timeline Story (approach 2) ── */
+    .tl-hero {
+      display: grid; grid-template-columns: 1fr 220px; gap: 1.5rem; align-items: end;
+      padding-bottom: 1.25rem; margin-bottom: 0;
+      border-bottom: 1.5px dashed var(--ink);
+    }
+    .tl-hero h1 {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem;
+      font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--ink-faint); margin: 0 0 0.6rem; line-height: 1;
+    }
+    .tl-headline {
+      font-family: 'Caveat', cursive; font-size: 3.2rem; font-weight: 700;
+      line-height: 0.95; margin: 0; color: var(--ink);
+    }
+    .tl-headline em { font-style: italic; color: var(--accent); }
+    .tl-lede {
+      font-family: 'Kalam', cursive; font-size: 0.95rem;
+      color: var(--ink-soft); margin: 0.6rem 0 0;
+    }
+    .tl-stats {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; line-height: 2.2;
+      text-align: right; color: var(--ink-soft);
+      border-left: 1.5px solid var(--ink); padding: 0.4rem 0 0.4rem 1rem;
+    }
+    .tl-stats b {
+      color: var(--ink); font-family: 'Caveat', cursive; font-size: 1.3rem; font-weight: 700;
+    }
+    .tl-filter-bar {
+      display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;
+      padding: 0.6rem 0; margin-bottom: 0.5rem;
+      border-bottom: 1px dashed var(--ink-faint);
+    }
+    .tl-filter-bar label {
+      font-family: 'Kalam', cursive; font-size: 0.85rem; font-weight: 700;
+      flex-direction: row; align-items: center; gap: 0.4rem; color: var(--ink);
+    }
+    .tl-filter-bar select {
+      font-family: 'Kalam', cursive; font-size: 0.85rem;
+      padding: 0.3rem 0.5rem; border: 1.5px solid var(--ink);
+      background: var(--paper); color: var(--ink);
+    }
+    .tl-entry {
+      display: grid; grid-template-columns: 120px 1fr; gap: 1.5rem;
+      padding: 1.4rem 0; border-bottom: 1.5px dashed var(--ink);
+    }
+    .tl-entry:last-child { border-bottom: none; }
+    .tl-entry h3 {
+      font-family: 'Caveat', cursive; font-size: 2rem; margin: 0 0 0.15rem; font-weight: 700;
+    }
+    .tl-when {
+      font-family: 'Caveat', cursive; font-size: 1.2rem; line-height: 1.1; padding-top: 0.25rem;
+    }
+    .tl-when-dot {
+      display: inline-block; width: 9px; height: 9px; background: var(--ink);
+      border-radius: 50%; margin-right: 5px; vertical-align: middle; flex: none;
+    }
+    .tl-when-yr {
+      display: block; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+      color: var(--ink-faint); margin-top: 0.2rem; padding-left: 14px;
+    }
+    .tl-meta { font-family: 'Kalam', cursive; font-size: 0.85rem; color: var(--ink-soft); margin: 0 0 0.65rem; }
+    .tl-meta em { font-style: italic; }
+    .tl-empty { font-family: 'Kalam', cursive; color: var(--ink-faint); margin-top: 1rem; }
+
+    /* photo grids inside timeline entries */
+    .tl-grid { display: grid; gap: 5px; }
+    .tl-grid.k1 { grid-template-columns: 1fr;              grid-template-rows: 240px; }
+    .tl-grid.k2 { grid-template-columns: 1.3fr 1fr;        grid-template-rows: 240px; }
+    .tl-grid.k3 { grid-template-columns: 1fr 1fr 1fr;      grid-template-rows: 200px; }
+    .tl-grid.k4 { grid-template-columns: 2fr 1fr 1fr 1fr;  grid-template-rows: 180px; }
+    .tl-grid.k5 { grid-template-columns: 1.5fr 1fr 1fr;    grid-template-rows: 130px 130px; }
+    .tl-grid.k5 .tl-cell:first-child { grid-row: span 2; }
+    .tl-cell { overflow: hidden; }
+    .tl-cell a { display: block; height: 100%; }
+    .tl-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .tl-more {
+      display: flex; align-items: center; justify-content: center; height: 100%;
+      background: var(--paper-2); border: 1.5px solid var(--ink);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+      color: var(--ink-soft); text-decoration: none;
+    }
+    .tl-more:hover { background: var(--paper); }
 
     /* ── EXIF metadata ── */
     .photo-exif {
