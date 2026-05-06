@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS photos (
   mime_type VARCHAR(50) NOT NULL,
   size INTEGER NOT NULL,
   taken_at DATE,
+  nextcloud_url TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS taken_at DATE;
+-- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS nextcloud_url TEXT;
 
 CREATE TABLE IF NOT EXISTS tags (
   id SERIAL PRIMARY KEY,
