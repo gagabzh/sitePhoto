@@ -153,7 +153,7 @@ router.get('/new/folder', requireEditor, (req, res) => {
       <h1>New album from folder</h1>
       <a class="btn btn-secondary" href="/albums">← Back</a>
     </div>
-    <div class="card" style="max-width:520px">
+    <div class="card" style="max-width:600px">
       <form class="form-col" method="POST" action="/albums/new/folder" enctype="multipart/form-data">
         <label>Album title <input type="text" name="title" required autofocus></label>
         <label>Description <textarea name="description" rows="3"></textarea></label>
@@ -162,6 +162,23 @@ router.get('/new/folder', requireEditor, (req, res) => {
           <small>Select a folder or multiple image files (JPEG, PNG, GIF, WebP · max 10 MB each)</small>
           <input type="file" name="photos" accept="image/*" multiple webkitdirectory required>
         </label>
+        <label>
+          Tags for all <small>(optional, comma-separated — e.g. Paris, 2024)</small>
+          <input type="text" name="tags" placeholder="Paris, 2024">
+        </label>
+        <p style="margin:0.5rem 0 0.25rem;font-weight:500;font-size:0.9rem">
+          GPS for all <small style="font-weight:normal">(optional — applied to photos without EXIF GPS)</small>
+        </p>
+        <div style="display:flex;gap:0.75rem">
+          <label style="flex:1">
+            Latitude
+            <input type="text" name="lat" placeholder="48.8566">
+          </label>
+          <label style="flex:1">
+            Longitude
+            <input type="text" name="lng" placeholder="2.3522">
+          </label>
+        </div>
         <div class="row">
           <button class="btn" type="submit">Create album</button>
           <a class="btn btn-secondary" href="/albums">Cancel</a>
@@ -174,7 +191,9 @@ router.get('/new/folder', requireEditor, (req, res) => {
 router.post('/new/folder', requireEditor, (req, res, next) => {
   upload.array('photos', 200)(req, res, async (err) => {
     if (err) return next(err);
-    const { title, description } = req.body;
+    const { title, description, tags } = req.body;
+    const sharedLat = parseCoord(req.body.lat, -90, 90);
+    const sharedLng = parseCoord(req.body.lng, -180, 180);
     try {
       const { rows: [album] } = await db.query(
         'INSERT INTO albums (user_id, title, description) VALUES ($1, $2, $3) RETURNING id',
@@ -183,12 +202,36 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
 
       for (const file of (req.files || [])) {
         const filepath = path.join(UPLOAD_DIR, file.filename);
-        const finalSize = await optimizePhoto(filepath, file.mimetype);
+        const [finalSize, meta] = await Promise.all([
+          optimizePhoto(filepath, file.mimetype),
+          extractMetadata(filepath),
+        ]);
+
+        const lat = meta.latitude ?? sharedLat;
+        const lng = meta.longitude ?? sharedLng;
         const photoTitle = path.basename(file.originalname, path.extname(file.originalname));
-        await db.query(
-          'INSERT INTO photos (user_id, filename, original_filename, title, mime_type, size, album_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [req.session.userId, file.filename, file.originalname, photoTitle, file.mimetype, finalSize, album.id]
+
+        const { rows: [photo] } = await db.query(
+          `INSERT INTO photos
+            (user_id, filename, original_filename, title, mime_type, size, album_id, taken_at, latitude, longitude)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [req.session.userId, file.filename, file.originalname, photoTitle,
+           file.mimetype, finalSize, album.id, meta.takenAt || null, lat, lng]
         );
+
+        if (tags) {
+          const names = String(tags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+          for (const name of names) {
+            const { rows: [tag] } = await db.query(
+              'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+              [name]
+            );
+            await db.query(
+              'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+              [photo.id, tag.id]
+            );
+          }
+        }
       }
 
       res.redirect(`/albums/${album.id}`);

@@ -183,11 +183,11 @@ describe('GET /albums/new/folder — folder upload form', () => {
 });
 
 describe('POST /albums/new/folder — create album from folder', () => {
-  it('creates album, inserts optimized photos with album_id, and redirects', async () => {
+  it('creates album, inserts optimized photos with EXIF metadata, and redirects', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 3 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })   // INSERT album
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // INSERT photo 1
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] }); // INSERT photo 2
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/albums/new/folder')
@@ -199,10 +199,50 @@ describe('POST /albums/new/folder — create album from folder', () => {
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, 3]
+      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, 3, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/3');
+  });
+
+  it('applies shared tags to all photos', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // photo 1
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // tag upsert
+      .mockResolvedValueOnce({ rows: [] })             // photo_tags 1
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] })  // photo 2
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // tag upsert
+      .mockResolvedValueOnce({ rows: [] });            // photo_tags 2
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/albums/new/folder')
+      .send('title=Beach+Trip&tags=summer%2C+2024');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO tags'),
+      ['summer']
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photo_tags'),
+      [11, 1]
+    );
+  });
+
+  it('applies shared GPS to photos without EXIF GPS', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/albums/new/folder')
+      .send('title=Beach+Trip&lat=48.8566&lng=2.3522');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, 3, null, 48.8566, 2.3522]
+    );
   });
 
   it('returns 403 for viewer', async () => {
