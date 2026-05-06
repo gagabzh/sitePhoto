@@ -308,6 +308,76 @@ function page(title, body, session) {
     .photo-exif dt { color: var(--ink-faint); }
     .photo-exif dd { margin: 0; color: var(--ink-soft); }
 
+    /* ── Map page ── */
+    .map-frame {
+      display: grid; grid-template-columns: 280px 1fr;
+      margin: -2rem -2rem -4rem;
+      min-height: calc(100vh - 64px);
+    }
+    .map-side {
+      border-right: 2px solid var(--ink); padding: 1.5rem 1.1rem;
+      background: var(--paper); overflow-y: auto;
+      max-height: calc(100vh - 64px);
+    }
+    .map-side h1 {
+      font-family: 'Caveat', cursive; font-size: 2rem; font-weight: 700;
+      margin: 0 0 0.15rem; line-height: 1.05;
+    }
+    .map-sub {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+      color: var(--ink-faint); margin: 0 0 1rem; letter-spacing: 0.02em;
+    }
+    .map-filter-form {
+      display: flex; flex-direction: column; gap: 0.4rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1.5px dashed var(--ink-faint);
+    }
+    .map-filter-form select {
+      width: 100%; font-family: 'Kalam', cursive; font-size: 0.85rem;
+      padding: 0.3rem 0.5rem; border: 1.5px solid var(--ink);
+      background: var(--paper); color: var(--ink);
+    }
+    .map-side-h {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+      letter-spacing: 0.15em; color: var(--ink-faint); text-transform: uppercase;
+      margin: 1rem 0 0.4rem;
+    }
+    .map-place {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.45rem 0.25rem; border-bottom: 1px dashed var(--ink-faint);
+      cursor: pointer; text-decoration: none; color: inherit;
+    }
+    .map-place:hover, .map-place.active { background: var(--paper-2); }
+    .map-place-pin { font-size: 0.9rem; width: 18px; text-align: center; flex: none; }
+    .map-place-name { font-family: 'Caveat', cursive; font-size: 1.1rem; flex: 1; }
+    .map-place-n { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--ink-faint); }
+    .map-area { position: relative; overflow: hidden; }
+    #map { height: 100%; width: 100%; min-height: 400px; }
+    .map-strip {
+      position: absolute; left: 18px; right: 18px; bottom: 18px; z-index: 1000;
+      background: var(--paper); border: 2px solid var(--ink);
+      box-shadow: 4px 4px 0 var(--ink); padding: 0.75rem 1rem;
+    }
+    .map-strip-head {
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;
+    }
+    .map-strip-head h3 { font-family: 'Caveat', cursive; font-size: 1.4rem; margin: 0; flex: 1; }
+    .map-strip-where { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--ink-faint); }
+    .map-strip-close {
+      background: none; border: 1.5px solid var(--ink); cursor: pointer;
+      font-family: 'Caveat', cursive; font-size: 1.3rem; line-height: 1;
+      width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex: none;
+    }
+    .map-strip-photos { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; height: 100px; }
+    .map-strip-photos a { display: block; height: 100%; overflow: hidden; }
+    .map-strip-photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .map-strip-more {
+      display: flex; align-items: center; justify-content: center;
+      background: var(--paper-2); border: 1.5px solid var(--ink);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--ink-soft);
+      text-decoration: none;
+    }
+
     /* ── Family Wall ── */
     .wall-greet { margin-bottom: 1.25rem; }
     .wall-greet h1 { margin-bottom: 0.1rem; }

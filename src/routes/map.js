@@ -42,15 +42,19 @@ async function fetchFilterOptions(session) {
   const isViewer = session.role === 'viewer';
 
   const albumSql = isViewer
-    ? `SELECT DISTINCT a.id, a.title FROM albums a
-       JOIN album_access aa ON aa.album_id = a.id
+    ? `SELECT a.id, a.title, COUNT(p.id) AS photo_count
+       FROM albums a
        JOIN photos p ON p.album_id = a.id
+       JOIN album_access aa ON aa.album_id = a.id
        WHERE aa.viewer_id = $1 AND p.latitude IS NOT NULL
-       ORDER BY a.title`
-    : `SELECT DISTINCT a.id, a.title FROM albums a
+       GROUP BY a.id
+       ORDER BY COUNT(p.id) DESC`
+    : `SELECT a.id, a.title, COUNT(p.id) AS photo_count
+       FROM albums a
        JOIN photos p ON p.album_id = a.id
        WHERE p.latitude IS NOT NULL
-       ORDER BY a.title`;
+       GROUP BY a.id
+       ORDER BY COUNT(p.id) DESC`;
 
   const tagSql = isViewer
     ? `SELECT DISTINCT t.name FROM tags t
@@ -90,6 +94,19 @@ router.get('/', async (req, res) => {
     `<option value="${esc(t.name)}"${tagFilter === t.name ? ' selected' : ''}>${esc(t.name)}</option>`
   ).join('');
 
+  const clearLink = (albumFilter || tagFilter)
+    ? `<a href="/map" class="btn btn-secondary btn-sm">Clear</a>` : '';
+
+  const placeList = albums.map(a => {
+    const active = albumFilter === a.id ? ' active' : '';
+    const count = a.photo_count != null ? a.photo_count : '';
+    return `<a class="map-place${active}" href="/map?album=${a.id}">
+      <span class="map-place-pin">📍</span>
+      <span class="map-place-name">${esc(a.title)}</span>
+      <span class="map-place-n">${count}</span>
+    </a>`;
+  }).join('');
+
   const photosJson = JSON.stringify(photos.map(p => ({
     id: p.id,
     title: p.title,
@@ -99,8 +116,16 @@ router.get('/', async (req, res) => {
   })));
 
   const mapContent = photos.length === 0
-    ? `<p style="text-align:center;color:#888;padding:3rem 0">No photos with GPS coordinates found.</p>`
-    : `<div id="map" style="height:600px;border-radius:8px;overflow:hidden"></div>
+    ? `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:300px;font-family:'Kalam',cursive;color:var(--ink-faint)">No photos with GPS coordinates found.</div>`
+    : `<div id="map"></div>
+       <div id="map-strip" class="map-strip" style="display:none">
+         <div class="map-strip-head">
+           <h3 id="strip-title"></h3>
+           <span id="strip-where" class="map-strip-where"></span>
+           <button id="strip-close" class="map-strip-close" type="button" aria-label="Close">×</button>
+         </div>
+         <div id="strip-photos" class="map-strip-photos"></div>
+       </div>
        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
        <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
        <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
@@ -115,35 +140,84 @@ router.get('/', async (req, res) => {
            }).addTo(map);
            var cluster = L.markerClusterGroup({ spiderfyOnMaxZoom: true, maxClusterRadius: 40 });
            var bounds = [];
-           photos.forEach(function(p){
-             var popup = '<a href="/photos/'+p.id+'" style="display:block;text-align:center">'
-               +'<img src="/uploads/'+p.filename+'" style="width:120px;height:80px;object-fit:cover;border-radius:4px;display:block;margin:0 auto 0.4rem">'
-               +'<strong>'+p.title+'</strong></a>';
-             cluster.addLayer(L.marker([p.lat,p.lon]).bindPopup(popup));
-             bounds.push([p.lat,p.lon]);
+
+           var strip      = document.getElementById('map-strip');
+           var stripTitle = document.getElementById('strip-title');
+           var stripWhere = document.getElementById('strip-where');
+           var stripPhotos = document.getElementById('strip-photos');
+           var stripClose  = document.getElementById('strip-close');
+
+           function showStrip(title, where, list) {
+             stripTitle.textContent = title;
+             stripWhere.textContent = where;
+             var shown = list.slice(0, 5);
+             var extra = list.length - 5;
+             stripPhotos.innerHTML = shown.map(function(p) {
+               return '<a href="/photos/'+p.id+'">'
+                 +'<img src="/uploads/'+p.filename+'" alt="'+p.title+'">'
+                 +'</a>';
+             }).join('') + (extra > 0
+               ? '<a class="map-strip-more" href="/photos">+'+extra+' more</a>'
+               : '');
+             strip.style.display = 'block';
+           }
+
+           stripClose.addEventListener('click', function() {
+             strip.style.display = 'none';
            });
+
+           photos.forEach(function(p) {
+             var marker = L.marker([p.lat, p.lon]);
+             marker.photoData = p;
+             marker.on('click', function() {
+               showStrip(p.title, p.lat.toFixed(4)+'°, '+p.lon.toFixed(4)+'°', [p]);
+             });
+             cluster.addLayer(marker);
+             bounds.push([p.lat, p.lon]);
+           });
+
+           cluster.on('clusterclick', function(e) {
+             var childMarkers = e.layer.getAllChildMarkers();
+             var list = childMarkers.map(function(m) { return m.photoData; });
+             var lat = e.latlng.lat.toFixed(4);
+             var lon = e.latlng.lng.toFixed(4);
+             showStrip(list.length+' photos here', lat+'°, '+lon+'°', list);
+           });
+
            map.addLayer(cluster);
-           if(bounds.length===1){ map.setView(bounds[0],13); }
-           else { map.fitBounds(bounds,{padding:[32,32]}); }
+           if (bounds.length === 1) { map.setView(bounds[0], 13); }
+           else if (bounds.length > 1) { map.fitBounds(bounds, {padding:[32,32]}); }
          })();
        </script>`;
 
   res.send(page('Map', `
-    <div class="top-bar" style="margin-bottom:1rem">
-      <h1>Map</h1>
+    <div class="map-frame">
+      <aside class="map-side">
+        <h1>where we've been.</h1>
+        <p class="map-sub">click a pin · or pick a place below</p>
+
+        <form method="GET" action="/map" class="map-filter-form">
+          <select name="album" onchange="this.form.submit()">
+            <option value="">All albums</option>
+            ${albumOptions}
+          </select>
+          <select name="tag" onchange="this.form.submit()">
+            <option value="">All tags</option>
+            ${tagOptions}
+          </select>
+          ${clearLink}
+        </form>
+
+        ${albums.length ? `
+          <h4 class="map-side-h">PLACES</h4>
+          ${placeList}
+        ` : ''}
+      </aside>
+
+      <div class="map-area">
+        ${mapContent}
+      </div>
     </div>
-    <form method="GET" action="/map" class="filter-bar" style="margin-bottom:1rem">
-      <select name="album" onchange="this.form.submit()">
-        <option value="">All albums</option>
-        ${albumOptions}
-      </select>
-      <select name="tag" onchange="this.form.submit()">
-        <option value="">All tags</option>
-        ${tagOptions}
-      </select>
-      ${albumFilter || tagFilter ? `<a href="/map" class="btn btn-secondary btn-sm">Clear</a>` : ''}
-    </form>
-    ${mapContent}
   `, req.session));
 });
 
