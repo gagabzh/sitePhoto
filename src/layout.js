@@ -552,6 +552,170 @@ function page(title, body, session) {
       display: block; color: var(--ink); text-decoration: none;
     }
     .wall-album-title:hover { text-decoration: underline; }
+
+    /* ── Album Books (list page) ── */
+    .ab-page-h {
+      display: flex; justify-content: space-between; align-items: flex-end; gap: 1.5rem;
+      padding-bottom: 1.25rem; border-bottom: 1.5px dashed var(--ink); flex-wrap: wrap;
+      margin-bottom: 0;
+    }
+    .ab-page-h h1 { font-family: 'Caveat', cursive; font-size: 3.8rem; font-weight: 700; line-height: 0.95; margin: 0; }
+    .ab-page-h h1 em { font-style: italic; color: var(--accent); }
+    .ab-sub { font-family: 'Kalam', cursive; font-size: 0.9rem; color: var(--ink-soft); margin: 0.4rem 0 0; }
+    .ab-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .ab-grid { padding: 1.5rem 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.75rem 2.25rem; }
+    .ab-book { position: relative; }
+    .ab-spine {
+      position: absolute; left: -6px; top: 8px; bottom: 8px; width: 8px;
+      background: var(--ink); box-shadow: -2px 0 0 var(--paper-2);
+    }
+    .ab-cover {
+      display: flex; flex-direction: column; justify-content: flex-end;
+      aspect-ratio: 4/5; border: 2px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+      background: var(--paper-2); position: relative; overflow: hidden; text-decoration: none;
+    }
+    .ab-cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+    .ab-cover-empty {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--ink-faint); letter-spacing: 2px;
+    }
+    .ab-ribbon {
+      position: absolute; top: 14px; right: -6px;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; padding: 3px 10px;
+      background: var(--accent); color: var(--paper);
+      border: 1.5px solid var(--ink); letter-spacing: 0.08em; transform: rotate(2deg);
+    }
+    .ab-ribbon-empty { background: var(--paper); color: var(--ink); }
+    .ab-label {
+      position: relative; z-index: 1; margin: 1rem;
+      background: var(--paper); border: 1.5px solid var(--ink); padding: 10px 12px;
+      transform: rotate(-1.5deg); box-shadow: 3px 3px 0 rgba(0,0,0,0.25);
+    }
+    .ab-label h3 { font-family: 'Caveat', cursive; font-size: 1.6rem; margin: 0; line-height: 1; font-weight: 700; }
+    .ab-label-sub { font-family: 'Kalam', cursive; font-size: 0.8rem; color: var(--ink-soft); margin-top: 2px; }
+    .ab-meta-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 0.875rem; font-family: 'Kalam', cursive; font-size: 0.85rem;
+      color: var(--ink-soft); padding: 0 4px;
+    }
+    .ab-meta-who { font-style: italic; }
+    .ab-meta-acts { display: flex; gap: 0.4rem; }
+    .ab-new {
+      aspect-ratio: 4/5; border: 2px dashed var(--ink); background: transparent;
+      display: flex; align-items: center; justify-content: center; flex-direction: column;
+      cursor: pointer; font-family: 'Caveat', cursive; font-size: 1.3rem;
+      text-decoration: none; color: var(--ink-soft);
+    }
+    .ab-new-plus { font-size: 3rem; line-height: 1; color: var(--accent); margin-bottom: 0.25rem; }
+
+    /* ── Album Detail (Inside an Album) ── */
+    .ad-head {
+      display: grid; grid-template-columns: 320px 1fr; gap: 1.75rem;
+      padding-bottom: 1.25rem; margin-bottom: 1rem;
+      border-bottom: 1.5px dashed var(--ink);
+    }
+    .ad-cover {
+      aspect-ratio: 4/3; border: 2px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+      background: var(--paper-2); position: relative; overflow: hidden;
+    }
+    .ad-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .ad-cover-empty {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--ink-faint); letter-spacing: 2px;
+    }
+    .ad-crumbs {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem;
+      color: var(--ink-faint); letter-spacing: 0.1em; margin-bottom: 0.4rem;
+    }
+    .ad-crumbs a { color: var(--ink-soft); text-decoration: none; }
+    .ad-crumbs a:hover { text-decoration: underline; }
+    .ad-info h1 { font-family: 'Caveat', cursive; font-size: 4rem; line-height: 0.95; margin: 0.25rem 0 0.4rem; font-weight: 700; }
+    .ad-desc { font-family: 'Kalam', cursive; font-size: 0.95rem; color: var(--ink-soft); max-width: 580px; line-height: 1.5; margin: 0 0 0.75rem; }
+    .ad-stats { display: flex; gap: 1.4rem; margin: 0.75rem 0; font-family: 'Kalam', cursive; font-size: 0.85rem; color: var(--ink-soft); }
+    .ad-stats b { font-family: 'Caveat', cursive; font-size: 1.4rem; display: block; line-height: 1; color: var(--ink); }
+    .ad-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+    .ad-mosaic {
+      display: grid; grid-template-columns: repeat(6, 1fr);
+      grid-auto-rows: 110px; gap: 6px; margin-bottom: 1rem;
+    }
+    .ad-mosaic .ad-cell:nth-child(1) { grid-column: span 3; grid-row: span 2; }
+    .ad-mosaic .ad-cell:nth-child(2) { grid-column: span 2; grid-row: span 2; }
+    .ad-mosaic .ad-cell:nth-child(3) { grid-column: span 1; grid-row: span 1; }
+    .ad-mosaic .ad-cell:nth-child(4) { grid-column: span 1; grid-row: span 1; }
+    .ad-mosaic .ad-cell:nth-child(5) { grid-column: span 2; grid-row: span 2; }
+    .ad-mosaic .ad-cell:nth-child(6) { grid-column: span 2; grid-row: span 1; }
+    .ad-mosaic .ad-cell:nth-child(7) { grid-column: span 2; grid-row: span 1; }
+    .ad-mosaic .ad-cell:nth-child(8) { grid-column: span 3; grid-row: span 2; }
+    .ad-mosaic .ad-cell:nth-child(9) { grid-column: span 3; grid-row: span 2; }
+    .ad-cell { overflow: hidden; position: relative; }
+    .ad-cell a { display: block; height: 100%; }
+    .ad-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    /* ── Album Access (Vault) ── */
+    .ac-head {
+      display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; align-items: end;
+      padding-bottom: 1.25rem; border-bottom: 1.5px dashed var(--ink);
+    }
+    .ac-crumbs {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.68rem;
+      color: var(--ink-faint); letter-spacing: 0.1em; margin-bottom: 0.4rem;
+    }
+    .ac-crumbs a { color: var(--ink-soft); text-decoration: none; }
+    .ac-head h1 { font-family: 'Caveat', cursive; font-size: 3rem; line-height: 0.95; margin: 0.25rem 0 0.25rem; font-weight: 700; }
+    .ac-head h1 em { color: var(--accent); font-style: italic; }
+    .ac-sub { font-family: 'Kalam', cursive; font-size: 0.9rem; color: var(--ink-soft); max-width: 580px; margin: 0; }
+    .ac-summary {
+      display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;
+      padding: 0.875rem 0; border-bottom: 1.5px dashed var(--ink);
+      font-family: 'Kalam', cursive; font-size: 0.9rem; color: var(--ink-soft);
+    }
+    .ac-lock {
+      font-family: 'Caveat', cursive; font-size: 1.1rem; padding: 2px 12px;
+      border: 1.5px solid var(--ink); background: var(--ink); color: var(--paper);
+      transform: rotate(-1deg); display: inline-block;
+    }
+    .ac-body { display: grid; grid-template-columns: 1fr 300px; gap: 0; }
+    .ac-main { padding: 1.25rem 1.5rem 1.5rem 0; border-right: 1.5px dashed var(--ink); }
+    .ac-main h3 {
+      font-family: 'Caveat', cursive; font-size: 1.5rem; margin: 0 0 0.25rem; font-weight: 700;
+      display: flex; align-items: baseline; gap: 0.75rem;
+    }
+    .ac-count { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--ink-faint); letter-spacing: 0.1em; }
+    .ac-hint { font-family: 'Kalam', cursive; font-size: 0.82rem; color: var(--ink-soft); margin: 0 0 0.75rem; }
+    .ac-row {
+      display: grid; grid-template-columns: 44px 1fr auto; gap: 0.875rem;
+      align-items: center; padding: 0.75rem 4px;
+      border-bottom: 1px dashed var(--ink-faint);
+    }
+    .ac-row:last-child { border-bottom: none; }
+    .ac-av {
+      width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--ink);
+      background: var(--paper-2); display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Caveat', cursive; font-size: 1.4rem; font-weight: 700; flex: none;
+    }
+    .ac-nm { font-family: 'Caveat', cursive; font-size: 1.2rem; font-weight: 700; line-height: 1; }
+    .ac-em { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--ink-soft); }
+    .ac-empty {
+      padding: 1.25rem; text-align: center; border: 1.5px dashed var(--ink-faint);
+      font-family: 'Kalam', cursive; font-size: 0.9rem; color: var(--ink-faint); margin: 0.75rem 0;
+    }
+    .ac-side { padding: 1.25rem 0 1.5rem 1.5rem; }
+    .ac-side h4 {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+      letter-spacing: 0.15em; color: var(--ink-faint); margin: 0 0 0.6rem; text-transform: uppercase;
+    }
+    .ac-cand {
+      display: flex; align-items: center; gap: 0.625rem;
+      padding: 0.45rem; border-bottom: 1px dashed var(--ink-faint);
+    }
+    .ac-cand:last-of-type { border-bottom: none; }
+    .ac-cand-av {
+      width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--ink);
+      background: var(--paper-2); display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Caveat', cursive; font-size: 1rem; font-weight: 700; flex: none;
+    }
+    .ac-cand-nm { font-family: 'Caveat', cursive; font-size: 1.05rem; font-weight: 700; line-height: 1; }
+    .ac-cand-em { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--ink-soft); }
   </style>
 </head>
 <body>
