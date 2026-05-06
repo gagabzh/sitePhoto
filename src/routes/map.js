@@ -9,16 +9,14 @@ async function fetchGeoPhotos(session, albumFilter, tagFilter) {
   const conditions = ['p.latitude IS NOT NULL', 'p.longitude IS NOT NULL'];
 
   if (isViewer) {
-    joins.push('JOIN album_photos ap ON ap.photo_id = p.id');
-    joins.push('JOIN album_access aa ON aa.album_id = ap.album_id');
+    joins.push('JOIN album_access aa ON aa.album_id = p.album_id');
     params.push(session.userId);
     conditions.push(`aa.viewer_id = $${params.length}`);
   }
 
   if (albumFilter) {
-    if (!isViewer) joins.push('JOIN album_photos ap ON ap.photo_id = p.id');
     params.push(albumFilter);
-    conditions.push(`ap.album_id = $${params.length}`);
+    conditions.push(`p.album_id = $${params.length}`);
   }
 
   if (tagFilter) {
@@ -46,13 +44,11 @@ async function fetchFilterOptions(session) {
   const albumSql = isViewer
     ? `SELECT DISTINCT a.id, a.title FROM albums a
        JOIN album_access aa ON aa.album_id = a.id
-       JOIN album_photos ap ON ap.album_id = a.id
-       JOIN photos p ON p.id = ap.photo_id
+       JOIN photos p ON p.album_id = a.id
        WHERE aa.viewer_id = $1 AND p.latitude IS NOT NULL
        ORDER BY a.title`
     : `SELECT DISTINCT a.id, a.title FROM albums a
-       JOIN album_photos ap ON ap.album_id = a.id
-       JOIN photos p ON p.id = ap.photo_id
+       JOIN photos p ON p.album_id = a.id
        WHERE p.latitude IS NOT NULL
        ORDER BY a.title`;
 
@@ -60,8 +56,7 @@ async function fetchFilterOptions(session) {
     ? `SELECT DISTINCT t.name FROM tags t
        JOIN photo_tags pt ON pt.tag_id = t.id
        JOIN photos p ON p.id = pt.photo_id
-       JOIN album_photos ap ON ap.photo_id = p.id
-       JOIN album_access aa ON aa.album_id = ap.album_id
+       JOIN album_access aa ON aa.album_id = p.album_id
        WHERE aa.viewer_id = $1 AND p.latitude IS NOT NULL
        ORDER BY t.name`
     : `SELECT DISTINCT t.name FROM tags t
