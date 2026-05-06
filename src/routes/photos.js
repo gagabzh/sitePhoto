@@ -181,7 +181,10 @@ router.get('/upload', requireEditor, (req, res) => {
   const error = errors[req.query.error] ? `<p class="msg-error">${errors[req.query.error]}</p>` : '';
 
   res.send(page('Upload a photo', `
-    <h1>Upload a photo</h1>
+    <div class="top-bar">
+      <h1>Upload a photo</h1>
+      <a class="btn btn-secondary" href="/photos">← Back</a>
+    </div>
     <div class="card" style="max-width:520px">
       ${error}
       <form class="form-col" method="POST" action="/photos/upload" enctype="multipart/form-data">
@@ -190,9 +193,6 @@ router.get('/upload', requireEditor, (req, res) => {
         <label>Description <textarea name="description" rows="3"></textarea></label>
         <label>Tags <small>(comma-separated, e.g. Paris, John Doe)</small>
           <input type="text" name="tags" placeholder="Paris, John Doe">
-        </label>
-        <label>Date taken <small>(optional)</small>
-          <input type="date" name="taken_at">
         </label>
         <label>GPS coordinates <small>(optional — auto-filled from photo EXIF if available)</small>
           <div class="row" style="gap:0.5rem">
@@ -259,6 +259,17 @@ router.get('/:id', async (req, res) => {
 
   res.send(page(photo.title, `
     <div style="max-width:820px;margin:0 auto">
+      <div class="top-bar" style="margin-bottom:1rem">
+        <a href="/photos" style="color:#888;font-size:0.9rem;text-decoration:none">← Back to photos</a>
+        ${canEdit ? `
+          <div class="row">
+            <a class="btn btn-secondary" href="/photos/${photo.id}/edit">Edit</a>
+            <form class="inline" method="POST" action="/photos/${photo.id}/delete"
+              onsubmit="return confirm('Delete this photo permanently?')">
+              <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
+            </form>
+          </div>` : ''}
+      </div>
       <img src="/uploads/${esc(photo.filename)}" alt="${esc(photo.title)}"
         style="width:100%;max-height:560px;object-fit:contain;border-radius:8px;background:#111;margin-bottom:1.5rem">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem">
@@ -286,16 +297,7 @@ router.get('/:id', async (req, res) => {
           </dl>` : ''}
           ${photo.nextcloud_url ? `<div style="margin-top:1rem"><a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a></div>` : ''}
         </div>
-        ${canEdit ? `
-          <div class="row" style="flex-shrink:0">
-            <a class="btn btn-secondary" href="/photos/${photo.id}/edit">Edit</a>
-            <form class="inline" method="POST" action="/photos/${photo.id}/delete"
-              onsubmit="return confirm('Delete this photo permanently?')">
-              <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
-            </form>
-          </div>` : ''}
       </div>
-      <a href="/photos" style="color:#888;font-size:0.9rem;text-decoration:none">← Back to photos</a>
     </div>
   `, req.session));
 });
@@ -317,7 +319,10 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
   res.send(page(`Edit — ${photo.title}`, `
-    <h1>Edit photo</h1>
+    <div class="top-bar">
+      <h1>Edit photo</h1>
+      <a class="btn btn-secondary" href="/photos/${photo.id}">← Back</a>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
       <img src="/uploads/${esc(photo.filename)}" alt="${esc(photo.title)}"
         style="width:100%;border-radius:8px;max-height:400px;object-fit:contain;background:#111">

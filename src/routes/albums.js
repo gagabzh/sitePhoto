@@ -109,7 +109,10 @@ router.get('/', async (req, res) => {
 
 router.get('/new', requireEditor, (req, res) => {
   res.send(page('New album', `
-    <h1>New album</h1>
+    <div class="top-bar">
+      <h1>New album</h1>
+      <a class="btn btn-secondary" href="/albums">← Back</a>
+    </div>
     <div class="card" style="max-width:480px">
       <form class="form-col" method="POST" action="/albums">
         <label>Title <input type="text" name="title" required autofocus></label>
@@ -127,7 +130,10 @@ router.get('/new', requireEditor, (req, res) => {
 
 router.get('/new/folder', requireEditor, (req, res) => {
   res.send(page('New album from folder', `
-    <h1>New album from folder</h1>
+    <div class="top-bar">
+      <h1>New album from folder</h1>
+      <a class="btn btn-secondary" href="/albums">← Back</a>
+    </div>
     <div class="card" style="max-width:520px">
       <form class="form-col" method="POST" action="/albums/new/folder" enctype="multipart/form-data">
         <label>Album title <input type="text" name="title" required autofocus></label>
@@ -234,8 +240,9 @@ router.get('/:id', async (req, res) => {
           · ${photos.length} photo${photos.length !== 1 ? 's' : ''}</p>
         ${album.description ? `<p style="margin-top:0.75rem">${esc(album.description)}</p>` : ''}
       </div>
-      ${canEdit ? `
-        <div class="row">
+      <div class="row">
+        <a class="btn btn-secondary" href="/albums">← Back</a>
+        ${canEdit ? `
           <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload photo</a>
           <a class="btn btn-secondary" href="/albums/${album.id}/photos/add">+ Add photos</a>
           <a class="btn btn-secondary" href="/albums/${album.id}/access">Access</a>
@@ -243,11 +250,10 @@ router.get('/:id', async (req, res) => {
           <form class="inline" method="POST" action="/albums/${album.id}/delete"
             onsubmit="return confirm('Delete this album?')">
             <button class="btn btn-danger btn-icon" title="Delete">${TRASH}</button>
-          </form>
-        </div>` : ''}
+          </form>` : ''}
+      </div>
     </div>
     ${photoGrid}
-    <a class="btn btn-secondary" href="/albums" style="margin-top:1.5rem;display:inline-block">← Back to albums</a>
   `, req.session));
 });
 
@@ -315,7 +321,10 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
   if (!canModify(req.session, album)) return res.status(403).send('Access denied');
 
   res.send(page(`Edit — ${esc(album.title)}`, `
-    <h1>Edit album</h1>
+    <div class="top-bar">
+      <h1>Edit album</h1>
+      <a class="btn btn-secondary" href="/albums/${album.id}">← Back</a>
+    </div>
     <div class="card" style="max-width:480px">
       <form class="form-col" method="POST" action="/albums/${album.id}">
         <label>Title <input type="text" name="title" value="${esc(album.title)}" required></label>
@@ -537,7 +546,10 @@ router.get('/:id/photos/upload', requireEditor, async (req, res) => {
     ? `<p class="msg-error">${errors[req.query.error]}</p>` : '';
 
   res.send(page(`Upload — ${esc(album.title)}`, `
-    <h1>Upload photo to <em>${esc(album.title)}</em></h1>
+    <div class="top-bar">
+      <h1>Upload photo to <em>${esc(album.title)}</em></h1>
+      <a class="btn btn-secondary" href="/albums/${album.id}">← Back</a>
+    </div>
     <div class="card" style="max-width:520px">
       ${error}
       <form class="form-col" method="POST" action="/albums/${album.id}/photos/upload"
