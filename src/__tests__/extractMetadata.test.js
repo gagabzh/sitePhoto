@@ -1,4 +1,4 @@
-jest.mock('exifr', () => ({ parse: jest.fn() }));
+jest.mock('exifr', () => ({ parse: jest.fn(), gps: jest.fn() }));
 
 const exifr = require('exifr');
 const { extractMetadata } = require('../extractMetadata');
@@ -6,18 +6,29 @@ const { extractMetadata } = require('../extractMetadata');
 beforeEach(() => jest.clearAllMocks());
 
 describe('extractMetadata', () => {
-  it('returns takenAt, exposureTime, and focalLength from EXIF', async () => {
+  it('returns takenAt, exposureTime, focalLength, and GPS from EXIF', async () => {
     exifr.parse.mockResolvedValue({
       DateTimeOriginal: new Date('2024-06-15T10:30:00Z'),
       ExposureTime: 1 / 250,
       FocalLength: 50,
     });
+    exifr.gps.mockResolvedValue({ latitude: 48.8566, longitude: 2.3522 });
 
     const result = await extractMetadata('/some/photo.jpg');
 
     expect(result.takenAt).toEqual(new Date('2024-06-15T10:30:00Z'));
     expect(result.exposureTime).toBe('1/250');
     expect(result.focalLength).toBe(50);
+    expect(result.latitude).toBeCloseTo(48.8566);
+    expect(result.longitude).toBeCloseTo(2.3522);
+  });
+
+  it('returns no GPS fields when exifr.gps returns undefined', async () => {
+    exifr.parse.mockResolvedValue({});
+    exifr.gps.mockResolvedValue(undefined);
+    const result = await extractMetadata('/some/photo.jpg');
+    expect(result.latitude).toBeUndefined();
+    expect(result.longitude).toBeUndefined();
   });
 
   it('formats exposure >= 1s as "N s"', async () => {

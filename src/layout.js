@@ -16,6 +16,7 @@ function page(title, body, session) {
         <a href="/albums">Albums</a>
         <a href="/tags">Tags</a>
         <a href="/timeline">Timeline</a>
+        <a href="/map">Map</a>
         <a href="/account/password">My account</a>
         <form method="POST" action="/logout">
           <button class="btn-nav">Logout</button>
