@@ -118,3 +118,66 @@ As a viewer, I can filter the timeline to a specific album or tag to see only th
 
 **US-TL3 — Photo date**
 As an editor, I can set a "taken on" date on a photo (separate from the upload date), so the timeline reflects when the photo was actually taken rather than when it was uploaded.
+
+---
+
+## Version 2
+
+---
+
+## Improvements
+
+**IMP-1 — Date taken removed from upload**
+As an editor, I no longer fill in a date taken at upload — it is extracted automatically from EXIF. I can still correct it later via the edit form.
+
+**IMP-2 — Batch upload to an album**
+As an editor, when I open an album I can select multiple photos (or an entire folder) at once. Before confirming, I can optionally set tags and GPS coordinates that will be applied to every photo in the batch. EXIF metadata (date taken, focal length, exposure time) is extracted individually per photo.
+
+**IMP-3 — Back buttons at the top of pages**
+As a user, back and cancel buttons appear at the top of every form or detail page so I can navigate back without scrolling to the bottom.
+
+**IMP-4 — Select all**
+As an editor, on the photo list page and on an album detail page, I can click a "Select all" button to check every visible photo at once, so I can perform bulk actions on all of them.
+
+**IMP-5 — One album per photo**
+As an editor, each photo belongs to at most one album. If I add a photo that is already in another album, it is moved to the new one. Photos not added to any album remain as standalone photos, visible in the photo list.
+
+---
+
+## Feature: Travel (TR)
+
+**TR-1 — Create a travel**
+As an editor, I can create a travel with a title and a description, and optionally upload a GPX file to display the route on a map.
+
+**TR-2 — Link content to a travel**
+As an editor, I can link albums and/or standalone photos to a travel. Each linked item's title and description is visible on the travel page.
+
+**TR-3 — View a travel**
+As an authorised user, I can open a travel page and see: the GPS trace on a map (if a GPX file was uploaded), photo pins on the same map, the description, and all linked albums and photos with their descriptions.
+
+**TR-4 — Share a travel**
+As an editor, I can share a travel with specific viewer accounts (same mechanism as album sharing). Sharing a travel grants the viewer access to all linked albums and photos.
+
+**TR-5 — Edit / delete a travel**
+As an editor, I can edit the title, description, GPX file, and linked content of my own travels. As an admin, I can edit or delete any travel.
+
+---
+
+## Feature: Tag management (TG)
+
+**TG-1 — Multi-tag filter**
+As a user, on the tags page I can select several tags and see only photos that have all of the selected tags (AND logic, not OR).
+
+---
+
+## Feature: Map improvements (MAP)
+
+**MAP-1 — Search by location and radius**
+As a user, on the map page I can type a location name (e.g. "Paris"), pick it from suggestions, and set a radius in kilometres. Only photos within that distance from the chosen point are shown.
+
+---
+
+## Feature: Timeline improvements (TL)
+
+**TL-4 — Filter by date range**
+As a user, on the timeline page I can set a "from" date and/or a "to" date (each with an optional date picker) to show only photos taken within that period.
