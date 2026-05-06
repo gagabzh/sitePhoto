@@ -8,6 +8,7 @@ const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
+const { photoThumb, bulkBar, bulkScript } = require('../components');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -75,12 +76,7 @@ router.get('/', requireEditor, async (req, res) => {
         const owns = canModify(req.session, p);
         return `
         <div class="photo-card${owns ? ' photo-card-selectable' : ''}">
-          ${owns ? `<label class="photo-select">
-            <input type="checkbox" name="photo_ids" value="${p.id}">
-            <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
-          </label>` : `<a href="/photos/${p.id}">
-            <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
-          </a>`}
+          ${photoThumb(p, { owns })}
           <div class="photo-meta">
             <a href="/photos/${p.id}" style="text-decoration:none;color:inherit"><strong>${esc(p.title)}</strong></a>
             <span class="uploader">by ${esc(p.uploader)}</span>
@@ -96,24 +92,10 @@ router.get('/', requireEditor, async (req, res) => {
       <a class="btn" href="/photos/upload">+ Upload</a>
     </div>
     <form method="POST" action="/photos/bulk-tag">
-      <div class="bulk-bar" id="bulk-bar" style="display:none">
-        <span style="font-size:0.9rem;font-weight:500">Tag selected:</span>
-        <input type="text" name="tag" placeholder="e.g. Paris" required
-          style="width:180px;padding:0.4rem 0.6rem;font-size:0.9rem;border:1px solid #ccc;border-radius:4px">
-        <button class="btn btn-sm" type="submit">Apply to selected</button>
-      </div>
+      ${bulkBar({ showTag: true, deleteAction: '/photos/bulk-delete' })}
       ${grid}
     </form>
-    <script>
-      (function () {
-        var bar = document.getElementById('bulk-bar');
-        var boxes = document.querySelectorAll('input[name="photo_ids"]');
-        function update() {
-          bar.style.display = Array.prototype.some.call(boxes, function (b) { return b.checked; }) ? 'flex' : 'none';
-        }
-        boxes.forEach(function (b) { b.addEventListener('change', update); });
-      })();
-    </script>
+    ${bulkScript()}
   `, req.session));
 });
 
@@ -141,6 +123,29 @@ router.post('/bulk-tag', requireEditor, async (req, res) => {
     'INSERT INTO photo_tags (photo_id, tag_id) SELECT unnest($1::int[]), $2 ON CONFLICT DO NOTHING',
     [allowedIds, tagRow.id]
   );
+
+  res.redirect('/photos');
+});
+
+// Bulk delete selected photos
+router.post('/bulk-delete', requireEditor, async (req, res) => {
+  const raw = req.body.photo_ids;
+  if (!raw) return res.redirect('/photos');
+
+  const ids = [].concat(raw).map(Number).filter(n => n > 0);
+  if (!ids.length) return res.redirect('/photos');
+
+  const { rows } = req.session.role === 'admin'
+    ? await db.query('SELECT id, filename FROM photos WHERE id = ANY($1::int[])', [ids])
+    : await db.query('SELECT id, filename FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
+
+  if (!rows.length) return res.redirect('/photos');
+
+  const allowedIds = rows.map(r => r.id);
+  await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [allowedIds]);
+  for (const photo of rows) {
+    fs.promises.unlink(path.join(UPLOAD_DIR, photo.filename)).catch(() => {});
+  }
 
   res.redirect('/photos');
 });

@@ -1,6 +1,12 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../components', () => ({
+  photoThumb: jest.fn((p, { owns } = {}) =>
+    `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
+  bulkBar: jest.fn(() => '<div id="bulk-bar" class="bulk-bar-mock"><input type="text" name="tag"><button type="submit">Apply tag</button><button type="submit" formaction="/photos/bulk-delete">Delete selected</button></div>'),
+  bulkScript: jest.fn(() => '<script>/* bulk-script-mock */</script>'),
+}));
 jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
@@ -404,6 +410,13 @@ describe('GET /photos — photo list shows checkboxes', () => {
     expect(res.text).toContain('action="/photos/bulk-tag"');
   });
 
+  it('shows Delete selected button in bulk bar', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
+    expect(res.text).toContain('formaction="/photos/bulk-delete"');
+    expect(res.text).toContain('Delete selected');
+  });
+
   it('does not show checkbox on photos owned by others', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
@@ -414,6 +427,77 @@ describe('GET /photos — photo list shows checkboxes', () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
     expect(res.text).toContain('<input type="checkbox"');
+  });
+});
+
+// ── Bulk delete ───────────────────────────────────────────────────────────────
+
+describe('POST /photos/bulk-delete — delete multiple photos', () => {
+  it('deletes owned photos and their files, redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1, filename: 'a.jpg' }, { id: 2, filename: 'b.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=1&photo_ids=2');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id, filename FROM photos WHERE id = ANY'),
+      [[1, 2], 10]
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM photos WHERE id = ANY'),
+      [[1, 2]]
+    );
+    expect(fs.promises.unlink).toHaveBeenCalledTimes(2);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/photos');
+  });
+
+  it('admin can delete photos from any owner', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3, filename: 'c.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(ADMIN_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=3');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id, filename FROM photos WHERE id = ANY'),
+      [[3]]
+    );
+  });
+
+  it('redirects without DB calls when no ids provided', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-delete')
+      .send('');
+
+    expect(res.status).toBe(302);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('redirects without deleting when no allowed photos found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=99');
+
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(fs.promises.unlink).not.toHaveBeenCalled();
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=1');
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
 

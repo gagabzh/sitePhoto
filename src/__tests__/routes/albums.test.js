@@ -1,5 +1,11 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('../../components', () => ({
+  photoThumb: jest.fn((p, { owns } = {}) =>
+    `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
+  bulkBar: jest.fn(() => '<div class="bulk-bar-mock"></div>'),
+  bulkScript: jest.fn(() => '<script>/* bulk-script-mock */</script>'),
+}));
 jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
@@ -551,6 +557,153 @@ describe('POST /albums/:id/photos/upload', () => {
 
   it('returns 403 for viewer', async () => {
     const res = await request(makeApp(VIEWER_SESSION)).post('/albums/1/photos/upload').send('title=X');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── Album detail: bulk UX ─────────────────────────────────────────────────────
+
+describe('GET /albums/:id — photo grid bulk UX', () => {
+  it('shows checkboxes and bulk bar for editor who owns the album', async () => {
+    const { bulkBar } = require('../../components');
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.text).toContain('<input type="checkbox" name="photo_ids"');
+    expect(res.text).toContain('bulk-bar-mock');
+    expect(bulkBar).toHaveBeenCalledWith(expect.objectContaining({
+      removeAction: '/albums/1/photos/bulk-remove',
+      deleteAction:  '/albums/1/photos/bulk-delete',
+    }));
+  });
+
+  it('hides checkboxes and bulk bar for viewer', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })
+      .mockResolvedValueOnce({ rows: [{ 1: 1 }] });
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1');
+    expect(res.text).not.toContain('<input type="checkbox"');
+    expect(res.text).not.toContain('bulk-bar-mock');
+  });
+});
+
+// ── Bulk remove from album ────────────────────────────────────────────────────
+
+describe('POST /albums/:id/photos/bulk-remove', () => {
+  it('removes selected photos from album and redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/bulk-remove')
+      .send('photo_ids=5&photo_ids=6');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM album_photos'),
+      ['1', [5, 6]]
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/1');
+  });
+
+  it('redirects without DB delete when no ids provided', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/bulk-remove')
+      .send('');
+
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 for non-owner editor', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/bulk-remove')
+      .send('photo_ids=5');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/albums/1/photos/bulk-remove')
+      .send('photo_ids=5');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── Bulk delete photos from album ─────────────────────────────────────────────
+
+describe('POST /albums/:id/photos/bulk-delete', () => {
+  const fs = require('fs');
+
+  it('permanently deletes owned photos and files, redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5, filename: 'a.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/bulk-delete')
+      .send('photo_ids=5');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM photos WHERE id = ANY'),
+      [[5]]
+    );
+    expect(fs.promises.unlink).toHaveBeenCalled();
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/1');
+  });
+
+  it('admin can delete any photo in album', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5, filename: 'a.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(ADMIN_SESSION))
+      .post('/albums/1/photos/bulk-delete')
+      .send('photo_ids=5');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT p.id, p.filename FROM photos'),
+      ['1', [5]]
+    );
+  });
+
+  it('redirects without deleting when no allowed photos found', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/bulk-delete')
+      .send('photo_ids=99');
+
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(fs.promises.unlink).not.toHaveBeenCalled();
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 for non-owner editor', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/bulk-delete')
+      .send('photo_ids=5');
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/albums/1/photos/bulk-delete')
+      .send('photo_ids=5');
     expect(res.status).toBe(403);
   });
 });

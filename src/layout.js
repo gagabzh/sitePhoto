@@ -88,11 +88,12 @@ function page(title, body, session) {
     .album-meta strong { display: block; margin-bottom: 0.2rem; font-size: 1rem; }
     .album-meta small { color: #888; font-size: 0.8rem; }
     .bulk-bar { display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem; background:white; padding:0.65rem 1rem; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
-    .photo-select { display:block; position:relative; cursor:pointer; }
-    .photo-select input[type="checkbox"] { position:absolute; top:0.5rem; left:0.5rem; z-index:1; width:1.1rem; height:1.1rem; accent-color:#1a1a1a; cursor:pointer; }
-    .photo-select img { display:block; width:100%; height:180px; object-fit:cover; }
-    .photo-select input[type="checkbox"]:checked ~ img,
-    .photo-card-selectable:has(input:checked) .photo-select img { outline:3px solid #1a1a1a; }
+    .photo-thumb { position:relative; }
+    .photo-thumb a { display:block; }
+    .photo-thumb img { display:block; width:100%; height:180px; object-fit:cover; }
+    .photo-checkbox-label { position:absolute; top:0.5rem; left:0.5rem; z-index:1; cursor:pointer; }
+    .photo-checkbox-label input[type="checkbox"] { display:block; width:1.1rem; height:1.1rem; accent-color:#1a1a1a; cursor:pointer; }
+    .photo-card-selectable:has(input:checked) .photo-thumb img { outline:3px solid #1a1a1a; }
     .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
     .tag-cloud a { background: #f0f0f0; border-radius: 20px; padding: 0.3rem 0.9rem; font-size: 0.9rem; color: #444; text-decoration: none; }
     .tag-cloud a:hover { background: #1a1a1a; color: white; }

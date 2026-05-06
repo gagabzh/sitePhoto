@@ -7,6 +7,7 @@ const db = require('../db');
 const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
+const { photoThumb, bulkBar, bulkScript } = require('../components');
 
 function canModify(session, album) {
   return session.role === 'admin' || album.user_id === session.userId;
@@ -225,22 +226,19 @@ router.get('/:id', async (req, res) => {
 
   const photoGrid = photos.length === 0
     ? `<p style="color:#888">No photos yet.${canEdit ? ' <a href="/albums/' + album.id + '/photos/add">Add some.</a>' : ''}</p>`
-    : `<div class="photo-grid">${photos.map(p => `
-        <div class="photo-card">
-          <a href="/photos/${p.id}">
-            <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+    : `<form method="POST" action="/albums/${album.id}/photos/bulk-remove">
+        ${canEdit ? bulkBar({
+          removeAction: `/albums/${album.id}/photos/bulk-remove`,
+          deleteAction:  `/albums/${album.id}/photos/bulk-delete`,
+        }) : ''}
+        <div class="photo-grid">${photos.map(p => `
+          <div class="photo-card${canEdit ? ' photo-card-selectable' : ''}">
+            ${photoThumb(p, { owns: canEdit })}
             <div class="photo-meta"><strong>${esc(p.title)}</strong></div>
-          </a>
-          ${canEdit ? `
-            <div style="padding:0 0.75rem 0.75rem">
-              <form class="inline" method="POST" action="/albums/${album.id}/photos/remove"
-                onsubmit="return confirm('Remove from album?')">
-                <input type="hidden" name="photo_id" value="${p.id}">
-                <button class="btn btn-sm btn-danger btn-icon" style="width:100%" title="Remove">${TRASH}</button>
-              </form>
-            </div>` : ''}
-        </div>`).join('')}
-      </div>`;
+          </div>`).join('')}
+        </div>
+      </form>
+      ${canEdit ? bulkScript() : ''}`;
 
   res.send(page(album.title, `
     <div class="top-bar">
@@ -265,6 +263,61 @@ router.get('/:id', async (req, res) => {
     ${photoGrid}
     <a class="btn btn-secondary" href="/albums" style="margin-top:1.5rem;display:inline-block">← Back to albums</a>
   `, req.session));
+});
+
+// ── Bulk remove photos from album ────────────────────────────────────────────
+
+router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
+  const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
+  const album = rows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  const raw = req.body.photo_ids;
+  if (!raw) return res.redirect(`/albums/${req.params.id}`);
+
+  const ids = [].concat(raw).map(Number).filter(n => n > 0);
+  if (!ids.length) return res.redirect(`/albums/${req.params.id}`);
+
+  await db.query(
+    'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = ANY($2::int[])',
+    [req.params.id, ids]
+  );
+  res.redirect(`/albums/${req.params.id}`);
+});
+
+// ── Bulk delete photos from album ────────────────────────────────────────────
+
+router.post('/:id/photos/bulk-delete', requireEditor, async (req, res) => {
+  const { rows: albumRows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
+  const album = albumRows[0];
+  if (!album) return res.status(404).send('Album not found');
+  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+
+  const raw = req.body.photo_ids;
+  if (!raw) return res.redirect(`/albums/${req.params.id}`);
+
+  const ids = [].concat(raw).map(Number).filter(n => n > 0);
+  if (!ids.length) return res.redirect(`/albums/${req.params.id}`);
+
+  const { rows } = req.session.role === 'admin'
+    ? await db.query(
+        'SELECT p.id, p.filename FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[])',
+        [req.params.id, ids]
+      )
+    : await db.query(
+        'SELECT p.id, p.filename FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
+        [req.params.id, ids, req.session.userId]
+      );
+
+  if (!rows.length) return res.redirect(`/albums/${req.params.id}`);
+
+  const allowedIds = rows.map(r => r.id);
+  await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [allowedIds]);
+  for (const photo of rows) {
+    fs.promises.unlink(path.join(UPLOAD_DIR, photo.filename)).catch(() => {});
+  }
+  res.redirect(`/albums/${req.params.id}`);
 });
 
 // ── US-A3: Edit album ────────────────────────────────────────────────────────
