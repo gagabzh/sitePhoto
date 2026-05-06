@@ -91,7 +91,7 @@ router.get('/', async (req, res) => {
           <a href="/albums/${a.id}">
             ${a.cover_filename
               ? `<img class="album-cover" src="/uploads/${esc(a.cover_filename)}" alt="${esc(a.title)}">`
-              : `<div class="album-cover-empty">🖼</div>`}
+              : `<div class="album-cover-empty">no photos yet</div>`}
             <div class="album-meta">
               <strong>${esc(a.title)}</strong>
               <small>${a.photo_count} photo${a.photo_count !== 1 ? 's' : ''} · by ${esc(a.creator)}</small>
