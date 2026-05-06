@@ -209,3 +209,22 @@ As a user, on the map page I can type a location name (e.g. "Paris"), pick it fr
 
 **TL-4 — Filter by date range**
 As a user, on the timeline page I can set a "from" date and/or a "to" date (each with an optional date picker) to show only photos taken within that period.
+
+---
+
+## Infrastructure & Quality
+
+**IQ-1 — Application security hardening**
+As a developer, I audit and fix all injection vectors (SQL injection, XSS, path traversal, CSRF) and ensure no known CVEs exist in production dependencies, so the application is safe to expose on a public server.
+
+**IQ-2 — Dependency CVE monitoring**
+As a developer, I run an automated CVE check on every dependency (e.g. `npm audit`) in CI so that vulnerabilities are caught before they reach production.
+
+**IQ-3 — Linter**
+As a developer, I add ESLint (or equivalent) to the project with a consistent rule set, so code style is enforced automatically and obvious errors are caught before review.
+
+**IQ-4 — Code quality metrics**
+As a developer, I track test coverage (% of lines/branches exercised), code duplication (duplicated blocks), and function length (lines per function) so I can measure and improve maintainability over time.
+
+**IQ-5 — VPS hardening**
+As a sysadmin, I apply VPS-level security measures (SSH key-only auth, firewall rules, automatic security updates, fail2ban or equivalent) so the server is not trivially compromised.
