@@ -177,9 +177,9 @@ router.get('/', requireEditor, async (req, res) => {
     </div>
     ${heroHtml}
     <form method="POST" action="/photos/bulk-tag">
-      ${bulkBar({ showTag: true, deleteAction: '/photos/bulk-delete' })}
       <div class="wall-cols">
         <div>
+          ${bulkBar({ showTag: true, deleteAction: '/photos/bulk-delete' })}
           <div class="row" style="justify-content:flex-end;margin-bottom:0.75rem">
             <a class="btn" href="/photos/upload">+ Upload</a>
           </div>
