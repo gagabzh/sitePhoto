@@ -124,7 +124,7 @@ describe('US-P1/P2: POST /photos/upload — upload handling', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null, null, null]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null, null, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/42');
@@ -236,7 +236,7 @@ describe('US-P3: POST /photos/:id — save edits', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
-      ['Updated Title', 'New desc', null, null, '1']
+      ['Updated Title', 'New desc', null, null, null, null, '1']
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/1');
@@ -513,7 +513,7 @@ describe('US-NC1: POST /photos/upload — store nextcloud_url', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, null, null, 'https://cloud.example/s/abc123']
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, null, null, null, null, 'https://cloud.example/s/abc123']
     );
     expect(res.status).toBe(302);
   });
@@ -581,7 +581,7 @@ describe('US-NC3: manage nextcloud_url via edit', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
-      ['T', null, null, 'https://cloud.example/s/new', '1']
+      ['T', null, null, 'https://cloud.example/s/new', null, null, '1']
     );
   });
 
@@ -597,7 +597,7 @@ describe('US-NC3: manage nextcloud_url via edit', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
-      ['T', null, null, null, '1']
+      ['T', null, null, null, null, null, '1']
     );
   });
 });
@@ -621,7 +621,7 @@ describe('EXIF metadata: POST /photos/upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Alps', null, 'image/jpeg', 4000, '2024-06-15', '1/250', 50, null]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Alps', null, 'image/jpeg', 4000, '2024-06-15', '1/250', 50, null, null, null]
     );
   });
 
@@ -683,5 +683,120 @@ describe('EXIF metadata: GET /photos/:id — display', () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
     expect(res.text).not.toContain('Exposition');
     expect(res.text).not.toContain('Focale');
+  });
+});
+
+// ── GPS1: coordinates in upload & edit ───────────────────────────────────────
+
+describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
+  const { extractMetadata } = require('../../extractMetadata');
+
+  it('stores user-provided lat/lon', async () => {
+    extractMetadata.mockResolvedValueOnce({});
+    db.query.mockResolvedValueOnce({ rows: [{ id: 20 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Paris&latitude=48.8566&longitude=2.3522');
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(call[1][10]).toBeCloseTo(48.8566);
+    expect(call[1][11]).toBeCloseTo(2.3522);
+  });
+
+  it('falls back to EXIF GPS when form fields are empty', async () => {
+    extractMetadata.mockResolvedValueOnce({ latitude: 51.5074, longitude: -0.1278 });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 21 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=London');
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(call[1][10]).toBeCloseTo(51.5074);
+    expect(call[1][11]).toBeCloseTo(-0.1278);
+  });
+
+  it('rejects out-of-range coordinates', async () => {
+    extractMetadata.mockResolvedValueOnce({});
+    db.query.mockResolvedValueOnce({ rows: [{ id: 22 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=X&latitude=999&longitude=999');
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(call[1][10]).toBeNull();
+    expect(call[1][11]).toBeNull();
+  });
+
+  it('accepts DMS coordinates and converts to decimal', async () => {
+    extractMetadata.mockResolvedValueOnce({});
+    db.query.mockResolvedValueOnce({ rows: [{ id: 23 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send("title=Cusco&latitude=14°02'01.7\"S&longitude=71°14'50.7\"W");
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(call[1][10]).toBeCloseTo(-14.0338, 3);
+    expect(call[1][11]).toBeCloseTo(-71.2474, 3);
+  });
+
+  it('upload form contains GPS fields', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/upload');
+    expect(res.text).toContain('name="latitude"');
+    expect(res.text).toContain('name="longitude"');
+  });
+});
+
+describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
+  it('updates lat/lon and redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T&latitude=48.8566&longitude=2.3522');
+
+    const call = db.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
+    expect(call[1][4]).toBeCloseTo(48.8566);
+    expect(call[1][5]).toBeCloseTo(2.3522);
+  });
+
+  it('clears coordinates when fields are empty', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T&latitude=&longitude=');
+
+    const call = db.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
+    expect(call[1][4]).toBeNull();
+    expect(call[1][5]).toBeNull();
+  });
+});
+
+// ── GPS2: mini-map on photo detail ───────────────────────────────────────────
+
+describe('GPS2: GET /photos/:id — mini-map display', () => {
+  it('shows leaflet map when GPS coordinates are set', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, latitude: 48.8566, longitude: 2.3522 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.text).toContain('photo-map');
+    expect(res.text).toContain('48.8566');
+    expect(res.text).toContain('2.3522');
+    expect(res.text).toContain('leaflet');
+  });
+
+  it('hides map when GPS coordinates are null', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, latitude: null, longitude: null }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.text).not.toContain('photo-map');
   });
 });

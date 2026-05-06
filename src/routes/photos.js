@@ -57,6 +57,27 @@ function sanitizeNextcloudUrl(raw) {
   } catch { return null; }
 }
 
+// Accepts decimal degrees ("48.8566", "-14.0338") or DMS ("14°02'01.7\"S", "71°14'50.7\"W")
+function parseCoord(raw, min, max) {
+  if (!raw || !String(raw).trim()) return null;
+  const s = String(raw).trim();
+
+  const dms = s.match(/^(\d+)[°d]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([NSEWnsew])$/);
+  if (dms) {
+    const deg = parseFloat(dms[1]);
+    const min_ = parseFloat(dms[2]);
+    const sec = parseFloat(dms[3]);
+    const dir = dms[4].toUpperCase();
+    const val = (deg + min_ / 60 + sec / 3600) * (/[SW]/.test(dir) ? -1 : 1);
+    if (isNaN(val) || val < min || val > max) return null;
+    return Math.round(val * 1e7) / 1e7;
+  }
+
+  const val = parseFloat(s);
+  if (isNaN(val) || val < min || val > max) return null;
+  return val;
+}
+
 // US-P1: Photo list (editor/admin)
 router.get('/', requireEditor, async (req, res) => {
   const { rows } = await db.query(`
@@ -173,6 +194,12 @@ router.get('/upload', requireEditor, (req, res) => {
         <label>Date taken <small>(optional)</small>
           <input type="date" name="taken_at">
         </label>
+        <label>GPS coordinates <small>(optional — auto-filled from photo EXIF if available)</small>
+          <div class="row" style="gap:0.5rem">
+            <input type="text" name="latitude"  placeholder="48.8566 ou 48°51′21″N" style="flex:1">
+            <input type="text" name="longitude" placeholder="2.3522  ou 2°21′08″E"  style="flex:1">
+          </div>
+        </label>
         <label>Nextcloud link <small>(optional — https:// share link for original download)</small>
           <input type="url" name="nextcloud_url" placeholder="https://cloud.example/s/…">
         </label>
@@ -191,16 +218,18 @@ router.post('/upload', requireEditor, (req, res, next) => {
     if (err && err.code === 'LIMIT_FILE_SIZE') return res.redirect('/photos/upload?error=size');
     if (err || !req.file) return res.redirect('/photos/upload?error=type');
 
-    const { title, description, tags, taken_at, nextcloud_url } = req.body;
+    const { title, description, tags, taken_at, latitude, longitude, nextcloud_url } = req.body;
     try {
       const filepath = path.join(UPLOAD_DIR, req.file.filename);
       const exif = await extractMetadata(filepath);
       const finalSize = await optimizePhoto(filepath, req.file.mimetype);
       const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
       const resolvedTakenAt = taken_at || (exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null);
+      const resolvedLat = parseCoord(latitude, -90, 90)   ?? exif.latitude  ?? null;
+      const resolvedLon = parseCoord(longitude, -180, 180) ?? exif.longitude ?? null;
       const { rows } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, ncUrl]
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, resolvedLat, resolvedLon, ncUrl]
       );
       if (tags) await setTags(rows[0].id, tags);
       res.redirect(`/photos/${rows[0].id}`);
@@ -238,6 +267,17 @@ router.get('/:id', async (req, res) => {
           <p style="color:#888;margin-top:0;font-size:0.9rem">by ${esc(photo.uploader)}</p>
           ${photo.description ? `<p>${esc(photo.description)}</p>` : ''}
           ${photo.tags.length ? `<div class="tags">${photo.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${photo.latitude != null && photo.longitude != null ? `
+          <div id="photo-map" style="height:220px;border-radius:8px;margin-top:0.75rem"></div>
+          <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+          <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+          <script>
+            (function(){
+              var m = L.map('photo-map').setView([${photo.latitude},${photo.longitude}],13);
+              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(m);
+              L.marker([${photo.latitude},${photo.longitude}]).addTo(m);
+            })();
+          </script>` : ''}
           ${(photo.taken_at || photo.exposure_time || photo.focal_length) ? `
           <dl class="photo-exif">
             ${photo.taken_at ? `<dt>Date de prise</dt><dd>${esc(new Date(photo.taken_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }))}</dd>` : ''}
@@ -291,6 +331,12 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
           <label>Date taken
             <input type="date" name="taken_at" value="${photo.taken_at ? new Date(photo.taken_at).toISOString().split('T')[0] : ''}">
           </label>
+          <label>GPS coordinates <small>(optional — leave blank to remove)</small>
+            <div class="row" style="gap:0.5rem">
+              <input type="text" name="latitude"  placeholder="48.8566 ou 48°51′21″N" value="${photo.latitude  ?? ''}" style="flex:1">
+              <input type="text" name="longitude" placeholder="2.3522  ou 2°21′08″E"  value="${photo.longitude ?? ''}" style="flex:1">
+            </div>
+          </label>
           <label>Nextcloud link <small>(optional — leave blank to remove)</small>
             <input type="url" name="nextcloud_url" value="${esc(photo.nextcloud_url || '')}">
           </label>
@@ -311,11 +357,13 @@ router.post('/:id', requireEditor, async (req, res) => {
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
-  const { title, description, tags, taken_at, nextcloud_url } = req.body;
+  const { title, description, tags, taken_at, latitude, longitude, nextcloud_url } = req.body;
   const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
+  const lat = parseCoord(latitude, -90, 90);
+  const lon = parseCoord(longitude, -180, 180);
   await db.query(
-    'UPDATE photos SET title = $1, description = $2, taken_at = $3, nextcloud_url = $4, updated_at = NOW() WHERE id = $5',
-    [title, description || null, taken_at || null, ncUrl, req.params.id]
+    'UPDATE photos SET title = $1, description = $2, taken_at = $3, nextcloud_url = $4, latitude = $5, longitude = $6, updated_at = NOW() WHERE id = $7',
+    [title, description || null, taken_at || null, ncUrl, lat, lon, req.params.id]
   );
   await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);

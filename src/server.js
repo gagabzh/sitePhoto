@@ -1,6 +1,7 @@
-const bcrypt = require('bcryptjs');
-const db = require('./db');
-const app = require('./app');
+const bcrypt  = require('bcryptjs');
+const db      = require('./db');
+const app     = require('./app');
+const migrate = require('./migrate');
 
 const PORT = process.env.PORT || 3000;
 
@@ -20,6 +21,7 @@ async function seedAdmin() {
 }
 
 db.query('SELECT 1')
+  .then(() => migrate())
   .then(() => seedAdmin())
   .then(() => {
     app.listen(PORT, '0.0.0.0', () => {
