@@ -182,12 +182,10 @@ describe('GET /albums/new/folder — folder upload form', () => {
 });
 
 describe('POST /albums/new/folder — create album from folder', () => {
-  it('creates album, inserts optimized photos, and redirects', async () => {
+  it('creates album, inserts optimized photos with album_id, and redirects', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 3 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 11 }] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: 12 }] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(EDITOR_SESSION))
@@ -200,7 +198,7 @@ describe('POST /albums/new/folder — create album from folder', () => {
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000]
+      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, 3]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/3');
@@ -471,7 +469,7 @@ describe('US-A2: GET /albums/:id/photos/add', () => {
 });
 
 describe('US-A2: POST /albums/:id/photos/add', () => {
-  it('inserts and redirects back to add page', async () => {
+  it('updates photo album_id and redirects back to add page', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
       .mockResolvedValueOnce({ rows: [] });
@@ -481,7 +479,7 @@ describe('US-A2: POST /albums/:id/photos/add', () => {
       .send('photo_id=5');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO album_photos'),
+      expect.stringContaining('UPDATE photos SET album_id'),
       ['1', '5']
     );
     expect(res.status).toBe(302);
@@ -494,7 +492,7 @@ describe('US-A2: POST /albums/:id/photos/add', () => {
 });
 
 describe('US-A2: POST /albums/:id/photos/remove', () => {
-  it('deletes and redirects for owner', async () => {
+  it('sets album_id to NULL and redirects for owner', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
       .mockResolvedValueOnce({ rows: [] });
@@ -504,7 +502,7 @@ describe('US-A2: POST /albums/:id/photos/remove', () => {
       .send('photo_id=5');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM album_photos'),
+      expect.stringContaining('UPDATE photos SET album_id = NULL'),
       ['1', '5']
     );
     expect(res.status).toBe(302);
@@ -533,11 +531,10 @@ describe('GET /albums/:id/photos/upload', () => {
 });
 
 describe('POST /albums/:id/photos/upload', () => {
-  it('inserts photo and album link, redirects to album', async () => {
+  it('inserts photo with album_id and redirects to album', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 20 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: 20 }] });
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/albums/1/photos/upload')
@@ -545,11 +542,7 @@ describe('POST /albums/:id/photos/upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000]
-    );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO album_photos'),
-      ['1', 20]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, '1']
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1');
@@ -594,7 +587,7 @@ describe('GET /albums/:id — photo grid bulk UX', () => {
 // ── Bulk remove from album ────────────────────────────────────────────────────
 
 describe('POST /albums/:id/photos/bulk-remove', () => {
-  it('removes selected photos from album and redirects', async () => {
+  it('sets album_id to NULL for selected photos and redirects', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
       .mockResolvedValueOnce({ rows: [] });
@@ -604,7 +597,7 @@ describe('POST /albums/:id/photos/bulk-remove', () => {
       .send('photo_ids=5&photo_ids=6');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM album_photos'),
+      expect.stringContaining('UPDATE photos SET album_id = NULL'),
       ['1', [5, 6]]
     );
     expect(res.status).toBe(302);

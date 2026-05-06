@@ -202,7 +202,7 @@ describe('GET /timeline?album=N — album filter', () => {
     mockTimeline();
     await request(makeApp(EDITOR_SESSION)).get('/timeline?album=5');
     const [sql, params] = db.query.mock.calls[0];
-    expect(sql).toContain('album_photos');
+    expect(sql).toContain('album_id');
     expect(params).toContain('5');
   });
 

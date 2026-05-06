@@ -13,8 +13,7 @@ router.get('/', async (req, res) => {
         FROM tags t
         JOIN photo_tags pt ON pt.tag_id = t.id
         JOIN photos p ON p.id = pt.photo_id
-        JOIN album_photos ap ON ap.photo_id = p.id
-        JOIN album_access aa ON aa.album_id = ap.album_id
+        JOIN album_access aa ON aa.album_id = p.album_id
         WHERE aa.viewer_id = $1
         GROUP BY t.name
         ORDER BY t.name
@@ -55,8 +54,7 @@ router.get('/:name', async (req, res) => {
         JOIN users u ON u.id = p.user_id
         JOIN photo_tags pt ON pt.photo_id = p.id
         JOIN tags t ON t.id = pt.tag_id
-        JOIN album_photos ap ON ap.photo_id = p.id
-        JOIN album_access aa ON aa.album_id = ap.album_id
+        JOIN album_access aa ON aa.album_id = p.album_id
         WHERE t.name = $1 AND aa.viewer_id = $2
         ORDER BY p.id DESC
       `, [tagName, req.session.userId])

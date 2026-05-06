@@ -40,29 +40,23 @@ router.get('/', async (req, res) => {
   const { rows } = isViewer
     ? await db.query(`
         SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
-          COUNT(DISTINCT ap.photo_id)::int AS photo_count,
-          (SELECT p.filename FROM photos p
-           JOIN album_photos ap2 ON ap2.photo_id = p.id
-           WHERE ap2.album_id = a.id
-           ORDER BY ap2.added_at ASC LIMIT 1) AS cover_filename
+          COUNT(DISTINCT p.id)::int AS photo_count,
+          (SELECT p2.filename FROM photos p2 WHERE p2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
         FROM albums a
         JOIN users u ON u.id = a.user_id
         JOIN album_access aa ON aa.album_id = a.id
-        LEFT JOIN album_photos ap ON ap.album_id = a.id
+        LEFT JOIN photos p ON p.album_id = a.id
         WHERE aa.viewer_id = $1
         GROUP BY a.id, u.name
         ORDER BY a.created_at DESC
       `, [req.session.userId])
     : await db.query(`
         SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
-          COUNT(DISTINCT ap.photo_id)::int AS photo_count,
-          (SELECT p.filename FROM photos p
-           JOIN album_photos ap2 ON ap2.photo_id = p.id
-           WHERE ap2.album_id = a.id
-           ORDER BY ap2.added_at ASC LIMIT 1) AS cover_filename
+          COUNT(DISTINCT p.id)::int AS photo_count,
+          (SELECT p2.filename FROM photos p2 WHERE p2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
         FROM albums a
         JOIN users u ON u.id = a.user_id
-        LEFT JOIN album_photos ap ON ap.album_id = a.id
+        LEFT JOIN photos p ON p.album_id = a.id
         GROUP BY a.id, u.name
         ORDER BY a.created_at DESC
       `);
@@ -166,13 +160,9 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
         const filepath = path.join(UPLOAD_DIR, file.filename);
         const finalSize = await optimizePhoto(filepath, file.mimetype);
         const photoTitle = path.basename(file.originalname, path.extname(file.originalname));
-        const { rows: [photo] } = await db.query(
-          'INSERT INTO photos (user_id, filename, original_filename, title, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-          [req.session.userId, file.filename, file.originalname, photoTitle, file.mimetype, finalSize]
-        );
         await db.query(
-          'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)',
-          [album.id, photo.id]
+          'INSERT INTO photos (user_id, filename, original_filename, title, mime_type, size, album_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [req.session.userId, file.filename, file.originalname, photoTitle, file.mimetype, finalSize, album.id]
         );
       }
 
@@ -201,11 +191,7 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     ),
     db.query(
-      `SELECT p.id, p.filename, p.title, p.user_id
-       FROM photos p
-       JOIN album_photos ap ON ap.photo_id = p.id
-       WHERE ap.album_id = $1
-       ORDER BY ap.added_at ASC`,
+      'SELECT p.id, p.filename, p.title, p.user_id FROM photos p WHERE p.album_id = $1 ORDER BY p.created_at ASC',
       [req.params.id]
     ),
   ]);
@@ -265,7 +251,7 @@ router.get('/:id', async (req, res) => {
   `, req.session));
 });
 
-// ── Bulk remove photos from album ────────────────────────────────────────────
+// ── Bulk remove photos from album (set album_id to NULL) ─────────────────────
 
 router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
@@ -280,7 +266,7 @@ router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
   if (!ids.length) return res.redirect(`/albums/${req.params.id}`);
 
   await db.query(
-    'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = ANY($2::int[])',
+    'UPDATE photos SET album_id = NULL WHERE album_id = $1 AND id = ANY($2::int[])',
     [req.params.id, ids]
   );
   res.redirect(`/albums/${req.params.id}`);
@@ -302,11 +288,11 @@ router.post('/:id/photos/bulk-delete', requireEditor, async (req, res) => {
 
   const { rows } = req.session.role === 'admin'
     ? await db.query(
-        'SELECT p.id, p.filename FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[])',
+        'SELECT p.id, p.filename FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[])',
         [req.params.id, ids]
       )
     : await db.query(
-        'SELECT p.id, p.filename FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
+        'SELECT p.id, p.filename FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
         [req.params.id, ids, req.session.userId]
       );
 
@@ -458,7 +444,7 @@ router.post('/:id/delete', requireEditor, async (req, res) => {
   res.redirect('/albums');
 });
 
-// ── US-A2: Add photos to album ───────────────────────────────────────────────
+// ── US-A2: Add photos to album (moves photo from its current album) ──────────
 
 router.get('/:id/photos/add', requireEditor, async (req, res) => {
   const { rows: albumRows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
@@ -470,9 +456,7 @@ router.get('/:id/photos/add', requireEditor, async (req, res) => {
     `SELECT p.id, p.filename, p.title, u.name AS uploader
      FROM photos p
      JOIN users u ON u.id = p.user_id
-     WHERE p.id NOT IN (
-       SELECT photo_id FROM album_photos WHERE album_id = $1
-     )
+     WHERE p.album_id != $1 OR p.album_id IS NULL
      ORDER BY p.created_at DESC`,
     [req.params.id]
   );
@@ -515,7 +499,7 @@ router.post('/:id/photos/add', requireEditor, async (req, res) => {
   if (!canModify(req.session, album)) return res.status(403).send('Access denied');
 
   await db.query(
-    'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    'UPDATE photos SET album_id = $1 WHERE id = $2',
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}/photos/add`);
@@ -530,7 +514,7 @@ router.post('/:id/photos/remove', requireEditor, async (req, res) => {
   if (!canModify(req.session, album)) return res.status(403).send('Access denied');
 
   await db.query(
-    'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = $2',
+    'UPDATE photos SET album_id = NULL WHERE id = $2 AND album_id = $1',
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}`);
@@ -591,11 +575,10 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
       const filepath = path.join(UPLOAD_DIR, req.file.filename);
       const finalSize = await optimizePhoto(filepath, req.file.mimetype);
       const { rows: [photo] } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize]
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, album_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, albumId]
       );
       if (tags) {
-        await db.query('DELETE FROM photo_tags WHERE photo_id = $1', [photo.id]);
         const names = String(tags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
         for (const name of names) {
           const { rows: [tag] } = await db.query(
@@ -608,10 +591,6 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
           );
         }
       }
-      await db.query(
-        'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)',
-        [albumId, photo.id]
-      );
       res.redirect(`/albums/${albumId}`);
     } catch (e) {
       next(e);
