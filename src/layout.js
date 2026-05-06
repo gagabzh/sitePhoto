@@ -12,17 +12,22 @@ function page(title, body, session) {
     <nav>
       <strong><a href="/">sitephoto<span class="nav-dot">.</span></a></strong>
       <div class="nav-right">
-        ${session.role === 'admin' ? '<a href="/admin/users">Users</a>' : ''}
         ${session.role !== 'viewer' ? '<a href="/photos">Photos</a>' : ''}
         <a href="/albums">Albums</a>
         <a href="/tags">Tags</a>
         <a href="/timeline">Timeline</a>
         <a href="/map">Map</a>
-        <a href="/account/password">Account</a>
-        <form method="POST" action="/logout">
-          <button class="btn-nav">Logout</button>
-        </form>
-        <span class="nav-avatar">${initial}</span>
+        <div class="nav-avatar-wrap">
+          <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>
+          <div class="nav-menu" role="menu">
+            <a href="/account/password" role="menuitem">Account</a>
+            ${session.role === 'admin' ? '<a href="/admin/users" role="menuitem">Admin</a>' : ''}
+            <hr class="nav-menu-sep">
+            <form method="POST" action="/logout">
+              <button class="nav-menu-logout" type="submit">Logout</button>
+            </form>
+          </div>
+        </div>
       </div>
     </nav>` : '';
 
@@ -82,23 +87,42 @@ function page(title, body, session) {
     .nav-right {
       display: flex; gap: 1.25rem; align-items: center;
       font-family: 'Kalam', cursive; font-size: 0.95rem;
-      flex-wrap: wrap;
     }
-    .nav-right a { color: var(--ink); text-decoration: none; }
-    .nav-right a:hover { border-bottom: 1.5px solid var(--ink); }
-    .btn-nav {
-      background: none; border: 1.5px solid var(--ink);
-      color: var(--ink); padding: 3px 12px;
-      cursor: pointer; font-family: 'Kalam', cursive; font-size: 0.9rem;
-    }
-    .btn-nav:hover { background: var(--paper-2); }
+    .nav-right > a { color: var(--ink); text-decoration: none; }
+    .nav-right > a:hover { border-bottom: 1.5px solid var(--ink); }
+
+    /* avatar + dropdown */
+    .nav-avatar-wrap { position: relative; }
     .nav-avatar {
-      width: 28px; height: 28px; border: 1.5px solid var(--ink);
+      width: 30px; height: 30px; border: 1.5px solid var(--ink);
       border-radius: 50%; background: var(--paper-2);
       display: inline-flex; align-items: center; justify-content: center;
       font-family: 'Caveat', cursive; font-size: 1rem; font-weight: 700;
-      flex: none;
+      flex: none; cursor: pointer; user-select: none;
+      transition: background 0.1s;
     }
+    .nav-avatar:hover, .nav-avatar-wrap.open .nav-avatar { background: var(--ink); color: var(--paper); }
+    .nav-menu {
+      display: none; flex-direction: column;
+      position: absolute; right: 0; top: calc(100% + 10px);
+      background: var(--paper); border: 2px solid var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
+      min-width: 148px; z-index: 200;
+    }
+    .nav-avatar-wrap.open .nav-menu { display: flex; }
+    .nav-menu a {
+      font-family: 'Kalam', cursive; font-size: 0.9rem;
+      padding: 0.5rem 0.875rem; color: var(--ink); text-decoration: none;
+      border-bottom: 1px dashed var(--ink-faint); display: block;
+    }
+    .nav-menu a:hover { background: var(--paper-2); }
+    .nav-menu-sep { border: none; border-top: 1.5px dashed var(--ink-faint); margin: 0; }
+    .nav-menu-logout {
+      font-family: 'Kalam', cursive; font-size: 0.9rem;
+      padding: 0.5rem 0.875rem; color: var(--ink-soft); background: none;
+      border: none; cursor: pointer; text-align: left; width: 100%; display: block;
+    }
+    .nav-menu-logout:hover { background: var(--paper-2); color: var(--ink); }
 
     /* ── Main wrapper ── */
     main { max-width: 1200px; margin: 0 auto; padding: 2rem 2rem 4rem; }
@@ -721,6 +745,12 @@ function page(title, body, session) {
 <body>
   ${nav}
   <main>${body}</main>
+  ${session ? `<script>(function(){
+    var w=document.querySelector('.nav-avatar-wrap');
+    if(!w)return;
+    w.querySelector('.nav-avatar').addEventListener('click',function(e){e.stopPropagation();w.classList.toggle('open');});
+    document.addEventListener('click',function(){w.classList.remove('open');});
+  })();</script>` : ''}
 </body>
 </html>`;
 }
