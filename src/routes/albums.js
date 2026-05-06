@@ -80,44 +80,61 @@ router.get('/', async (req, res) => {
         ORDER BY a.created_at DESC
       `);
 
+  const totalPhotos = rows.reduce((s, a) => s + (a.photo_count || 0), 0);
+
   const emptyMsg = isViewer
-    ? '<p>You haven\'t been granted access to any albums yet.</p>'
-    : '<p>No albums yet. <a href="/albums/new">Create the first one.</a></p>';
+    ? `<p class="tl-empty">You haven't been granted access to any albums yet.</p>`
+    : `<p class="tl-empty">No albums yet. <a href="/albums/new">Create the first one.</a></p>`;
+
+  const bookCards = rows.map(a => `
+    <div class="ab-book">
+      <div class="ab-spine"></div>
+      <a href="/albums/${a.id}" class="ab-cover">
+        ${a.cover_filename
+          ? `<img class="ab-cover-img" src="/uploads/${esc(a.cover_filename)}" alt="${esc(a.title)}">`
+          : `<div class="ab-cover-empty">no photos yet</div>`}
+        ${a.photo_count > 0
+          ? `<span class="ab-ribbon">${a.photo_count} PHOTO${a.photo_count !== 1 ? 'S' : ''}</span>`
+          : `<span class="ab-ribbon ab-ribbon-empty">EMPTY</span>`}
+        <div class="ab-label">
+          <h3>${esc(a.title)}</h3>
+          <div class="ab-label-sub">by ${esc(a.creator)}</div>
+        </div>
+      </a>
+      <div class="ab-meta-row">
+        <span class="ab-meta-who">${esc(a.creator)}</span>
+        ${canModify(req.session, a) ? `<span class="ab-meta-acts">
+          <a class="btn btn-sm btn-secondary" href="/albums/${a.id}/edit">edit</a>
+          <form class="inline" method="POST" action="/albums/${a.id}/delete"
+            onsubmit="return confirm('Delete album \\'${esc(a.title)}\\'?')">
+            <button class="btn btn-sm btn-danger btn-icon" title="Delete">${TRASH}</button>
+          </form>
+        </span>` : ''}
+      </div>
+    </div>`).join('');
+
+  const newBook = isViewer ? '' : `
+    <a href="/albums/new" class="ab-new">
+      <span class="ab-new-plus">+</span>
+      start a new album
+    </a>`;
 
   const grid = rows.length === 0
     ? emptyMsg
-    : `<div class="photo-grid">${rows.map(a => `
-        <div class="album-card">
-          <a href="/albums/${a.id}">
-            ${a.cover_filename
-              ? `<img class="album-cover" src="/uploads/${esc(a.cover_filename)}" alt="${esc(a.title)}">`
-              : `<div class="album-cover-empty">🖼</div>`}
-            <div class="album-meta">
-              <strong>${esc(a.title)}</strong>
-              <small>${a.photo_count} photo${a.photo_count !== 1 ? 's' : ''} · by ${esc(a.creator)}</small>
-              ${a.description ? `<p style="margin:0.4rem 0 0;font-size:0.85rem;color:#555">${esc(a.description)}</p>` : ''}
-            </div>
-          </a>
-          ${canModify(req.session, a) ? `
-            <div style="padding:0 0.85rem 0.85rem;display:flex;gap:0.4rem">
-              <a class="btn btn-sm btn-secondary" href="/albums/${a.id}/edit">Edit</a>
-              <form class="inline" method="POST" action="/albums/${a.id}/delete"
-                onsubmit="return confirm('Delete album \\'${esc(a.title)}\\'?')">
-                <button class="btn btn-sm btn-danger btn-icon" title="Delete">${TRASH}</button>
-              </form>
-            </div>` : ''}
-        </div>`).join('')}
-      </div>`;
+    : `<div class="ab-grid">${bookCards}${newBook}</div>`;
 
   const controls = isViewer ? '' : `
-    <div class="row">
+    <div class="ab-actions">
+      <a class="btn btn-secondary" href="/albums/new/folder">↑ from folder</a>
       <a class="btn" href="/albums/new">+ New album</a>
-      <a class="btn btn-secondary" href="/albums/new/folder">+ From folder</a>
     </div>`;
 
   res.send(page('Albums', `
-    <div class="top-bar">
-      <h1>Albums</h1>
+    <div class="ab-page-h">
+      <div>
+        <h1>our <em>albums</em>.</h1>
+        <p class="ab-sub">${rows.length} album${rows.length !== 1 ? 's' : ''} · ${totalPhotos} photo${totalPhotos !== 1 ? 's' : ''}</p>
+      </div>
       ${controls}
     </div>
     ${grid}
@@ -278,45 +295,70 @@ router.get('/:id', async (req, res) => {
   const photos = photosRes.rows;
   const canEdit = canModify(req.session, album);
 
-  const photoGrid = photos.length === 0
-    ? `<p style="color:#888">No photos yet.${canEdit ? ' <a href="/albums/' + album.id + '/photos/add">Add some.</a>' : ''}</p>`
+  const cover = photos[0];
+  const coverHtml = cover
+    ? `<img src="/uploads/${esc(cover.filename)}" alt="${esc(cover.title)}">`
+    : `<div class="ad-cover-empty">no photos yet</div>`;
+
+  const uniqueContributors = new Set(photos.map(p => p.user_id)).size;
+
+  const mosaic = photos.slice(0, 9);
+  const rest = photos.slice(9);
+
+  const mosaicCells = mosaic.map(p => `
+    <div class="ad-cell${canEdit ? ' photo-card-selectable' : ''}">
+      ${canEdit ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
+      <a href="/photos/${p.id}"><img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}"></a>
+    </div>`).join('');
+
+  const restGrid = rest.length > 0
+    ? `<div class="photo-grid" style="margin-top:1rem">${rest.map(p => `
+        <div class="photo-card${canEdit ? ' photo-card-selectable' : ''}">
+          ${photoThumb(p, { owns: canEdit })}
+          <div class="photo-meta"><strong>${esc(p.title)}</strong></div>
+        </div>`).join('')}
+      </div>` : '';
+
+  const photoSection = photos.length === 0
+    ? `<p class="tl-empty">No photos yet.${canEdit ? ` <a href="/albums/${album.id}/photos/add">Add some.</a>` : ''}</p>`
     : `<form method="POST" action="/albums/${album.id}/photos/bulk-remove">
         ${canEdit ? bulkBar({
           removeAction: `/albums/${album.id}/photos/bulk-remove`,
           deleteAction:  `/albums/${album.id}/photos/bulk-delete`,
         }) : ''}
-        <div class="photo-grid">${photos.map(p => `
-          <div class="photo-card${canEdit ? ' photo-card-selectable' : ''}">
-            ${photoThumb(p, { owns: canEdit })}
-            <div class="photo-meta"><strong>${esc(p.title)}</strong></div>
-          </div>`).join('')}
-        </div>
+        <div class="ad-mosaic">${mosaicCells}</div>
+        ${restGrid}
       </form>
       ${canEdit ? bulkScript() : ''}`;
 
   res.send(page(album.title, `
-    <div class="top-bar">
-      <div>
-        <h1 style="margin-bottom:0.25rem">${esc(album.title)}</h1>
-        <p style="color:#888;margin:0;font-size:0.9rem">by ${esc(album.creator)}
-          · ${photos.length} photo${photos.length !== 1 ? 's' : ''}</p>
-        ${album.description ? `<p style="margin-top:0.75rem">${esc(album.description)}</p>` : ''}
-      </div>
-      <div class="row">
-        <a class="btn btn-secondary" href="/albums">← Back</a>
-        ${canEdit ? `
-          <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload</a>
-          <a class="btn" href="/albums/${album.id}/photos/batch">↑ Batch</a>
-          <a class="btn btn-secondary" href="/albums/${album.id}/photos/add">+ Add photos</a>
-          <a class="btn btn-secondary" href="/albums/${album.id}/access">Access</a>
-          <a class="btn btn-secondary" href="/albums/${album.id}/edit">Edit</a>
-          <form class="inline" method="POST" action="/albums/${album.id}/delete"
-            onsubmit="return confirm('Delete this album?')">
-            <button class="btn btn-danger btn-icon" title="Delete">${TRASH}</button>
-          </form>` : ''}
+    <div class="ad-head">
+      <div class="ad-cover">${coverHtml}</div>
+      <div class="ad-info">
+        <div class="ad-crumbs"><a href="/albums">albums</a> / ${esc(album.title)}</div>
+        <h1>${esc(album.title)}.</h1>
+        ${album.description ? `<p class="ad-desc">${esc(album.description)}</p>` : ''}
+        <div class="ad-stats">
+          <div><b>${photos.length}</b> photo${photos.length !== 1 ? 's' : ''}</div>
+          ${uniqueContributors > 0 ? `<div><b>${uniqueContributors}</b> contributor${uniqueContributors !== 1 ? 's' : ''}</div>` : ''}
+        </div>
+        <p style="font-family:'Kalam',cursive;font-size:0.85rem;color:var(--ink-soft);margin:0.1rem 0 0;">by ${esc(album.creator)}</p>
+        <div class="ad-actions">
+          <a class="btn btn-secondary" href="/albums">← Back</a>
+          ${canEdit ? `
+            <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload</a>
+            <a class="btn" href="/albums/${album.id}/photos/batch">↑ Batch</a>
+            <a class="btn btn-secondary" href="/albums/${album.id}/photos/add">+ Add photos</a>
+            <a class="btn btn-secondary" href="/albums/${album.id}/access">Access</a>
+            <a class="btn btn-secondary" href="/albums/${album.id}/edit">Edit</a>
+            <form class="inline" method="POST" action="/albums/${album.id}/delete"
+              onsubmit="return confirm('Delete this album?')">
+              <button class="btn btn-danger btn-icon" title="Delete">${TRASH}</button>
+            </form>` : ''}
+        </div>
       </div>
     </div>
-    ${photoGrid}
+    ${photoSection}
   `, req.session));
 });
 
@@ -425,41 +467,61 @@ router.get('/:id/access', requireEditor, async (req, res) => {
     ),
   ]);
 
-  const currentList = withAccess.rows.length === 0
-    ? '<p style="color:#888">No viewers have access yet.</p>'
-    : `<ul class="access-list">${withAccess.rows.map(u => `
-        <li style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #eee">
-          <span>${esc(u.name)} <small style="color:#888">${esc(u.email)}</small></span>
+  const viewerList = withAccess.rows.length === 0
+    ? `<div class="ac-empty">no viewers have access yet.</div>`
+    : withAccess.rows.map(u => `
+        <div class="ac-row">
+          <span class="ac-av">${esc((u.name || '?')[0].toUpperCase())}</span>
+          <div>
+            <div class="ac-nm">${esc(u.name)}</div>
+            <div class="ac-em">${esc(u.email)}</div>
+          </div>
           <form class="inline" method="POST" action="/albums/${album.id}/access/remove">
             <input type="hidden" name="viewer_id" value="${u.id}">
             <button class="btn btn-sm btn-danger btn-icon" title="Revoke">${TRASH}</button>
           </form>
-        </li>`).join('')}
-      </ul>`;
+        </div>`).join('');
 
   const addSection = withoutAccess.rows.length === 0
-    ? '<p style="color:#888">All viewers already have access.</p>'
-    : `<form method="POST" action="/albums/${album.id}/access/add" style="display:flex;gap:0.5rem;margin-top:0.5rem">
-        <select name="viewer_id" style="flex:1;padding:0.5rem;border:1px solid #ccc;border-radius:4px;font-size:1rem">
-          ${withoutAccess.rows.map(u => `<option value="${u.id}">${esc(u.name)} — ${esc(u.email)}</option>`).join('')}
-        </select>
-        <button class="btn" type="submit">Grant access</button>
-      </form>`;
+    ? `<p style="font-family:'Kalam',cursive;font-size:0.85rem;color:var(--ink-soft);margin:0;">All viewers already have access.</p>`
+    : withoutAccess.rows.map(u => `
+        <form method="POST" action="/albums/${album.id}/access/add">
+          <input type="hidden" name="viewer_id" value="${u.id}">
+          <div class="ac-cand">
+            <span class="ac-cand-av">${esc((u.name || '?')[0].toUpperCase())}</span>
+            <div>
+              <div class="ac-cand-nm">${esc(u.name)}</div>
+              <div class="ac-cand-em">${esc(u.email)}</div>
+            </div>
+            <button class="btn btn-sm" type="submit" style="margin-left:auto;white-space:nowrap;">Grant access</button>
+          </div>
+        </form>`).join('');
 
   res.send(page(`Access — ${esc(album.title)}`, `
-    <div class="top-bar">
-      <h1>Access — <em>${esc(album.title)}</em></h1>
-      <a class="btn btn-secondary" href="/albums/${album.id}">← Back to album</a>
+    <div class="ac-head">
+      <div>
+        <div class="ac-crumbs"><a href="/albums">albums</a> / <a href="/albums/${album.id}">${esc(album.title)}</a> / access</div>
+        <h1>who can see <em>${esc(album.title)}?</em></h1>
+        <p class="ac-sub">${withAccess.rows.length} viewer${withAccess.rows.length !== 1 ? 's' : ''} right now.</p>
+      </div>
+      <div>
+        <a class="btn btn-secondary" href="/albums/${album.id}">← back to album</a>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
-      <div class="card">
-        <h2 style="margin-top:0;font-size:1rem">Who has access</h2>
-        ${currentList}
+    <div class="ac-summary">
+      <span class="ac-lock">🔒 private album</span>
+      <span>visible only to people listed below.</span>
+    </div>
+    <div class="ac-body">
+      <div class="ac-main">
+        <h3>viewers <span class="ac-count">// can see this album</span></h3>
+        <p class="ac-hint">remove anyone to revoke their access immediately.</p>
+        ${viewerList}
       </div>
-      <div class="card">
-        <h2 style="margin-top:0;font-size:1rem">Grant access to a viewer</h2>
+      <aside class="ac-side">
+        <h4>ADD PEOPLE</h4>
         ${addSection}
-      </div>
+      </aside>
     </div>
   `, req.session));
 });

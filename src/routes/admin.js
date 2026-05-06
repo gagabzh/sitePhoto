@@ -18,34 +18,60 @@ router.get('/', async (req, res) => {
   const { rows } = await db.query(
     'SELECT id, name, email, role, created_at FROM users ORDER BY created_at'
   );
-  const tbody = rows.map(u => `
-    <tr>
-      <td>${esc(u.name)}</td>
-      <td>${esc(u.email)}</td>
-      <td>${roleBadge(u.role)}</td>
-      <td>${new Date(u.created_at).toLocaleDateString('fr-FR')}</td>
-      <td>
-        <div class="actions">
-          <a class="btn btn-sm btn-secondary" href="/admin/users/${u.id}/edit">Edit</a>
-          <a class="btn btn-sm" href="/admin/users/${u.id}/password">Password</a>
-          ${u.id !== req.session.userId ? `
-            <form class="inline" method="POST" action="/admin/users/${u.id}/delete"
-              onsubmit="return confirm('Delete ${esc(u.name)}?')">
-              <button class="btn btn-sm btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
-            </form>` : ''}
-        </div>
-      </td>
-    </tr>`).join('');
+
+  const tbody = rows.map(u => {
+    const initial = esc((u.name || '?')[0].toUpperCase());
+    const isSelf = u.id === req.session.userId;
+    const joined = new Date(u.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return `
+      <tr>
+        <td>
+          <div class="ul-name-cell">
+            <span class="ul-av">${initial}</span>
+            <div>
+              <div class="ul-nm">${esc(u.name)}${isSelf ? '<span class="ul-you">← you</span>' : ''}</div>
+              <div class="ul-email">${esc(u.email)}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="ul-chip ul-chip-${esc(u.role)}">${esc(u.role.toUpperCase())}</span></td>
+        <td class="ul-since">${joined}</td>
+        <td>
+          <div class="ul-acts">
+            <a class="ul-pill" href="/admin/users/${u.id}/edit">edit</a>
+            <a class="ul-pill" href="/admin/users/${u.id}/password">password</a>
+            ${!isSelf ? `
+              <form class="inline" method="POST" action="/admin/users/${u.id}/delete"
+                onsubmit="return confirm('Delete ${esc(u.name)}?')">
+                <button class="ul-pill ul-pill-danger" type="submit">delete</button>
+              </form>` : ''}
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
 
   res.send(page('Users', `
-    <div class="top-bar">
-      <h1>Users</h1>
-      <a class="btn" href="/admin/users/new">+ New user</a>
+    <div class="ul-page-h">
+      <div>
+        <h1>the <em>ledger</em>.</h1>
+        <p class="ul-sub">${rows.length} people · who they are, what role they play.</p>
+      </div>
+      <div>
+        <a class="btn" href="/admin/users/new">+ New user</a>
+      </div>
     </div>
-    <table>
-      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead>
+    <table class="ul-table">
+      <thead>
+        <tr>
+          <th>NAME</th>
+          <th>ROLE</th>
+          <th>JOINED</th>
+          <th></th>
+        </tr>
+      </thead>
       <tbody>${tbody}</tbody>
     </table>
+    <div class="ul-foot">// ${rows.length} of ${rows.length} · sorted by join date</div>
   `, req.session));
 });
 
