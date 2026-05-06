@@ -2,6 +2,34 @@
 
 ---
 
+## Design System
+
+**DS-1 — Avatar dropdown navigation**
+As a logged-in user, I see my initial in a circle in the top-right corner of every page. Clicking it opens a small menu with Account (always) and Admin (admins only), and a Logout option below a separator, so the navigation bar stays uncluttered.
+
+**DS-2 — Family Wall photo list**
+As an editor or admin browsing `/photos`, I see a hero strip of the 4 most recent photos, then a mosaic wall (groups of 9 with a large featured first cell), and a sidebar showing who has uploaded photos, the top tags, and the latest album — so the page feels like a living family wall rather than a flat list.
+
+**DS-3 — Photo Books album list**
+As a user browsing `/albums`, each album appears as a photo book with an ink spine, a 4:5 cover (filled by the first photo or a "no photos yet" note), a rotated label card with the title and creator, and a ribbon badge showing the photo count (or "EMPTY") — so the list feels like a shelf of real books.
+
+**DS-4 — Inside an Album**
+As a user opening an album, I see a 320 px cover photo on the left and the album info (title, description, photo and contributor counts, action buttons) on the right, followed by a 6-column mosaic of the first 9 photos — so the page reads like opening a photo book.
+
+**DS-5 — Access Vault**
+As an editor managing album access (`/albums/:id/access`), I see a header with "who can see [Album]?", a summary bar showing the album is private, a main panel listing current viewers with a revoke button each, and a sidebar panel where each candidate has their own inline Grant access button — so granting and revoking is direct and per-person.
+
+**DS-6 — Map First**
+As a user on `/map`, the map fills the full viewport height and a 280 px sidebar on the left shows a filter form and a list of albums with photo counts. Clicking a map pin or cluster opens a photo strip overlay at the bottom of the map with thumbnails and coordinates — so the map is the primary experience.
+
+**DS-7 — Timeline Story**
+As a user on `/timeline`, I see a large handwritten headline ("everything we've seen together, in order"), a stats block (total photos, people, first year), and below it each month as a row with a dot timeline, the month-year heading, a photo count and uploader list, and a variable-size photo grid (1–5 cells) — so the timeline reads like a shared diary.
+
+**DS-8 — The Ledger**
+As an admin on `/admin/users`, I see "the ledger." as the page heading and a structured table with an avatar circle, name, email, role chip (solid for ADMIN, blue for EDITOR, outlined for VIEWER), and join date per row. The edit/password/delete actions are invisible at rest and reveal on row hover — so the page is calm to read but fast to act on.
+
+---
+
 ## Feature: User Management
 
 **US-1 — View user list**
@@ -181,3 +209,22 @@ As a user, on the map page I can type a location name (e.g. "Paris"), pick it fr
 
 **TL-4 — Filter by date range**
 As a user, on the timeline page I can set a "from" date and/or a "to" date (each with an optional date picker) to show only photos taken within that period.
+
+---
+
+## Infrastructure & Quality
+
+**IQ-1 — Application security hardening**
+As a developer, I audit and fix all injection vectors (SQL injection, XSS, path traversal, CSRF) and ensure no known CVEs exist in production dependencies, so the application is safe to expose on a public server.
+
+**IQ-2 — Dependency CVE monitoring**
+As a developer, I run an automated CVE check on every dependency (e.g. `npm audit`) in CI so that vulnerabilities are caught before they reach production.
+
+**IQ-3 — Linter**
+As a developer, I add ESLint (or equivalent) to the project with a consistent rule set, so code style is enforced automatically and obvious errors are caught before review.
+
+**IQ-4 — Code quality metrics**
+As a developer, I track test coverage (% of lines/branches exercised), code duplication (duplicated blocks), and function length (lines per function) so I can measure and improve maintainability over time.
+
+**IQ-5 — VPS hardening**
+As a sysadmin, I apply VPS-level security measures (SSH key-only auth, firewall rules, automatic security updates, fail2ban or equivalent) so the server is not trivially compromised.
