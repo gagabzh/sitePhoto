@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: sitephoto
       POSTGRES_USER: sitephoto
@@ -16,8 +17,7 @@ services:
 
   app:
     build: .
-    ports:
-      - "3000:3000"
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgres://sitephoto:${DB_PASSWORD:-changeme}@db:5432/sitephoto
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret}
@@ -31,5 +31,21 @@ services:
       db:
         condition: service_healthy
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
