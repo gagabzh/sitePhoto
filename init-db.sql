@@ -25,12 +25,6 @@ CREATE TABLE IF NOT EXISTS photos (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
--- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS taken_at DATE;
--- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS exposure_time TEXT;
--- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS focal_length NUMERIC(8,2);
--- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7);
--- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7);
--- Existing installs: ALTER TABLE photos ADD COLUMN IF NOT EXISTS nextcloud_url TEXT;
 
 CREATE TABLE IF NOT EXISTS tags (
   id SERIAL PRIMARY KEY,

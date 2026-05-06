@@ -730,6 +730,19 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
     expect(call[1][11]).toBeNull();
   });
 
+  it('accepts DMS coordinates and converts to decimal', async () => {
+    extractMetadata.mockResolvedValueOnce({});
+    db.query.mockResolvedValueOnce({ rows: [{ id: 23 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send("title=Cusco&latitude=14°02'01.7\"S&longitude=71°14'50.7\"W");
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(call[1][10]).toBeCloseTo(-14.0338, 3);
+    expect(call[1][11]).toBeCloseTo(-71.2474, 3);
+  });
+
   it('upload form contains GPS fields', async () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos/upload');
     expect(res.text).toContain('name="latitude"');
