@@ -47,6 +47,14 @@ function canModify(session, photo) {
   return session.role === 'admin' || photo.user_id === session.userId;
 }
 
+function sanitizeNextcloudUrl(raw) {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' ? raw : null;
+  } catch { return null; }
+}
+
 // US-P1: Photo list (editor/admin)
 router.get('/', requireEditor, async (req, res) => {
   const { rows } = await db.query(`
@@ -156,6 +164,12 @@ router.get('/upload', requireEditor, (req, res) => {
         <label>Tags <small>(comma-separated, e.g. Paris, John Doe)</small>
           <input type="text" name="tags" placeholder="Paris, John Doe">
         </label>
+        <label>Date taken <small>(optional)</small>
+          <input type="date" name="taken_at">
+        </label>
+        <label>Nextcloud link <small>(optional — https:// share link for original download)</small>
+          <input type="url" name="nextcloud_url" placeholder="https://cloud.example/s/…">
+        </label>
         <div class="row">
           <button class="btn" type="submit">Upload</button>
           <a class="btn btn-secondary" href="/photos">Cancel</a>
@@ -171,13 +185,14 @@ router.post('/upload', requireEditor, (req, res, next) => {
     if (err && err.code === 'LIMIT_FILE_SIZE') return res.redirect('/photos/upload?error=size');
     if (err || !req.file) return res.redirect('/photos/upload?error=type');
 
-    const { title, description, tags } = req.body;
+    const { title, description, tags, taken_at, nextcloud_url } = req.body;
     try {
       const filepath = path.join(UPLOAD_DIR, req.file.filename);
       const finalSize = await optimizePhoto(filepath, req.file.mimetype);
+      const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
       const { rows } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize]
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, taken_at || null, ncUrl]
       );
       if (tags) await setTags(rows[0].id, tags);
       res.redirect(`/photos/${rows[0].id}`);
@@ -215,6 +230,7 @@ router.get('/:id', async (req, res) => {
           <p style="color:#888;margin-top:0;font-size:0.9rem">by ${esc(photo.uploader)}</p>
           ${photo.description ? `<p>${esc(photo.description)}</p>` : ''}
           ${photo.tags.length ? `<div class="tags">${photo.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${photo.nextcloud_url ? `<div style="margin-top:1rem"><a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a></div>` : ''}
         </div>
         ${canEdit ? `
           <div class="row" style="flex-shrink:0">
@@ -258,6 +274,12 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
           <label>Tags <small>(comma-separated)</small>
             <input type="text" name="tags" value="${esc(photo.tags.join(', '))}">
           </label>
+          <label>Date taken
+            <input type="date" name="taken_at" value="${photo.taken_at ? new Date(photo.taken_at).toISOString().split('T')[0] : ''}">
+          </label>
+          <label>Nextcloud link <small>(optional — leave blank to remove)</small>
+            <input type="url" name="nextcloud_url" value="${esc(photo.nextcloud_url || '')}">
+          </label>
           <div class="row">
             <button class="btn" type="submit">Save</button>
             <a class="btn btn-secondary" href="/photos/${photo.id}">Cancel</a>
@@ -275,10 +297,11 @@ router.post('/:id', requireEditor, async (req, res) => {
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
-  const { title, description, tags } = req.body;
+  const { title, description, tags, taken_at, nextcloud_url } = req.body;
+  const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
   await db.query(
-    'UPDATE photos SET title = $1, description = $2, updated_at = NOW() WHERE id = $3',
-    [title, description || null, req.params.id]
+    'UPDATE photos SET title = $1, description = $2, taken_at = $3, nextcloud_url = $4, updated_at = NOW() WHERE id = $5',
+    [title, description || null, taken_at || null, ncUrl, req.params.id]
   );
   await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);

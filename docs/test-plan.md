@@ -301,6 +301,103 @@
 
 ---
 
+## Timeline (TL1–TL3)
+
+### Preconditions
+
+- At least three photos uploaded: two in the same month, one in a different month.
+- At least one photo has a "Date taken" set to a past date different from its upload date.
+- At least one album with photos exists and has been shared with a viewer account.
+- At least one tag has been applied to a photo.
+
+---
+
+### TL1 — View the timeline (editor/admin)
+
+**Steps:**
+1. Log in as an editor or admin.
+2. Click **Timeline** in the navigation bar.
+
+**Expected:**
+- Photos are grouped under month headings (e.g. "March 2024").
+- Months appear in reverse-chronological order (most recent first).
+- Each photo card shows its thumbnail, title, and uploader.
+- Clicking a photo card navigates to the photo detail page.
+- Two photos from the same month appear under a single heading (not two separate headings).
+
+---
+
+### TL1 — Filter by album
+
+**Steps:**
+1. On the Timeline page, open the **Album** dropdown and select an album.
+2. Click **Filter**.
+
+**Expected:**
+- Only photos belonging to that album are shown.
+- The album dropdown shows the selected album as the active option.
+- A **Clear** link appears next to the Filter button.
+- Clicking **Clear** returns to the full unfiltered timeline.
+
+---
+
+### TL1 — Filter by tag
+
+**Steps:**
+1. On the Timeline page, open the **Tag** dropdown and select a tag.
+2. Click **Filter**.
+
+**Expected:**
+- Only photos with that tag are shown.
+- The tag dropdown shows the selected tag as the active option.
+- A **Clear** link appears; clicking it restores the full timeline.
+
+---
+
+### TL2 — Viewer sees only accessible photos
+
+**Steps:**
+1. Log in as a viewer.
+2. Click **Timeline**.
+
+**Expected:**
+- Only photos from albums explicitly shared with this viewer appear.
+- Photos from unshared albums are not visible.
+- The Album dropdown only lists albums the viewer has access to.
+- The Tag dropdown only lists tags on photos the viewer can see.
+
+---
+
+### TL3 — Date taken drives timeline placement
+
+**Steps:**
+1. Upload a photo and set **Date taken** to a date in a past month (e.g. January 2023).
+2. Navigate to the Timeline.
+
+**Expected:**
+- The photo appears under the "January 2023" heading.
+3. Edit the photo and clear the **Date taken** field. Save.
+4. Reload the Timeline.
+
+**Expected:**
+- The photo no longer appears in the Timeline at all (only photos with an explicit date are shown).
+5. Upload a second photo without setting a Date taken.
+
+**Expected:**
+- The second photo does not appear in the Timeline.
+
+---
+
+### Timeline access control
+
+| Action | Admin | Editor | Viewer |
+|---|---|---|---|
+| View `/timeline` | ✅ all photos | ✅ all photos | ✅ shared-album photos only |
+| Filter by album | ✅ | ✅ | ✅ accessible albums only |
+| Filter by tag | ✅ | ✅ | ✅ accessible tags only |
+
+---
+
 ## Access control checks — User Management
 
 | Action | Admin | Editor | Viewer | Unauthenticated |

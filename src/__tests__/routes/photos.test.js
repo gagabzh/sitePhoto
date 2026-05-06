@@ -117,7 +117,7 @@ describe('US-P1/P2: POST /photos/upload — upload handling', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/42');
@@ -229,7 +229,7 @@ describe('US-P3: POST /photos/:id — save edits', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
-      ['Updated Title', 'New desc', '1']
+      ['Updated Title', 'New desc', null, null, '1']
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/1');
@@ -413,5 +413,106 @@ describe('GET /photos — photo list shows checkboxes', () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
     expect(res.text).toContain('<input type="checkbox"');
+  });
+});
+
+// ── US-NC1: Link Nextcloud at upload ─────────────────────────────────────────
+
+describe('US-NC1: POST /photos/upload — store nextcloud_url', () => {
+  it('stores a valid https nextcloud_url', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 7 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Beach&nextcloud_url=https%3A%2F%2Fcloud.example%2Fs%2Fabc123');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, 'https://cloud.example/s/abc123']
+    );
+    expect(res.status).toBe(302);
+  });
+
+  it('stores null when nextcloud_url is not https', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 8 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Beach&nextcloud_url=http%3A%2F%2Finsecure.example%2Fs%2Fxyz');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      expect.arrayContaining([null])
+    );
+    const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(callArgs[1][8]).toBeNull();
+  });
+
+  it('upload form contains nextcloud_url field', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/upload');
+    expect(res.text).toContain('nextcloud_url');
+    expect(res.text).toContain('Nextcloud link');
+  });
+});
+
+// ── US-NC2: Download original button ─────────────────────────────────────────
+
+describe('US-NC2: GET /photos/:id — download original button', () => {
+  it('shows Download original button when nextcloud_url is set', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, nextcloud_url: 'https://cloud.example/s/abc' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Download original');
+    expect(res.text).toContain('https://cloud.example/s/abc');
+  });
+
+  it('hides Download original button when nextcloud_url is not set', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, nextcloud_url: null }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.text).not.toContain('Download original');
+  });
+});
+
+// ── US-NC3: Manage Nextcloud link ─────────────────────────────────────────────
+
+describe('US-NC3: manage nextcloud_url via edit', () => {
+  it('edit form pre-fills existing nextcloud_url', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, nextcloud_url: 'https://cloud.example/s/abc' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('nextcloud_url');
+    expect(res.text).toContain('https://cloud.example/s/abc');
+  });
+
+  it('updates nextcloud_url to a new valid url', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T&nextcloud_url=https%3A%2F%2Fcloud.example%2Fs%2Fnew');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE photos'),
+      ['T', null, null, 'https://cloud.example/s/new', '1']
+    );
+  });
+
+  it('clears nextcloud_url when empty string is submitted', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T&nextcloud_url=');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE photos'),
+      ['T', null, null, null, '1']
+    );
   });
 });

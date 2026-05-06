@@ -15,6 +15,7 @@ function page(title, body, session) {
         ${session.role !== 'viewer' ? '<a href="/photos">Photos</a>' : ''}
         <a href="/albums">Albums</a>
         <a href="/tags">Tags</a>
+        <a href="/timeline">Timeline</a>
         <a href="/account/password">My account</a>
         <form method="POST" action="/logout">
           <button class="btn-nav">Logout</button>
@@ -97,6 +98,10 @@ function page(title, body, session) {
     .tag-cloud a:hover { background: #1a1a1a; color: white; }
     .tag-count { font-size: 0.75rem; color: #888; margin-left: 0.3rem; }
     .access-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+    .filter-bar { display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1.5rem; background:white; padding:0.65rem 1rem; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); }
+    .filter-bar select { padding:0.4rem 0.6rem; font-size:0.9rem; border:1px solid #ccc; border-radius:4px; }
+    .timeline-month { font-size:1.1rem; font-weight:600; margin:2rem 0 0.75rem; padding-bottom:0.4rem; border-bottom:2px solid #eee; color:#333; }
+    .timeline-month:first-child { margin-top:0; }
   </style>
 </head>
 <body>
