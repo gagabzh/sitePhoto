@@ -254,7 +254,7 @@ function page(title, body, session) {
     .photo-thumb img { display: block; width: 100%; height: 180px; object-fit: cover; }
     .photo-checkbox-label { position: absolute; top: 0.5rem; left: 0.5rem; z-index: 1; cursor: pointer; }
     .photo-checkbox-label input[type="checkbox"] { display: block; width: 1.1rem; height: 1.1rem; accent-color: var(--ink); cursor: pointer; }
-    .photo-card-selectable:has(input:checked) .photo-thumb img { outline: 3px solid var(--ink); }
+    .photo-card-selectable:has(input:checked) img { outline: 3px solid var(--ink); }
 
     /* ── Tags ── */
     .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
@@ -307,6 +307,97 @@ function page(title, body, session) {
     }
     .photo-exif dt { color: var(--ink-faint); }
     .photo-exif dd { margin: 0; color: var(--ink-soft); }
+
+    /* ── Family Wall ── */
+    .wall-greet { margin-bottom: 1.25rem; }
+    .wall-greet h1 { margin-bottom: 0.1rem; }
+    .wall-count {
+      font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;
+      color: var(--ink-faint); margin: 0;
+    }
+
+    .wall-hero {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px;
+      margin-bottom: 1.5rem; border: 2px solid var(--ink);
+    }
+    .wall-hero a { display: block; overflow: hidden; }
+    .wall-hero-img {
+      width: 100%; height: 220px; object-fit: cover; display: block;
+      transition: transform 0.25s;
+    }
+    .wall-hero a:hover .wall-hero-img { transform: scale(1.03); }
+
+    .wall-cols {
+      display: grid; grid-template-columns: 1fr 260px;
+      gap: 2rem; align-items: start;
+    }
+
+    /* mosaic — groups of 9 with a featured first photo */
+    .wall-mosaic {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      grid-template-rows: 140px 140px 110px;
+      grid-template-areas:
+        "a b c d"
+        "a e f g"
+        "h i i i";
+      gap: 3px; margin-bottom: 1rem;
+    }
+    .wall-cell { overflow: hidden; position: relative; }
+    .wall-cell:nth-child(1) { grid-area: a; }
+    .wall-cell:nth-child(2) { grid-area: b; }
+    .wall-cell:nth-child(3) { grid-area: c; }
+    .wall-cell:nth-child(4) { grid-area: d; }
+    .wall-cell:nth-child(5) { grid-area: e; }
+    .wall-cell:nth-child(6) { grid-area: f; }
+    .wall-cell:nth-child(7) { grid-area: g; }
+    .wall-cell:nth-child(8) { grid-area: h; }
+    .wall-cell:nth-child(9) { grid-area: i; }
+    .wall-cell a { display: block; height: 100%; }
+    .wall-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .wall-checkbox {
+      position: absolute; top: 0.4rem; left: 0.4rem; z-index: 1; cursor: pointer;
+    }
+    .wall-checkbox input[type="checkbox"] {
+      display: block; width: 1.1rem; height: 1.1rem; accent-color: var(--ink); cursor: pointer;
+    }
+    .photo-card-selectable:has(input:checked) img { outline: 3px solid var(--ink); }
+
+    /* sidebar */
+    .wall-side { display: flex; flex-direction: column; gap: 1.25rem; }
+    .wall-panel {
+      background: var(--paper); border: 2px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink); padding: 1rem;
+    }
+    .wall-section-h {
+      font-family: 'Caveat', cursive; font-size: 1.3rem; font-weight: 700;
+      margin: 0 0 0.75rem; padding-bottom: 0.4rem;
+      border-bottom: 1.5px dashed var(--ink);
+    }
+    .wall-who { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+    .wall-who li { display: flex; align-items: center; gap: 0.6rem; font-family: 'Kalam', cursive; font-size: 0.9rem; }
+    .wall-who-av {
+      width: 28px; height: 28px; border-radius: 50%; flex: none;
+      background: var(--paper-2); border: 1.5px solid var(--ink);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Caveat', cursive; font-size: 1rem; font-weight: 700;
+    }
+    .wall-who-count { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--ink-faint); }
+    .wall-tags { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .wall-album-cover {
+      width: 100%; height: 110px; object-fit: cover; display: block;
+      border: 1.5px solid var(--ink); margin-bottom: 0.5rem;
+    }
+    .wall-album-cover-empty {
+      display: flex; align-items: center; justify-content: center;
+      background: var(--paper-2); font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem; color: var(--ink-faint);
+    }
+    .wall-album-title {
+      font-family: 'Caveat', cursive; font-size: 1.2rem; font-weight: 700;
+      display: block; color: var(--ink); text-decoration: none;
+    }
+    .wall-album-title:hover { text-decoration: underline; }
   </style>
 </head>
 <body>

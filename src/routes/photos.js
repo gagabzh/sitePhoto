@@ -78,43 +78,129 @@ function parseCoord(raw, min, max) {
   return val;
 }
 
-// US-P1: Photo list (editor/admin)
+// US-P1: Photo list — Family Wall layout
 router.get('/', requireEditor, async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT p.id, p.filename, p.title, p.user_id, u.name AS uploader,
-      COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
-    FROM photos p
-    JOIN users u ON u.id = p.user_id
-    LEFT JOIN photo_tags pt ON pt.photo_id = p.id
-    LEFT JOIN tags t ON t.id = pt.tag_id
-    GROUP BY p.id, u.name
-    ORDER BY p.created_at DESC
-  `);
+  const [photosResult, albumResult] = await Promise.all([
+    db.query(`
+      SELECT p.id, p.filename, p.title, p.user_id, u.name AS uploader,
+        COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
+      FROM photos p
+      JOIN users u ON u.id = p.user_id
+      LEFT JOIN photo_tags pt ON pt.photo_id = p.id
+      LEFT JOIN tags t ON t.id = pt.tag_id
+      GROUP BY p.id, u.name
+      ORDER BY p.created_at DESC
+    `),
+    db.query(`
+      SELECT a.id, a.title,
+        (SELECT p2.filename FROM photos p2 WHERE p2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
+      FROM albums a
+      ORDER BY a.created_at DESC
+      LIMIT 1
+    `),
+  ]);
 
-  const grid = rows.length === 0
-    ? '<p>No photos yet. <a href="/photos/upload">Upload the first one.</a></p>'
-    : `<div class="photo-grid">${rows.map(p => {
+  const rows = photosResult.rows;
+  const latestAlbum = (albumResult && albumResult.rows && albumResult.rows[0]) || null;
+
+  const firstname = esc((req.session.name || '').split(' ')[0]);
+
+  if (rows.length === 0) {
+    return res.send(page('Photos', `
+      <div class="wall-greet">
+        <h1>hi <span style="color:var(--accent)">${firstname}</span>, welcome home.</h1>
+        <p class="wall-count">0 photos</p>
+      </div>
+      <p>No photos yet. <a href="/photos/upload">Upload the first one.</a></p>
+    `, req.session));
+  }
+
+  // Derive uploaders and top tags from photo data (no extra DB round-trip)
+  const uploaderCounts = {};
+  const tagCounts = {};
+  for (const p of rows) {
+    uploaderCounts[p.uploader] = (uploaderCounts[p.uploader] || 0) + 1;
+    for (const t of p.tags) tagCounts[t] = (tagCounts[t] || 0) + 1;
+  }
+  const uploaders = Object.entries(uploaderCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topTags   = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  // Hero strip — first 4 photos, display-only
+  const heroHtml = `
+    <div class="wall-hero">
+      ${rows.slice(0, 4).map(p => `
+        <a href="/photos/${p.id}">
+          <img class="wall-hero-img" src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+        </a>`).join('')}
+    </div>`;
+
+  // Wall mosaic — all photos chunked in groups of 9
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += 9) chunks.push(rows.slice(i, i + 9));
+  const mosaicHtml = chunks.map(chunk => `
+    <div class="wall-mosaic">
+      ${chunk.map(p => {
         const owns = canModify(req.session, p);
         return `
-        <div class="photo-card${owns ? ' photo-card-selectable' : ''}">
-          ${photoThumb(p, { owns })}
-          <div class="photo-meta">
-            <a href="/photos/${p.id}" style="text-decoration:none;color:inherit"><strong>${esc(p.title)}</strong></a>
-            <span class="uploader">by ${esc(p.uploader)}</span>
-            ${p.tags.length ? `<div class="tags">${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
-          </div>
+        <div class="wall-cell${owns ? ' photo-card-selectable' : ''}">
+          ${owns ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
+          <a href="/photos/${p.id}"><img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}"></a>
         </div>`;
       }).join('')}
-      </div>`;
+    </div>`).join('');
+
+  // Sidebar — who's around
+  const whoHtml = uploaders.map(([name, count]) => `
+    <li>
+      <span class="wall-who-av">${esc(name[0].toUpperCase())}</span>
+      <span>${esc(name)}</span>
+      <span class="wall-who-count">${count}</span>
+    </li>`).join('');
+
+  // Sidebar — top tags
+  const tagsHtml = topTags.map(([name]) =>
+    `<a class="tag" href="/tags/${encodeURIComponent(name)}">${esc(name)}</a>`
+  ).join('');
+
+  // Sidebar — latest album
+  const albumHtml = latestAlbum
+    ? `${latestAlbum.cover_filename
+        ? `<img class="wall-album-cover" src="/uploads/${esc(latestAlbum.cover_filename)}" alt="${esc(latestAlbum.title)}">`
+        : `<div class="wall-album-cover wall-album-cover-empty">no photos</div>`}
+       <a class="wall-album-title" href="/albums/${latestAlbum.id}">${esc(latestAlbum.title)}</a>`
+    : '<p style="font-size:0.85rem">No albums yet.</p>';
 
   res.send(page('Photos', `
-    <div class="top-bar">
-      <h1>Photos</h1>
-      <a class="btn" href="/photos/upload">+ Upload</a>
+    <div class="wall-greet">
+      <h1>hi <span style="color:var(--accent)">${firstname}</span>, welcome home.</h1>
+      <p class="wall-count">${rows.length} photo${rows.length !== 1 ? 's' : ''}</p>
     </div>
+    ${heroHtml}
     <form method="POST" action="/photos/bulk-tag">
       ${bulkBar({ showTag: true, deleteAction: '/photos/bulk-delete' })}
-      ${grid}
+      <div class="wall-cols">
+        <div>
+          <div class="row" style="justify-content:flex-end;margin-bottom:0.75rem">
+            <a class="btn" href="/photos/upload">+ Upload</a>
+          </div>
+          ${mosaicHtml}
+        </div>
+        <aside class="wall-side">
+          <div class="wall-panel">
+            <h3 class="wall-section-h">who's around</h3>
+            <ul class="wall-who">${whoHtml}</ul>
+          </div>
+          ${topTags.length ? `
+          <div class="wall-panel">
+            <h3 class="wall-section-h">browse by tag</h3>
+            <div class="wall-tags">${tagsHtml}</div>
+          </div>` : ''}
+          <div class="wall-panel">
+            <h3 class="wall-section-h">latest album</h3>
+            ${albumHtml}
+          </div>
+        </aside>
+      </div>
     </form>
     ${bulkScript()}
   `, req.session));
