@@ -1,5 +1,12 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../components', () => ({
+  photoThumb: jest.fn((p, { owns } = {}) =>
+    `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
+  bulkBar: jest.fn(() => '<div id="bulk-bar" class="bulk-bar-mock"><input type="text" name="tag"><button type="submit">Apply tag</button><button type="submit" formaction="/photos/bulk-delete">Delete selected</button></div>'),
+  bulkScript: jest.fn(() => '<script>/* bulk-script-mock */</script>'),
+}));
 jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
@@ -117,7 +124,7 @@ describe('US-P1/P2: POST /photos/upload — upload handling', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null]
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/42');
@@ -403,6 +410,13 @@ describe('GET /photos — photo list shows checkboxes', () => {
     expect(res.text).toContain('action="/photos/bulk-tag"');
   });
 
+  it('shows Delete selected button in bulk bar', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
+    expect(res.text).toContain('formaction="/photos/bulk-delete"');
+    expect(res.text).toContain('Delete selected');
+  });
+
   it('does not show checkbox on photos owned by others', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
@@ -413,6 +427,77 @@ describe('GET /photos — photo list shows checkboxes', () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
     expect(res.text).toContain('<input type="checkbox"');
+  });
+});
+
+// ── Bulk delete ───────────────────────────────────────────────────────────────
+
+describe('POST /photos/bulk-delete — delete multiple photos', () => {
+  it('deletes owned photos and their files, redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1, filename: 'a.jpg' }, { id: 2, filename: 'b.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=1&photo_ids=2');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id, filename FROM photos WHERE id = ANY'),
+      [[1, 2], 10]
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM photos WHERE id = ANY'),
+      [[1, 2]]
+    );
+    expect(fs.promises.unlink).toHaveBeenCalledTimes(2);
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/photos');
+  });
+
+  it('admin can delete photos from any owner', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3, filename: 'c.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(ADMIN_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=3');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT id, filename FROM photos WHERE id = ANY'),
+      [[3]]
+    );
+  });
+
+  it('redirects without DB calls when no ids provided', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-delete')
+      .send('');
+
+    expect(res.status).toBe(302);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('redirects without deleting when no allowed photos found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=99');
+
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(fs.promises.unlink).not.toHaveBeenCalled();
+    expect(res.status).toBe(302);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/photos/bulk-delete')
+      .send('photo_ids=1');
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
 
@@ -428,7 +513,7 @@ describe('US-NC1: POST /photos/upload — store nextcloud_url', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, 'https://cloud.example/s/abc123']
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, null, null, 'https://cloud.example/s/abc123']
     );
     expect(res.status).toBe(302);
   });
@@ -514,5 +599,89 @@ describe('US-NC3: manage nextcloud_url via edit', () => {
       expect.stringContaining('UPDATE photos'),
       ['T', null, null, null, '1']
     );
+  });
+});
+
+// ── EXIF metadata extraction ──────────────────────────────────────────────────
+
+describe('EXIF metadata: POST /photos/upload', () => {
+  const { extractMetadata } = require('../../extractMetadata');
+
+  it('stores exposure_time and focal_length extracted from EXIF', async () => {
+    extractMetadata.mockResolvedValueOnce({
+      takenAt:      new Date('2024-06-15T10:30:00Z'),
+      exposureTime: '1/250',
+      focalLength:  50,
+    });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 9 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Alps');
+
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO photos'),
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Alps', null, 'image/jpeg', 4000, '2024-06-15', '1/250', 50, null]
+    );
+  });
+
+  it('uses user-provided taken_at over EXIF date', async () => {
+    extractMetadata.mockResolvedValueOnce({
+      takenAt: new Date('2024-01-01T00:00:00Z'),
+    });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 10 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Alps&taken_at=2023-07-20');
+
+    const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(callArgs[1][7]).toBe('2023-07-20');
+  });
+
+  it('falls back to EXIF date when taken_at form field is empty', async () => {
+    extractMetadata.mockResolvedValueOnce({
+      takenAt: new Date('2024-06-15T10:30:00Z'),
+    });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 11 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Alps&taken_at=');
+
+    const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(callArgs[1][7]).toBe('2024-06-15');
+  });
+
+  it('stores nulls when EXIF is absent', async () => {
+    extractMetadata.mockResolvedValueOnce({});
+    db.query.mockResolvedValueOnce({ rows: [{ id: 12 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=Alps');
+
+    const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(callArgs[1][7]).toBeNull();
+    expect(callArgs[1][8]).toBeNull();
+    expect(callArgs[1][9]).toBeNull();
+  });
+});
+
+describe('EXIF metadata: GET /photos/:id — display', () => {
+  it('shows EXIF block when metadata is present', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, taken_at: '2024-06-15', exposure_time: '1/250', focal_length: '50.00' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.text).toContain('Exposition');
+    expect(res.text).toContain('1/250');
+    expect(res.text).toContain('Focale');
+    expect(res.text).toContain('50.00');
+  });
+
+  it('hides EXIF block when no metadata', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, taken_at: null, exposure_time: null, focal_length: null }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.text).not.toContain('Exposition');
+    expect(res.text).not.toContain('Focale');
   });
 });
