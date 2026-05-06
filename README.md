@@ -132,6 +132,16 @@ tar -czf uploads_$(date +%Y%m%d).tar.gz uploads/
 
 ## Development
 
+### With Docker
+
+```bash
+cp .env.example .env   # DOMAIN=localhost is the default
+docker compose up -d --build
+# App available at http://localhost
+```
+
+### Without Docker
+
 ```bash
 npm install
 npm run dev     # starts the server with nodemon on port 3000
