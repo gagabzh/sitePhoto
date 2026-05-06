@@ -107,7 +107,10 @@ router.get('/', async (req, res) => {
     ? `<p style="text-align:center;color:#888;padding:3rem 0">No photos with GPS coordinates found.</p>`
     : `<div id="map" style="height:600px;border-radius:8px;overflow:hidden"></div>
        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+       <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
        <script>
          (function(){
            var photos = ${photosJson};
@@ -115,14 +118,16 @@ router.get('/', async (req, res) => {
            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
              attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
            }).addTo(map);
+           var cluster = L.markerClusterGroup({ spiderfyOnMaxZoom: true, maxClusterRadius: 40 });
            var bounds = [];
            photos.forEach(function(p){
              var popup = '<a href="/photos/'+p.id+'" style="display:block;text-align:center">'
                +'<img src="/uploads/'+p.filename+'" style="width:120px;height:80px;object-fit:cover;border-radius:4px;display:block;margin:0 auto 0.4rem">'
                +'<strong>'+p.title+'</strong></a>';
-             L.marker([p.lat,p.lon]).bindPopup(popup).addTo(map);
+             cluster.addLayer(L.marker([p.lat,p.lon]).bindPopup(popup));
              bounds.push([p.lat,p.lon]);
            });
+           map.addLayer(cluster);
            if(bounds.length===1){ map.setView(bounds[0],13); }
            else { map.fitBounds(bounds,{padding:[32,32]}); }
          })();

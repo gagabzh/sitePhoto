@@ -34,6 +34,7 @@ describe('GPS3: GET /map — full map view', () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/map');
     expect(res.status).toBe(200);
     expect(res.text).toContain('leaflet');
+    expect(res.text).toContain('markercluster');
     expect(res.text).toContain('48.8584');
     expect(res.text).toContain('Eiffel Tower');
   });
