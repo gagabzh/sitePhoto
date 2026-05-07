@@ -17,7 +17,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", 'unpkg.com'],
       styleSrc: ["'self'", "'unsafe-inline'", 'unpkg.com', 'fonts.googleapis.com'],
-      imgSrc: ["'self'", 'data:', '*.tile.openstreetmap.org', 'unpkg.com'],
+      imgSrc: ["'self'", 'data:', '*.basemaps.cartocdn.com', 'unpkg.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
       connectSrc: ["'self'"],
     },
