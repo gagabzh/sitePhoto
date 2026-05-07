@@ -207,13 +207,19 @@ describe('POST /albums/new/folder — create album from folder', () => {
 
   it('applies shared tags to all photos', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 3 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // photo 1
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // tag upsert
-      .mockResolvedValueOnce({ rows: [] })             // photo_tags 1
-      .mockResolvedValueOnce({ rows: [{ id: 12 }] })  // photo 2
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // tag upsert
-      .mockResolvedValueOnce({ rows: [] });            // photo_tags 2
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })   // INSERT album
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // INSERT photo 1
+      .mockResolvedValueOnce({ rows: [] })             // DELETE photo_tags (11)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // INSERT tags 'summer'
+      .mockResolvedValueOnce({ rows: [] })             // INSERT photo_tags (11, 1)
+      .mockResolvedValueOnce({ rows: [{ id: 2 }] })   // INSERT tags '2024'
+      .mockResolvedValueOnce({ rows: [] })             // INSERT photo_tags (11, 2)
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] })  // INSERT photo 2
+      .mockResolvedValueOnce({ rows: [] })             // DELETE photo_tags (12)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // INSERT tags 'summer'
+      .mockResolvedValueOnce({ rows: [] })             // INSERT photo_tags (12, 1)
+      .mockResolvedValueOnce({ rows: [{ id: 2 }] })   // INSERT tags '2024'
+      .mockResolvedValueOnce({ rows: [] });            // INSERT photo_tags (12, 2)
 
     await request(makeApp(EDITOR_SESSION))
       .post('/albums/new/folder')
@@ -237,7 +243,7 @@ describe('POST /albums/new/folder — create album from folder', () => {
 
     await request(makeApp(EDITOR_SESSION))
       .post('/albums/new/folder')
-      .send('title=Beach+Trip&lat=48.8566&lng=2.3522');
+      .send('title=Beach+Trip&latitude=48.8566&longitude=2.3522');
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
@@ -583,7 +589,7 @@ describe('POST /albums/:id/photos/upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, '1']
+      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, '1', null, null, null, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1');
@@ -793,13 +799,15 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
   it('applies shared tags to all photos', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 11 }] })   // photo 1
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // tag upsert
-      .mockResolvedValueOnce({ rows: [] })              // photo_tags 1
-      .mockResolvedValueOnce({ rows: [{ id: 12 }] })   // photo 2
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // tag upsert
-      .mockResolvedValueOnce({ rows: [] });             // photo_tags 2
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // auth
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })        // INSERT photo 1
+      .mockResolvedValueOnce({ rows: [] })                  // DELETE photo_tags (11)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })         // INSERT tags 'paris'
+      .mockResolvedValueOnce({ rows: [] })                  // INSERT photo_tags (11, 1)
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] })        // INSERT photo 2
+      .mockResolvedValueOnce({ rows: [] })                  // DELETE photo_tags (12)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })         // INSERT tags 'paris'
+      .mockResolvedValueOnce({ rows: [] });                 // INSERT photo_tags (12, 1)
 
     await request(makeApp(EDITOR_SESSION))
       .post('/albums/1/photos/batch')
@@ -823,7 +831,7 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
     await request(makeApp(EDITOR_SESSION))
       .post('/albums/1/photos/batch')
-      .send('lat=48.8566&lng=2.3522');
+      .send('latitude=48.8566&longitude=2.3522');
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),

@@ -1,6 +1,4 @@
 const router = require('express').Router();
-const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const db = require('../db');
@@ -9,45 +7,14 @@ const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { photoThumb, bulkBar, bulkScript } = require('../components');
+const {
+  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags,
+  singleUploadFields, batchUploadFields,
+} = require('../uploadHelpers');
 
 function canModify(session, album) {
   return session.role === 'admin' || album.user_id === session.userId;
 }
-
-function parseCoord(raw, min, max) {
-  if (!raw || !String(raw).trim()) return null;
-  const s = String(raw).trim();
-  const dms = s.match(/^(\d+)[°d]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([NSEWnsew])$/);
-  if (dms) {
-    const deg = parseFloat(dms[1]);
-    const min_ = parseFloat(dms[2]);
-    const sec = parseFloat(dms[3]);
-    const dir = dms[4].toUpperCase();
-    const val = (deg + min_ / 60 + sec / 3600) * (/[SW]/.test(dir) ? -1 : 1);
-    if (isNaN(val) || val < min || val > max) return null;
-    return Math.round(val * 1e7) / 1e7;
-  }
-  const val = parseFloat(s);
-  if (isNaN(val) || val < min || val > max) return null;
-  return val;
-}
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, uuidv4() + ext);
-  },
-});
-
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, ALLOWED_TYPES.includes(file.mimetype)),
-});
 
 const TRASH = `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
 
@@ -179,23 +146,7 @@ router.get('/new/folder', requireEditor, (req, res) => {
           <small>Select a folder or multiple image files (JPEG, PNG, GIF, WebP · max 10 MB each)</small>
           <input type="file" name="photos" accept="image/*" multiple webkitdirectory required>
         </label>
-        <label>
-          Tags for all <small>(optional, comma-separated — e.g. Paris, 2024)</small>
-          <input type="text" name="tags" placeholder="Paris, 2024">
-        </label>
-        <p style="margin:0.5rem 0 0.25rem;font-weight:500;font-size:0.9rem">
-          GPS for all <small style="font-weight:normal">(optional — applied to photos without EXIF GPS)</small>
-        </p>
-        <div style="display:flex;gap:0.75rem">
-          <label style="flex:1">
-            Latitude
-            <input type="text" name="lat" placeholder="48.8566">
-          </label>
-          <label style="flex:1">
-            Longitude
-            <input type="text" name="lng" placeholder="2.3522">
-          </label>
-        </div>
+        ${batchUploadFields()}
         <div class="row">
           <button class="btn" type="submit">Create album</button>
           <a class="btn btn-secondary" href="/albums">Cancel</a>
@@ -209,8 +160,8 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
   upload.array('photos', 200)(req, res, async (err) => {
     if (err) return next(err);
     const { title, description, tags } = req.body;
-    const sharedLat = parseCoord(req.body.lat, -90, 90);
-    const sharedLng = parseCoord(req.body.lng, -180, 180);
+    const sharedLat = parseCoord(req.body.latitude, -90, 90);
+    const sharedLon = parseCoord(req.body.longitude, -180, 180);
     try {
       const { rows: [album] } = await db.query(
         'INSERT INTO albums (user_id, title, description) VALUES ($1, $2, $3) RETURNING id',
@@ -225,7 +176,7 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
         ]);
 
         const lat = meta.latitude ?? sharedLat;
-        const lng = meta.longitude ?? sharedLng;
+        const lon = meta.longitude ?? sharedLon;
         const photoTitle = path.basename(file.originalname, path.extname(file.originalname));
 
         const { rows: [photo] } = await db.query(
@@ -233,22 +184,10 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
             (user_id, filename, original_filename, title, mime_type, size, album_id, taken_at, latitude, longitude)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
           [req.session.userId, file.filename, file.originalname, photoTitle,
-           file.mimetype, finalSize, album.id, meta.takenAt || null, lat, lng]
+           file.mimetype, finalSize, album.id, meta.takenAt || null, lat, lon]
         );
 
-        if (tags) {
-          const names = String(tags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-          for (const name of names) {
-            const { rows: [tag] } = await db.query(
-              'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-              [name]
-            );
-            await db.query(
-              'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-              [photo.id, tag.id]
-            );
-          }
-        }
+        if (tags) await setTags(photo.id, tags);
       }
 
       res.redirect(`/albums/${album.id}`);
@@ -685,6 +624,7 @@ router.get('/:id/photos/upload', requireEditor, async (req, res) => {
         <label>Tags <small>(comma-separated, e.g. Paris, John Doe)</small>
           <input type="text" name="tags" placeholder="Paris, John Doe">
         </label>
+        ${singleUploadFields()}
         <div class="row">
           <button class="btn" type="submit">Upload</button>
           <a class="btn btn-secondary" href="/albums/${album.id}">Cancel</a>
@@ -707,27 +647,24 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
     if (err || !req.file)
       return res.redirect(`/albums/${albumId}/photos/upload?error=type`);
 
-    const { title, description, tags } = req.body;
+    const { title, description, tags, latitude, longitude, nextcloud_url } = req.body;
     try {
       const filepath = path.join(UPLOAD_DIR, req.file.filename);
-      const finalSize = await optimizePhoto(filepath, req.file.mimetype);
+      const [finalSize, exif] = await Promise.all([
+        optimizePhoto(filepath, req.file.mimetype),
+        extractMetadata(filepath),
+      ]);
+      const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
+      const takenAt = exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null;
+      const lat = parseCoord(latitude, -90, 90) ?? exif.latitude ?? null;
+      const lon = parseCoord(longitude, -180, 180) ?? exif.longitude ?? null;
       const { rows: [photo] } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, album_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, albumId]
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, album_id, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id',
+        [req.session.userId, req.file.filename, req.file.originalname, title, description || null,
+         req.file.mimetype, finalSize, albumId, takenAt, exif.exposureTime || null,
+         exif.focalLength || null, lat, lon, ncUrl]
       );
-      if (tags) {
-        const names = String(tags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-        for (const name of names) {
-          const { rows: [tag] } = await db.query(
-            'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-            [name]
-          );
-          await db.query(
-            'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-            [photo.id, tag.id]
-          );
-        }
-      }
+      if (tags) await setTags(photo.id, tags);
       res.redirect(`/albums/${albumId}`);
     } catch (e) {
       next(e);
@@ -756,23 +693,7 @@ router.get('/:id/photos/batch', requireEditor, async (req, res) => {
           <small>Select multiple image files (JPEG, PNG, GIF, WebP · max 10 MB each)</small>
           <input type="file" name="photos" accept="image/*" multiple required>
         </label>
-        <label>
-          Tags for all <small>(optional, comma-separated — e.g. Paris, 2024)</small>
-          <input type="text" name="tags" placeholder="Paris, 2024">
-        </label>
-        <p style="margin:0.5rem 0 0.25rem;font-weight:500;font-size:0.9rem">
-          GPS for all <small style="font-weight:normal">(optional — applied to photos without EXIF GPS)</small>
-        </p>
-        <div style="display:flex;gap:0.75rem">
-          <label style="flex:1">
-            Latitude
-            <input type="text" name="lat" placeholder="48.8566">
-          </label>
-          <label style="flex:1">
-            Longitude
-            <input type="text" name="lng" placeholder="2.3522">
-          </label>
-        </div>
+        ${batchUploadFields()}
         <div class="row">
           <button class="btn" type="submit">Upload all</button>
         </div>
@@ -791,8 +712,8 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
     if (err) return next(err);
 
     const sharedTags = req.body.tags || '';
-    const sharedLat = parseCoord(req.body.lat, -90, 90);
-    const sharedLng = parseCoord(req.body.lng, -180, 180);
+    const sharedLat = parseCoord(req.body.latitude, -90, 90);
+    const sharedLon = parseCoord(req.body.longitude, -180, 180);
 
     try {
       for (const file of (req.files || [])) {
@@ -803,7 +724,7 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
         ]);
 
         const lat = meta.latitude ?? sharedLat;
-        const lng = meta.longitude ?? sharedLng;
+        const lon = meta.longitude ?? sharedLon;
         const photoTitle = path.basename(file.originalname, path.extname(file.originalname));
 
         const { rows: [photo] } = await db.query(
@@ -811,22 +732,10 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
             (user_id, filename, original_filename, title, mime_type, size, album_id, taken_at, latitude, longitude)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
           [req.session.userId, file.filename, file.originalname, photoTitle,
-           file.mimetype, finalSize, req.params.id, meta.takenAt || null, lat, lng]
+           file.mimetype, finalSize, req.params.id, meta.takenAt || null, lat, lon]
         );
 
-        if (sharedTags) {
-          const names = String(sharedTags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-          for (const name of names) {
-            const { rows: [tag] } = await db.query(
-              'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-              [name]
-            );
-            await db.query(
-              'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-              [photo.id, tag.id]
-            );
-          }
-        }
+        if (sharedTags) await setTags(photo.id, sharedTags);
       }
       res.redirect(`/albums/${req.params.id}`);
     } catch (e) {

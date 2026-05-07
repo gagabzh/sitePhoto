@@ -21,7 +21,7 @@
       "src/**/*.js",
       "!src/__tests__/**"
     ],
-    "coverageThresholds": {
+    "coverageThreshold": {
       "global": {
         "statements": 90,
         "branches": 75,
