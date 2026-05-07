@@ -1,6 +1,4 @@
 const router = require('express').Router();
-const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
 const db = require('../db');
@@ -9,76 +7,14 @@ const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { bulkBar, bulkScript } = require('../components');
+const {
+  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields,
+} = require('../uploadHelpers');
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    // Extension derived from MIME type, not original filename, to prevent stored XSS via .html uploads
-    const ext = MIME_EXT[file.mimetype] || '.bin';
-    cb(null, uuidv4() + ext);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    cb(null, allowed.includes(file.mimetype));
-  },
-});
-
-async function setTags(photoId, rawTags) {
-  await db.query('DELETE FROM photo_tags WHERE photo_id = $1', [photoId]);
-  const names = String(rawTags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-  for (const name of names) {
-    const { rows } = await db.query(
-      'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-      [name]
-    );
-    await db.query(
-      'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [photoId, rows[0].id]
-    );
-  }
-}
 
 function canModify(session, photo) {
   return session.role === 'admin' || photo.user_id === session.userId;
-}
-
-function sanitizeNextcloudUrl(raw) {
-  if (!raw) return null;
-  try {
-    const u = new URL(raw);
-    return u.protocol === 'https:' ? raw : null;
-  } catch { return null; }
-}
-
-// Accepts decimal degrees ("48.8566", "-14.0338") or DMS ("14°02'01.7\"S", "71°14'50.7\"W")
-function parseCoord(raw, min, max) {
-  if (!raw || !String(raw).trim()) return null;
-  const s = String(raw).trim();
-
-  const dms = s.match(/^(\d+)[°d]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([NSEWnsew])$/);
-  if (dms) {
-    const deg = parseFloat(dms[1]);
-    const min_ = parseFloat(dms[2]);
-    const sec = parseFloat(dms[3]);
-    const dir = dms[4].toUpperCase();
-    const val = (deg + min_ / 60 + sec / 3600) * (/[SW]/.test(dir) ? -1 : 1);
-    if (isNaN(val) || val < min || val > max) return null;
-    return Math.round(val * 1e7) / 1e7;
-  }
-
-  const val = parseFloat(s);
-  if (isNaN(val) || val < min || val > max) return null;
-  return val;
 }
 
 // US-P1: Photo list — Family Wall layout
@@ -283,15 +219,7 @@ router.get('/upload', requireEditor, (req, res) => {
         <label>Tags <small>(comma-separated, e.g. Paris, John Doe)</small>
           <input type="text" name="tags" placeholder="Paris, John Doe">
         </label>
-        <label>GPS coordinates <small>(optional — auto-filled from photo EXIF if available)</small>
-          <div class="row" style="gap:0.5rem">
-            <input type="text" name="latitude"  placeholder="48.8566 ou 48°51′21″N" style="flex:1">
-            <input type="text" name="longitude" placeholder="2.3522  ou 2°21′08″E"  style="flex:1">
-          </div>
-        </label>
-        <label>Nextcloud link <small>(optional — https:// share link for original download)</small>
-          <input type="url" name="nextcloud_url" placeholder="https://cloud.example/s/…">
-        </label>
+        ${singleUploadFields()}
         <div class="row">
           <button class="btn" type="submit">Upload</button>
           <a class="btn btn-secondary" href="/photos">Cancel</a>
