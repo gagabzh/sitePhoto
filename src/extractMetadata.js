@@ -19,7 +19,7 @@ async function extractMetadata(filepath) {
       result.exposureTime = formatExposureTime(data.ExposureTime);
       result.focalLength  = data.FocalLength != null ? data.FocalLength : null;
     }
-    if (gps && gps.latitude != null && gps.longitude != null) {
+    if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
       result.latitude  = gps.latitude;
       result.longitude = gps.longitude;
     }
