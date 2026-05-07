@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
@@ -96,4 +97,17 @@ function batchUploadFields() {
     </div>`;
 }
 
-module.exports = { UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields, batchUploadFields };
+// Delete photos from DB and remove their files from disk
+async function deletePhotos(ids) {
+  if (!ids.length) return;
+  const { rows } = await db.query(
+    'SELECT filename FROM photos WHERE id = ANY($1::int[])',
+    [ids]
+  );
+  await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [ids]);
+  for (const p of rows) {
+    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(() => {});
+  }
+}
+
+module.exports = { UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields, batchUploadFields, deletePhotos };

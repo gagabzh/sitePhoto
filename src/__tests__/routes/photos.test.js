@@ -260,14 +260,15 @@ describe('US-P3: POST /photos/:id — save edits', () => {
 describe('US-P4: POST /photos/:id/delete — delete photo', () => {
   it('deletes photo and file, redirects to list for owner', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10, filename: 'test-uuid.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ user_id: 10, filename: 'test-uuid.jpg' }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ filename: 'test-uuid.jpg' }] })              // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                                           // deletePhotos: DELETE
 
     const res = await request(makeApp(EDITOR_SESSION)).post('/photos/1/delete');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM photos'),
-      ['1']
+      expect.stringContaining('DELETE FROM photos WHERE id = ANY'),
+      [[1]]
     );
     expect(fs.promises.unlink).toHaveBeenCalled();
     expect(res.status).toBe(302);
@@ -276,8 +277,9 @@ describe('US-P4: POST /photos/:id/delete — delete photo', () => {
 
   it('allows admin to delete any photo', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 99, filename: 'other.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ user_id: 99, filename: 'other.jpg' }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ filename: 'other.jpg' }] })               // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                                        // deletePhotos: DELETE
 
     const res = await request(makeApp(ADMIN_SESSION)).post('/photos/1/delete');
     expect(res.status).toBe(302);
@@ -434,15 +436,16 @@ describe('GET /photos — photo list shows checkboxes', () => {
 describe('POST /photos/bulk-delete — delete multiple photos', () => {
   it('deletes owned photos and their files, redirects', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 1, filename: 'a.jpg' }, { id: 2, filename: 'b.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })                             // SELECT id (ownership filter)
+      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }, { filename: 'b.jpg' }] })      // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                                                  // deletePhotos: DELETE
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/bulk-delete')
       .send('photo_ids=1&photo_ids=2');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('SELECT id, filename FROM photos WHERE id = ANY'),
+      expect.stringContaining('SELECT id FROM photos WHERE id = ANY'),
       [[1, 2], 10]
     );
     expect(db.query).toHaveBeenCalledWith(
@@ -456,15 +459,16 @@ describe('POST /photos/bulk-delete — delete multiple photos', () => {
 
   it('admin can delete photos from any owner', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 3, filename: 'c.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })               // SELECT id (no ownership filter)
+      .mockResolvedValueOnce({ rows: [{ filename: 'c.jpg' }] })    // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                         // deletePhotos: DELETE
 
     await request(makeApp(ADMIN_SESSION))
       .post('/photos/bulk-delete')
       .send('photo_ids=3');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('SELECT id, filename FROM photos WHERE id = ANY'),
+      expect.stringContaining('SELECT id FROM photos WHERE id = ANY'),
       [[3]]
     );
   });

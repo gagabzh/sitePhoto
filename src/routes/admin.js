@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
+const { deletePhotos } = require('../uploadHelpers');
 
 
 function roleOptions(selected) {
@@ -153,6 +154,8 @@ router.post('/:id', async (req, res) => {
 // US-4: Delete user
 router.post('/:id/delete', async (req, res) => {
   if (parseInt(req.params.id) === req.session.userId) return res.redirect('/admin/users');
+  const { rows: photos } = await db.query('SELECT id FROM photos WHERE user_id = $1', [req.params.id]);
+  await deletePhotos(photos.map(p => p.id));
   await db.query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.redirect('/admin/users');
 });
