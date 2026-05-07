@@ -6,6 +6,8 @@ jest.mock('../../components', () => ({
     `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
   bulkBar: jest.fn(() => '<div class="bulk-bar-mock"></div>'),
   bulkScript: jest.fn(() => '<script>/* bulk-script-mock */</script>'),
+  lbOverlay: jest.fn(() => '<div id="lb" class="lb-overlay-mock"></div>'),
+  lbScript: jest.fn(() => '<script>/* lb-script-mock */</script>'),
 }));
 jest.mock('fs', () => ({
   mkdirSync: jest.fn(),

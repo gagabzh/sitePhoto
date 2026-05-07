@@ -671,9 +671,44 @@ function page(title, body, session) {
     .ad-mosaic .ad-cell:nth-child(7) { grid-column: span 2; grid-row: span 1; }
     .ad-mosaic .ad-cell:nth-child(8) { grid-column: span 3; grid-row: span 2; }
     .ad-mosaic .ad-cell:nth-child(9) { grid-column: span 3; grid-row: span 2; }
-    .ad-cell { overflow: hidden; position: relative; }
+    .ad-cell { overflow: hidden; position: relative; cursor: pointer; }
     .ad-cell a { display: block; height: 100%; }
-    .ad-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .ad-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.15s; }
+    .ad-cell:hover img { opacity: 0.88; }
+
+    /* ── Lightbox ── */
+    .lb-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(20,18,14,0.93); align-items: center; justify-content: center;
+    }
+    .lb-overlay.lb-open { display: flex; }
+    .lb-img-wrap { position: relative; max-width: 90vw; max-height: 90vh; display: flex; align-items: center; justify-content: center; }
+    .lb-img-wrap img { max-width: 90vw; max-height: 85vh; object-fit: contain; display: block; border: 2px solid var(--ink); }
+    .lb-caption {
+      position: absolute; bottom: -1.8rem; left: 0; right: 0; text-align: center;
+      font-family: 'Kalam', cursive; font-size: 0.85rem; color: rgba(240,235,220,0.7);
+    }
+    .lb-btn {
+      position: fixed; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; padding: 1rem;
+      font-family: 'JetBrains Mono', monospace; font-size: 1.6rem;
+      color: rgba(240,235,220,0.7); transition: color 0.15s;
+    }
+    .lb-btn:hover { color: rgba(240,235,220,1); }
+    .lb-prev { left: 0.75rem; }
+    .lb-next { right: 0.75rem; }
+    .lb-close {
+      position: fixed; top: 1rem; right: 1.25rem;
+      background: none; border: none; cursor: pointer;
+      font-family: 'JetBrains Mono', monospace; font-size: 1.4rem;
+      color: rgba(240,235,220,0.7); transition: color 0.15s;
+    }
+    .lb-close:hover { color: rgba(240,235,220,1); }
+    .lb-counter {
+      position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%);
+      font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+      color: rgba(240,235,220,0.45); letter-spacing: 0.08em;
+    }
 
     /* ── Album Access (Vault) ── */
     .ac-head {
