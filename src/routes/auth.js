@@ -1,7 +1,15 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { page } = require('../layout');
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.get('/login', (req, res) => {
   if (req.session.userId) return res.redirect('/');
@@ -19,7 +27,7 @@ router.get('/login', (req, res) => {
   `));
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   const { rows } = await db.query(
     'SELECT id, name, password_hash, role FROM users WHERE email = $1',

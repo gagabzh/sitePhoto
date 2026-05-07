@@ -106,7 +106,7 @@ router.get('/', async (req, res) => {
         ${canModify(req.session, a) ? `<span class="ab-meta-acts">
           <a class="btn btn-sm btn-secondary" href="/albums/${a.id}/edit">edit</a>
           <form class="inline" method="POST" action="/albums/${a.id}/delete"
-            onsubmit="return confirm('Delete album \\'${esc(a.title)}\\'?')">
+            onsubmit="return confirm('Delete this album?')">
             <button class="btn btn-sm btn-danger btn-icon" title="Delete">${TRASH}</button>
           </form>
         </span>` : ''}
