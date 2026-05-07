@@ -8,15 +8,18 @@ const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
-const { photoThumb, bulkBar, bulkScript } = require('../components');
+const { bulkBar, bulkScript } = require('../components');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+const MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
+    // Extension derived from MIME type, not original filename, to prevent stored XSS via .html uploads
+    const ext = MIME_EXT[file.mimetype] || '.bin';
     cb(null, uuidv4() + ext);
   },
 });

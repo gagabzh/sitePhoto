@@ -3,9 +3,6 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 
-function roleBadge(role) {
-  return `<span class="badge badge-${esc(role)}">${esc(role)}</span>`;
-}
 
 function roleOptions(selected) {
   return ['admin', 'editor', 'viewer'].map(r =>
@@ -42,7 +39,7 @@ router.get('/', async (req, res) => {
             <a class="ul-pill" href="/admin/users/${u.id}/password">password</a>
             ${!isSelf ? `
               <form class="inline" method="POST" action="/admin/users/${u.id}/delete"
-                onsubmit="return confirm('Delete ${esc(u.name)}?')">
+                onsubmit="return confirm('Delete this user?')">
                 <button class="ul-pill ul-pill-danger" type="submit">delete</button>
               </form>` : ''}
           </div>

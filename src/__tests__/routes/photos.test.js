@@ -53,7 +53,6 @@ function makeApp(sessionData) {
     req.session = { ...sessionData, destroy: (cb) => cb() };
     next();
   });
-  const { requireEditor } = require('../../middleware');
   app.use('/photos', require('../../routes/photos'));
   return app;
 }
