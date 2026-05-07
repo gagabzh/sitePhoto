@@ -28,6 +28,12 @@ As a user on `/timeline`, I see a large handwritten headline ("everything we've 
 **DS-8 — The Ledger**
 As an admin on `/admin/users`, I see "the ledger." as the page heading and a structured table with an avatar circle, name, email, role chip (solid for ADMIN, blue for EDITOR, outlined for VIEWER), and join date per row. The edit/password/delete actions are invisible at rest and reveal on row hover — so the page is calm to read but fast to act on.
 
+**DS-9 — Responsive mobile layout**
+As a user on a smartphone, every page (photos wall, album list, album detail, timeline, map, forms) adapts to a narrow screen: navigation collapses gracefully, grids stack to 1–2 columns, and no content overflows horizontally — so the site is fully usable on mobile.
+
+**DS-10 — Tag page design**
+As a user on `/tags`, the page reflects the paper/ink design system: tags are displayed as pills with ink borders, the cloud adapts size to frequency, and the layout matches the visual identity of the rest of the site.
+
 ---
 
 ## Feature: User Management
@@ -118,6 +124,9 @@ As a viewer, I can click a "Download original" button on a photo page to be redi
 **US-NC3 — Manage Nextcloud link**
 As an editor, I can update or remove the Nextcloud link on any of my photos at any time.
 
+**US-NC4 — Import photos from Nextcloud**
+As an editor, I can browse my Nextcloud files directly from the upload form, select one or more photos, and import them into sitephoto — so photos already stored on Nextcloud don't need to be downloaded and re-uploaded manually.
+
 ---
 
 ## Feature: GPS & Map
@@ -155,20 +164,27 @@ As an editor, I can set a "taken on" date on a photo (separate from the upload d
 
 ## Improvements
 
-**IMP-1 — Date taken removed from upload**
+**IMP-1 — Date taken removed from upload** ✓
 As an editor, I no longer fill in a date taken at upload — it is extracted automatically from EXIF. I can still correct it later via the edit form.
 
-**IMP-2 — Batch upload to an album**
+**IMP-2 — Batch upload to an album** ✓
 As an editor, when I open an album I can select multiple photos (or an entire folder) at once. Before confirming, I can optionally set tags and GPS coordinates that will be applied to every photo in the batch. EXIF metadata (date taken, focal length, exposure time) is extracted individually per photo.
 
-**IMP-3 — Back buttons at the top of pages**
+**IMP-3 — Back buttons at the top of pages** ✓
 As a user, back and cancel buttons appear at the top of every form or detail page so I can navigate back without scrolling to the bottom.
 
-**IMP-4 — Select all**
+**IMP-4 — Select all** ✓
 As an editor, on the photo list page and on an album detail page, I can click a "Select all" button to check every visible photo at once, so I can perform bulk actions on all of them.
 
-**IMP-5 — One album per photo**
+**IMP-5 — One album per photo** ✓
 As an editor, each photo belongs to at most one album. If I add a photo that is already in another album, it is moved to the new one. Photos not added to any album remain as standalone photos, visible in the photo list.
+
+---
+
+## Feature: Photo Viewer (LB)
+
+**LB-1 — Lightbox / fullscreen viewer in album**
+As a viewer browsing an album, I can click any photo thumbnail to open it in a fullscreen overlay. I can navigate to the previous/next photo with arrow keys or on-screen buttons, and close with Escape or a close button — so I can view photos without leaving the album page.
 
 ---
 
@@ -195,6 +211,9 @@ As an editor, I can edit the title, description, GPX file, and linked content of
 
 **TG-1 — Multi-tag filter**
 As a user, on the tags page I can select several tags and see only photos that have all of the selected tags (AND logic, not OR).
+
+**TG-2 — Tag autocomplete**
+As an editor, when I type in a tag field (at upload time or on the edit form), I see a dropdown of existing tags matching what I've typed — so I reuse consistent tags rather than creating near-duplicates.
 
 ---
 
@@ -226,5 +245,5 @@ As a developer, I add ESLint (or equivalent) to the project with a consistent ru
 **IQ-4 — Code quality metrics**
 As a developer, I track test coverage (% of lines/branches exercised), code duplication (duplicated blocks), and function length (lines per function) so I can measure and improve maintainability over time.
 
-**IQ-5 — VPS hardening**
+**IQ-5 — VPS hardening** ✓
 As a sysadmin, I apply VPS-level security measures (SSH key-only auth, firewall rules, automatic security updates, fail2ban or equivalent) so the server is not trivially compromised.

@@ -41,6 +41,18 @@ router.get('/', async (req, res) => {
   `, req.session));
 });
 
+// ── TG-2: Tag autocomplete ────────────────────────────────────────────────────
+
+router.get('/autocomplete', async (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (!q) return res.json([]);
+  const { rows } = await db.query(
+    'SELECT name FROM tags WHERE name LIKE $1 ORDER BY name LIMIT 10',
+    [q + '%']
+  );
+  res.json(rows.map(r => r.name));
+});
+
 // ── V3: Photos by tag ────────────────────────────────────────────────────────
 
 router.get('/:name', async (req, res) => {
