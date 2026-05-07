@@ -186,8 +186,11 @@ router.get('/', async (req, res) => {
            });
 
            map.addLayer(cluster);
-           if (bounds.length === 1) { map.setView(bounds[0], 11); }
-           else if (bounds.length > 1) { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 }); }
+           setTimeout(function() {
+             map.invalidateSize();
+             if (bounds.length === 1) { map.setView(bounds[0], 11); }
+             else if (bounds.length > 1) { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 }); }
+           }, 0);
          })();
        </script>`;
 
