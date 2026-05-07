@@ -6,7 +6,7 @@ const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
-const { photoThumb, bulkBar, bulkScript } = require('../components');
+const { photoThumb, bulkBar, bulkScript, lbOverlay, lbScript } = require('../components');
 const {
   UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags,
   singleUploadFields, batchUploadFields, deletePhotos,
@@ -247,13 +247,20 @@ router.get('/:id', async (req, res) => {
   const mosaicCells = mosaic.map(p => `
     <div class="ad-cell${canEdit ? ' photo-card-selectable' : ''}">
       ${canEdit ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
-      <a href="/photos/${p.id}"><img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}"></a>
+      <a href="/photos/${p.id}" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}">
+        <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+      </a>
     </div>`).join('');
 
   const restGrid = rest.length > 0
     ? `<div class="photo-grid" style="margin-top:1rem">${rest.map(p => `
         <div class="photo-card${canEdit ? ' photo-card-selectable' : ''}">
-          ${photoThumb(p, { owns: canEdit })}
+          <div class="photo-thumb">
+            <a href="/photos/${p.id}" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}">
+              <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+            </a>
+            ${canEdit ? `<label class="photo-checkbox-label"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
+          </div>
           <div class="photo-meta"><strong>${esc(p.title)}</strong></div>
         </div>`).join('')}
       </div>` : '';
@@ -268,7 +275,9 @@ router.get('/:id', async (req, res) => {
         <div class="ad-mosaic">${mosaicCells}</div>
         ${restGrid}
       </form>
-      ${canEdit ? bulkScript() : ''}`;
+      ${canEdit ? bulkScript() : ''}
+      ${lbOverlay()}
+      ${lbScript()}`;
 
   res.send(page(album.title, `
     <div class="ad-head">
