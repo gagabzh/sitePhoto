@@ -66,6 +66,39 @@ describe('V3: GET /tags — tag list', () => {
   });
 });
 
+// ── TG-2: Tag autocomplete ────────────────────────────────────────────────────
+
+describe('GET /tags/autocomplete', () => {
+  it('returns matching tag names as JSON', async () => {
+    db.query.mockResolvedValue({ rows: [{ name: 'paris' }, { name: 'park' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/autocomplete?q=par');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(['paris', 'park']);
+    expect(db.query).toHaveBeenCalledWith(expect.any(String), ['par%']);
+  });
+
+  it('returns empty array for empty query', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/autocomplete?q=');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns empty array when no tags match', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/autocomplete?q=xyz');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('works for viewer too', async () => {
+    db.query.mockResolvedValue({ rows: [{ name: 'beach' }] });
+    const res = await request(makeApp(VIEWER_SESSION)).get('/tags/autocomplete?q=be');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(['beach']);
+  });
+});
+
 // ── V3: Photos by tag ────────────────────────────────────────────────────────
 
 describe('V3: GET /tags/:name — photos by tag', () => {

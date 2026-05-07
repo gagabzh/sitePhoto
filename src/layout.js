@@ -801,6 +801,20 @@ function page(title, body, session) {
       padding: 0.875rem 1.125rem;
       font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--ink-faint);
     }
+
+    /* ── Tag autocomplete ── */
+    .tag-ac-wrap { position: relative; }
+    .tag-ac {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
+      background: var(--paper); border: 1.5px solid var(--ink);
+      box-shadow: 3px 3px 0 var(--ink); max-height: 200px; overflow-y: auto;
+    }
+    .tag-ac-item {
+      padding: 0.4rem 0.75rem; font-family: 'Kalam', cursive; font-size: 0.9rem;
+      cursor: pointer; border-bottom: 1px dashed var(--ink-faint);
+    }
+    .tag-ac-item:last-child { border-bottom: none; }
+    .tag-ac-item:hover, .tag-ac-item.active { background: var(--paper-2); }
   </style>
 </head>
 <body>
@@ -812,6 +826,57 @@ function page(title, body, session) {
     w.querySelector('.nav-avatar').addEventListener('click',function(e){e.stopPropagation();w.classList.toggle('open');});
     document.addEventListener('click',function(){w.classList.remove('open');});
   })();</script>` : ''}
+  <script>(function(){
+    function initAc(input) {
+      var wrap = input.parentNode;
+      wrap.classList.add('tag-ac-wrap');
+      var drop = null, active = -1;
+      function close() { if(drop){drop.remove();drop=null;active=-1;} }
+      function open(items) {
+        close();
+        if(!items.length) return;
+        drop = document.createElement('div');
+        drop.className = 'tag-ac';
+        items.forEach(function(s,i) {
+          var d = document.createElement('div');
+          d.className = 'tag-ac-item';
+          d.textContent = s;
+          d.addEventListener('mousedown', function(e){ e.preventDefault(); pick(s); });
+          drop.appendChild(d);
+        });
+        wrap.appendChild(drop);
+      }
+      function pick(s) {
+        var parts = input.value.split(',');
+        parts[parts.length-1] = ' '+s;
+        input.value = parts.join(',') + ', ';
+        close(); input.focus();
+      }
+      function highlight(i) {
+        if(!drop) return;
+        var items = drop.querySelectorAll('.tag-ac-item');
+        items.forEach(function(el,j){ el.classList.toggle('active', j===i); });
+        active = i;
+      }
+      input.addEventListener('input', function() {
+        var parts = this.value.split(',');
+        var q = parts[parts.length-1].trim();
+        if(!q){ close(); return; }
+        fetch('/tags/autocomplete?q='+encodeURIComponent(q))
+          .then(function(r){ return r.json(); }).then(open).catch(close);
+      });
+      input.addEventListener('keydown', function(e) {
+        if(!drop) return;
+        var items = drop.querySelectorAll('.tag-ac-item');
+        if(e.key==='ArrowDown'){ e.preventDefault(); highlight(Math.min(active+1,items.length-1)); }
+        else if(e.key==='ArrowUp'){ e.preventDefault(); highlight(Math.max(active-1,0)); }
+        else if(e.key==='Enter'&&active>=0){ e.preventDefault(); pick(items[active].textContent); }
+        else if(e.key==='Escape'){ close(); }
+      });
+      input.addEventListener('blur', function(){ setTimeout(close, 150); });
+    }
+    document.querySelectorAll('input[name="tags"]').forEach(initAc);
+  })();</script>
 </body>
 </html>`;
 }
