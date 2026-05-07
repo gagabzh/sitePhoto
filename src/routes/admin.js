@@ -3,9 +3,6 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 
-function roleBadge(role) {
-  return `<span class="badge badge-${esc(role)}">${esc(role)}</span>`;
-}
 
 function roleOptions(selected) {
   return ['admin', 'editor', 'viewer'].map(r =>
