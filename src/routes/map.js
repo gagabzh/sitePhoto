@@ -134,7 +134,7 @@ router.get('/', async (req, res) => {
        <script>
          (function(){
            var photos = ${photosJson};
-           var map = L.map('map');
+           var map = L.map('map', { center: [20, 0], zoom: 2 });
            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
              attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
              subdomains:'abcd', maxZoom:20
@@ -186,8 +186,8 @@ router.get('/', async (req, res) => {
            });
 
            map.addLayer(cluster);
-           if (bounds.length === 1) { map.setView(bounds[0], 13); }
-           else if (bounds.length > 1) { map.fitBounds(bounds, {padding:[32,32]}); }
+           if (bounds.length === 1) { map.setView(bounds[0], 11); }
+           else if (bounds.length > 1) { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 }); }
          })();
        </script>`;
 
