@@ -123,16 +123,36 @@ describe('US-3: Edit user', () => {
 
 describe('US-4: Delete user', () => {
   it('POST /admin/users/:id/delete deletes user and redirects', async () => {
-    db.query.mockResolvedValue({ rows: [] });
+    db.query
+      .mockResolvedValueOnce({ rows: [] })   // SELECT filename FROM photos
+      .mockResolvedValueOnce({ rows: [] });  // DELETE FROM users
 
     const res = await request(makeApp(ADMIN_SESSION)).post('/admin/users/2/delete');
 
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT filename FROM photos'),
+      ['2']
+    );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM users'),
       ['2']
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users');
+  });
+
+  it('POST /admin/users/:id/delete unlinks photo files', async () => {
+    const fs = require('fs');
+    jest.spyOn(fs.promises, 'unlink').mockResolvedValue();
+    db.query
+      .mockResolvedValueOnce({ rows: [{ filename: 'abc.jpg' }, { filename: 'def.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(ADMIN_SESSION)).post('/admin/users/2/delete');
+
+    expect(fs.promises.unlink).toHaveBeenCalledWith(expect.stringContaining('abc.jpg'));
+    expect(fs.promises.unlink).toHaveBeenCalledWith(expect.stringContaining('def.jpg'));
+    fs.promises.unlink.mockRestore();
   });
 
   it('POST /admin/users/:id/delete does not delete self', async () => {

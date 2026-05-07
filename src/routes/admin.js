@@ -1,7 +1,10 @@
 const router = require('express').Router();
+const fs = require('fs');
+const path = require('path');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
+const { UPLOAD_DIR } = require('../uploadHelpers');
 
 
 function roleOptions(selected) {
@@ -153,7 +156,11 @@ router.post('/:id', async (req, res) => {
 // US-4: Delete user
 router.post('/:id/delete', async (req, res) => {
   if (parseInt(req.params.id) === req.session.userId) return res.redirect('/admin/users');
+  const { rows: photos } = await db.query('SELECT filename FROM photos WHERE user_id = $1', [req.params.id]);
   await db.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+  for (const p of photos) {
+    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(() => {});
+  }
   res.redirect('/admin/users');
 });
 
