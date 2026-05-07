@@ -31,6 +31,22 @@ describe('extractMetadata', () => {
     expect(result.longitude).toBeUndefined();
   });
 
+  it('returns no GPS fields when exifr.gps returns null coords (GPS tag present but no fix)', async () => {
+    exifr.parse.mockResolvedValue({});
+    exifr.gps.mockResolvedValue({ latitude: null, longitude: null });
+    const result = await extractMetadata('/some/photo.jpg');
+    expect(result.latitude).toBeUndefined();
+    expect(result.longitude).toBeUndefined();
+  });
+
+  it('returns no GPS fields when exifr.gps returns NaN coords (corrupted GPS tag)', async () => {
+    exifr.parse.mockResolvedValue({});
+    exifr.gps.mockResolvedValue({ latitude: NaN, longitude: NaN });
+    const result = await extractMetadata('/some/photo.jpg');
+    expect(result.latitude).toBeUndefined();
+    expect(result.longitude).toBeUndefined();
+  });
+
   it('formats exposure >= 1s as "N s"', async () => {
     exifr.parse.mockResolvedValue({ ExposureTime: 2 });
     const result = await extractMetadata('/some/photo.jpg');
