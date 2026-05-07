@@ -9,7 +9,7 @@ const { extractMetadata } = require('../extractMetadata');
 const { photoThumb, bulkBar, bulkScript } = require('../components');
 const {
   UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags,
-  singleUploadFields, batchUploadFields,
+  singleUploadFields, batchUploadFields, deletePhotos,
 } = require('../uploadHelpers');
 
 function canModify(session, album) {
@@ -338,21 +338,17 @@ router.post('/:id/photos/bulk-delete', requireEditor, async (req, res) => {
 
   const { rows } = req.session.role === 'admin'
     ? await db.query(
-        'SELECT p.id, p.filename FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[])',
+        'SELECT p.id FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[])',
         [req.params.id, ids]
       )
     : await db.query(
-        'SELECT p.id, p.filename FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
+        'SELECT p.id FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
         [req.params.id, ids, req.session.userId]
       );
 
   if (!rows.length) return res.redirect(`/albums/${req.params.id}`);
 
-  const allowedIds = rows.map(r => r.id);
-  await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [allowedIds]);
-  for (const photo of rows) {
-    fs.promises.unlink(path.join(UPLOAD_DIR, photo.filename)).catch(() => {});
-  }
+  await deletePhotos(rows.map(r => r.id));
   res.redirect(`/albums/${req.params.id}`);
 });
 

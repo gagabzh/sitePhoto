@@ -1,6 +1,6 @@
 const router = require('express').Router();
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { requireEditor } = require('../middleware');
@@ -8,7 +8,7 @@ const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { bulkBar, bulkScript } = require('../components');
 const {
-  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields,
+  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields, deletePhotos,
 } = require('../uploadHelpers');
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -182,17 +182,12 @@ router.post('/bulk-delete', requireEditor, async (req, res) => {
   if (!ids.length) return res.redirect('/photos');
 
   const { rows } = req.session.role === 'admin'
-    ? await db.query('SELECT id, filename FROM photos WHERE id = ANY($1::int[])', [ids])
-    : await db.query('SELECT id, filename FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
+    ? await db.query('SELECT id FROM photos WHERE id = ANY($1::int[])', [ids])
+    : await db.query('SELECT id FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
 
   if (!rows.length) return res.redirect('/photos');
 
-  const allowedIds = rows.map(r => r.id);
-  await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [allowedIds]);
-  for (const photo of rows) {
-    fs.promises.unlink(path.join(UPLOAD_DIR, photo.filename)).catch(() => {});
-  }
-
+  await deletePhotos(rows.map(r => r.id));
   res.redirect('/photos');
 });
 
@@ -398,8 +393,7 @@ router.post('/:id/delete', requireEditor, async (req, res) => {
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
-  await db.query('DELETE FROM photos WHERE id = $1', [req.params.id]);
-  fs.promises.unlink(path.join(UPLOAD_DIR, photo.filename)).catch(() => {});
+  await deletePhotos([parseInt(req.params.id)]);
   res.redirect('/photos');
 });
 

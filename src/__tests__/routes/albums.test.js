@@ -685,9 +685,10 @@ describe('POST /albums/:id/photos/bulk-delete', () => {
 
   it('permanently deletes owned photos and files, redirects', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 5, filename: 'a.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })          // SELECT user_id FROM albums
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })                 // SELECT p.id FROM photos
+      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] })     // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                         // deletePhotos: DELETE FROM photos
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/albums/1/photos/bulk-delete')
@@ -704,16 +705,17 @@ describe('POST /albums/:id/photos/bulk-delete', () => {
 
   it('admin can delete any photo in album', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [{ id: 5, filename: 'a.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })          // SELECT user_id FROM albums
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })                 // SELECT p.id FROM photos
+      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] })     // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                         // deletePhotos: DELETE FROM photos
 
     await request(makeApp(ADMIN_SESSION))
       .post('/albums/1/photos/bulk-delete')
       .send('photo_ids=5');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('SELECT p.id, p.filename FROM photos'),
+      expect.stringContaining('SELECT p.id FROM photos'),
       ['1', [5]]
     );
   });

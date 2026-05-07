@@ -124,13 +124,13 @@ describe('US-3: Edit user', () => {
 describe('US-4: Delete user', () => {
   it('POST /admin/users/:id/delete deletes user and redirects', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [] })   // SELECT filename FROM photos
+      .mockResolvedValueOnce({ rows: [] })   // SELECT id FROM photos (user's photos — none)
       .mockResolvedValueOnce({ rows: [] });  // DELETE FROM users
 
     const res = await request(makeApp(ADMIN_SESSION)).post('/admin/users/2/delete');
 
     expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('SELECT filename FROM photos'),
+      expect.stringContaining('SELECT id FROM photos'),
       ['2']
     );
     expect(db.query).toHaveBeenCalledWith(
@@ -141,12 +141,14 @@ describe('US-4: Delete user', () => {
     expect(res.headers.location).toBe('/admin/users');
   });
 
-  it('POST /admin/users/:id/delete unlinks photo files', async () => {
+  it('POST /admin/users/:id/delete unlinks photo files via deletePhotos', async () => {
     const fs = require('fs');
     jest.spyOn(fs.promises, 'unlink').mockResolvedValue();
     db.query
-      .mockResolvedValueOnce({ rows: [{ filename: 'abc.jpg' }, { filename: 'def.jpg' }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ id: 11 }, { id: 12 }] })           // SELECT id FROM photos
+      .mockResolvedValueOnce({ rows: [{ filename: 'abc.jpg' }, { filename: 'def.jpg' }] }) // deletePhotos SELECT filename
+      .mockResolvedValueOnce({ rows: [] })                                  // deletePhotos DELETE FROM photos
+      .mockResolvedValueOnce({ rows: [] });                                 // DELETE FROM users
 
     await request(makeApp(ADMIN_SESSION)).post('/admin/users/2/delete');
 
