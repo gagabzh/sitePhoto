@@ -37,8 +37,17 @@ CREATE TABLE IF NOT EXISTS photos (
 );
 
 CREATE TABLE IF NOT EXISTS tags (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) UNIQUE NOT NULL
+  id       SERIAL PRIMARY KEY,
+  name     VARCHAR(100) UNIQUE NOT NULL,
+  category VARCHAR(20) CHECK (category IN ('people','places','years','themes'))
+);
+
+CREATE TABLE IF NOT EXISTS tag_recipes (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        VARCHAR(100) NOT NULL,
+  query_json  JSONB NOT NULL,
+  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS photo_tags (
