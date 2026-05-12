@@ -139,6 +139,10 @@ router.get('/', async (req, res) => {
     lon: p.longitude,
   })));
 
+  const zoneJson = hasLocFilter
+    ? JSON.stringify({ lat: effectiveLat, lon: effectiveLon, radius: radiusFilter })
+    : 'null';
+
   const mapContent = photos.length === 0
     ? `<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:300px;font-family:'Kalam',cursive;color:var(--ink-faint)">No photos with GPS coordinates found.</div>`
     : `<div id="map"></div>
@@ -158,6 +162,7 @@ router.get('/', async (req, res) => {
        <script>
          (function(){
            var photos = ${photosJson};
+           var zone   = ${zoneJson};
            var map = L.map('map', { center: [20, 0], zoom: 2 });
            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
              attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
@@ -212,8 +217,18 @@ router.get('/', async (req, res) => {
            map.addLayer(cluster);
            setTimeout(function() {
              map.invalidateSize();
-             if (bounds.length === 1) { map.setView(bounds[0], 11); }
-             else if (bounds.length > 1) { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 }); }
+             if (zone) {
+               var dLat = zone.radius / 111.32;
+               var dLon = zone.radius / (111.32 * Math.cos(zone.lat * Math.PI / 180));
+               map.fitBounds(
+                 [[zone.lat - dLat, zone.lon - dLon], [zone.lat + dLat, zone.lon + dLon]],
+                 { padding: [20, 20] }
+               );
+             } else if (bounds.length === 1) {
+               map.setView(bounds[0], 11);
+             } else if (bounds.length > 1) {
+               map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+             }
            }, 0);
          })();
        </script>`;
