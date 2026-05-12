@@ -517,6 +517,28 @@
 
 ---
 
+### US-GPS5 — Zone search (Haversine radius filter)
+
+**Steps:**
+1. On the Map page, type a place name into the **Zone search** input.
+2. Select a suggestion from the dropdown (e.g. "Paris, France").
+3. Adjust the **Radius** field (default 25 km) if desired.
+4. Click **Apply**.
+
+**Expected:**
+- Only photos whose GPS coordinates fall within the chosen radius from the selected point appear as pins.
+- The filter bar shows the coordinates as the search input placeholder.
+- A **Clear** link is shown; clicking it resets all filters.
+
+**Steps (no result):**
+1. Enter a very small radius (e.g. 1 km) around a remote area with no photos.
+2. Click **Apply**.
+
+**Expected:**
+- "No photos with GPS coordinates found." message is displayed.
+
+---
+
 ### Map access control
 
 | Action | Admin | Editor | Viewer |

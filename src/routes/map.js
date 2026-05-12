@@ -2,7 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { page, esc } = require('../layout');
 
-async function fetchGeoPhotos(session, albumFilter, tagFilter) {
+async function fetchGeoPhotos(session, albumFilter, tagFilter, latFilter, lonFilter, radiusKm) {
   const isViewer = session.role === 'viewer';
   const params = [];
   const joins = [];
@@ -24,6 +24,19 @@ async function fetchGeoPhotos(session, albumFilter, tagFilter) {
     joins.push('JOIN tags t ON t.id = pt.tag_id');
     params.push(tagFilter);
     conditions.push(`t.name = $${params.length}`);
+  }
+
+  if (latFilter !== null && lonFilter !== null) {
+    const p1 = params.length + 1;
+    const p2 = params.length + 2;
+    const p3 = params.length + 3;
+    params.push(latFilter, lonFilter, radiusKm);
+    conditions.push(`
+      6371 * 2 * asin(sqrt(
+        power(sin((radians(p.latitude::float) - radians($${p1})) / 2), 2)
+        + cos(radians($${p1})) * cos(radians(p.latitude::float))
+        * power(sin((radians(p.longitude::float) - radians($${p2})) / 2), 2)
+      )) <= $${p3}`);
   }
 
   const sql = `
@@ -78,11 +91,18 @@ async function fetchFilterOptions(session) {
 }
 
 router.get('/', async (req, res) => {
-  const albumFilter = req.query.album ? parseInt(req.query.album) : null;
-  const tagFilter   = req.query.tag   || null;
+  const albumFilter  = req.query.album  ? parseInt(req.query.album)  : null;
+  const tagFilter    = req.query.tag    || null;
+  const latFilter    = req.query.lat    !== undefined ? parseFloat(req.query.lat)    : null;
+  const lonFilter    = req.query.lon    !== undefined ? parseFloat(req.query.lon)    : null;
+  const radiusFilter = req.query.radius ? Math.min(500, Math.max(1, parseFloat(req.query.radius) || 25)) : 25;
+
+  const hasLocFilter = latFilter !== null && lonFilter !== null && !isNaN(latFilter) && !isNaN(lonFilter);
+  const effectiveLat = hasLocFilter ? latFilter : null;
+  const effectiveLon = hasLocFilter ? lonFilter : null;
 
   const [photos, { albums, tags }] = await Promise.all([
-    fetchGeoPhotos(req.session, albumFilter, tagFilter),
+    fetchGeoPhotos(req.session, albumFilter, tagFilter, effectiveLat, effectiveLon, radiusFilter),
     fetchFilterOptions(req.session),
   ]);
 
@@ -94,8 +114,12 @@ router.get('/', async (req, res) => {
     `<option value="${esc(t.name)}"${tagFilter === t.name ? ' selected' : ''}>${esc(t.name)}</option>`
   ).join('');
 
-  const clearLink = (albumFilter || tagFilter)
+  const clearLink = (albumFilter || tagFilter || hasLocFilter)
     ? `<a href="/map" class="btn btn-secondary btn-sm">Clear</a>` : '';
+
+  const locPlaceholder = hasLocFilter
+    ? `${latFilter.toFixed(5)}, ${lonFilter.toFixed(5)}`
+    : 'Search a place…';
 
   const placeList = albums.map(a => {
     const active = albumFilter === a.id ? ' active' : '';
@@ -209,6 +233,21 @@ router.get('/', async (req, res) => {
             <option value="">All tags</option>
             ${tagOptions}
           </select>
+
+          <div class="map-loc-section">
+            <p class="map-loc-label">Zone search</p>
+            <div class="loc-search-wrap" data-lat-name="lat" data-lon-name="lon">
+              <input type="text" class="loc-search-input" placeholder="${locPlaceholder}" autocomplete="off">
+              <button type="button" class="loc-clear-btn" style="${hasLocFilter ? '' : 'display:none'}">×</button>
+            </div>
+            <input type="hidden" name="lat" value="${hasLocFilter ? latFilter : ''}">
+            <input type="hidden" name="lon" value="${hasLocFilter ? lonFilter : ''}">
+            <div class="map-radius-row">
+              <label>Radius <input type="number" name="radius" value="${radiusFilter}" min="1" max="500" class="map-radius-input"> km</label>
+              <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+            </div>
+          </div>
+
           ${clearLink}
         </form>
 

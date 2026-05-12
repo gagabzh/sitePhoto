@@ -445,6 +445,11 @@ function page(title, body, session) {
       padding: 0.3rem 0.5rem; border: 1.5px solid var(--ink);
       background: var(--paper); color: var(--ink);
     }
+    .map-loc-section { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.25rem; }
+    .map-loc-label { margin: 0; font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.15em; color: var(--ink-faint); text-transform: uppercase; }
+    .map-radius-row { display: flex; align-items: center; gap: 0.5rem; }
+    .map-radius-row label { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; flex: 1; }
+    .map-radius-input { width: 4.5rem; font-family: 'Kalam', cursive; font-size: 0.85rem; padding: 0.25rem 0.4rem; border: 1.5px solid var(--ink); background: var(--paper); color: var(--ink); }
     .map-side-h {
       font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
       letter-spacing: 0.15em; color: var(--ink-faint); text-transform: uppercase;
@@ -1147,6 +1152,8 @@ function page(title, body, session) {
       .map-frame { grid-template-columns: 1fr; grid-template-rows: auto 1fr; margin: -1.25rem -1rem -5.5rem; }
       .map-side { border-right: none; border-bottom: 2px solid var(--ink); padding: 0.75rem 1rem; max-height: none; overflow-y: visible; }
       .map-side h1, .map-side .map-sub, .map-side-h, .map-place { display: none; }
+      .map-loc-section { flex-direction: row; flex-wrap: wrap; align-items: center; }
+      .map-loc-label { display: none; }
       .map-filter-form { flex-direction: row; flex-wrap: wrap; padding-bottom: 0; border-bottom: none; gap: 0.5rem; }
       .map-filter-form select { width: auto; flex: 1; min-width: 0; }
       .map-area, #map { min-height: calc(100vh - 180px); min-height: calc(100dvh - 180px); }
@@ -1310,9 +1317,11 @@ function page(title, body, session) {
     document.querySelectorAll('input[name="tags"]').forEach(initAc);
 
     function initLocationSearch(wrap) {
+      var latName = wrap.dataset.latName || 'latitude';
+      var lonName = wrap.dataset.lonName || 'longitude';
       var input   = wrap.querySelector('.loc-search-input');
-      var latIn   = wrap.parentNode.querySelector('input[name="latitude"]');
-      var lonIn   = wrap.parentNode.querySelector('input[name="longitude"]');
+      var latIn   = wrap.parentNode.querySelector('input[name="' + latName + '"]');
+      var lonIn   = wrap.parentNode.querySelector('input[name="' + lonName + '"]');
       var clearBtn = wrap.querySelector('.loc-clear-btn');
       if (!input || !latIn || !lonIn) return;
       var drop = null, timer = null;
