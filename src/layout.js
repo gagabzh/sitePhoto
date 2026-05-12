@@ -850,11 +850,145 @@ function page(title, body, session) {
     }
     .tag-ac-item:last-child { border-bottom: none; }
     .tag-ac-item:hover, .tag-ac-item.active { background: var(--paper-2); }
+
+    /* ── Bottom nav (mobile-only) ── */
+    .bottom-nav-mobile { display: none; }
+
+    /* ── Mobile responsive ── */
+    @media (max-width: 640px) {
+      /* Nav → compact app bar */
+      nav { padding: 10px 1rem; position: sticky; top: 0; z-index: 200; }
+      .nav-right > a { display: none; }
+
+      /* Main → reduce padding, space for fixed bottom nav */
+      main { padding: 1.25rem 1rem 5.5rem; }
+
+      /* Headings */
+      h1 { font-size: 2rem; }
+      h2 { font-size: 1.6rem; }
+      .top-bar h1 { font-size: 2rem; }
+
+      /* ── Bottom tab nav ── */
+      .bottom-nav-mobile {
+        display: grid; grid-template-columns: repeat(5, 1fr);
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
+        background: var(--paper); border-top: 1.5px solid var(--ink);
+        padding: 6px 0 max(12px, env(safe-area-inset-bottom));
+      }
+      .bn-item {
+        display: flex; flex-direction: column; align-items: center; gap: 2px;
+        font-family: 'Kalam', cursive; font-size: 11px; color: var(--ink-faint);
+        text-decoration: none; padding: 4px 0;
+      }
+      .bn-ic {
+        width: 24px; height: 24px; border: 1.5px solid currentColor; border-radius: 5px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 13px; font-family: 'Architects Daughter', cursive;
+      }
+      .bn-item.bn-on { color: var(--ink); }
+      .bn-item.bn-on .bn-ic { background: var(--ink); color: var(--paper); }
+      .bn-upload .bn-ic {
+        width: 42px; height: 42px; border-radius: 50%;
+        background: var(--ink); color: var(--paper); border: 2px solid var(--ink);
+        font-size: 24px; font-family: 'Caveat', cursive; font-weight: 700; line-height: 1;
+        transform: translateY(-8px); box-shadow: 2px 2px 0 rgba(26,24,20,0.35);
+      }
+
+      /* ── Photo grid ── */
+      .photo-grid { grid-template-columns: repeat(2, 1fr); }
+      .photo-thumb img, .photo-card img { height: 130px; }
+
+      /* ── Album books grid ── */
+      .ab-grid { grid-template-columns: repeat(2, 1fr); gap: 1rem 1.5rem; padding: 1rem 0; }
+      .ab-page-h { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+      .ab-page-h h1 { font-size: 2.5rem; }
+
+      /* ── Album detail ── */
+      .ad-head { grid-template-columns: 1fr; gap: 1rem; }
+      .ad-cover { aspect-ratio: 16/9; }
+      .ad-info h1 { font-size: 2.5rem; }
+      .ad-mosaic { grid-template-columns: repeat(3, 1fr); grid-auto-rows: 90px; }
+      .ad-mosaic .ad-cell:nth-child(n) { grid-column: span 1; grid-row: span 1; }
+      .ad-mosaic .ad-cell:nth-child(1) { grid-column: span 2; grid-row: span 2; }
+
+      /* ── Timeline ── */
+      .tl-hero { grid-template-columns: 1fr; }
+      .tl-stats { display: none; }
+      .tl-headline { font-size: 2.2rem; }
+      .tl-entry { grid-template-columns: 64px 1fr; gap: 0.75rem; }
+      .tl-grid.k1 { grid-template-rows: 160px; }
+      .tl-grid.k2 { grid-template-rows: 120px; }
+      .tl-grid.k3 { grid-template-rows: 110px; }
+      .tl-grid.k4 { grid-template-columns: repeat(3, 1fr); grid-template-rows: 90px; }
+      .tl-grid.k4 .tl-cell:first-child { grid-column: span 1; }
+      .tl-grid.k5 { grid-template-columns: 1.5fr 1fr 1fr; grid-template-rows: 80px 80px; }
+
+      /* ── Map ── */
+      .map-frame { grid-template-columns: 1fr; margin: -1.25rem -1rem -5.5rem; }
+      .map-side { display: none; }
+      .map-area, #map { min-height: calc(100dvh - 120px); }
+      .map-strip { left: 8px; right: 8px; bottom: 8px; }
+      .map-strip-photos { grid-template-columns: repeat(4, 1fr); }
+
+      /* ── Family wall ── */
+      .wall-cols { grid-template-columns: 1fr; }
+      .wall-side { display: none; }
+      .wall-hero { grid-template-columns: repeat(2, 1fr); }
+      .wall-hero-img { height: 130px; }
+      .wall-mosaic {
+        grid-template-columns: 2fr 1fr;
+        grid-template-rows: 120px 120px 90px;
+        grid-template-areas: "a b" "a c" "d e";
+      }
+      .wall-cell:nth-child(1) { grid-area: a; }
+      .wall-cell:nth-child(2) { grid-area: b; }
+      .wall-cell:nth-child(3) { grid-area: c; }
+      .wall-cell:nth-child(4) { grid-area: d; }
+      .wall-cell:nth-child(5) { grid-area: e; }
+      .wall-cell:nth-child(n+6) { display: none; }
+
+      /* ── Album access ── */
+      .ac-body { grid-template-columns: 1fr; }
+      .ac-main { border-right: none; padding-right: 0; padding-bottom: 1.5rem; border-bottom: 1.5px dashed var(--ink); }
+      .ac-side { padding-left: 0; }
+      .ac-head { grid-template-columns: 1fr; }
+      .ac-head h1 { font-size: 2rem; }
+
+      /* ── Users table ── */
+      .ul-page-h { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+      .ul-page-h h1 { font-size: 2.5rem; }
+      .ul-since { display: none; }
+      .ul-acts { opacity: 1; }
+
+      /* ── Misc ── */
+      .form-col { max-width: 100%; }
+      .card { padding: 1.25rem; }
+      .bulk-bar { flex-wrap: wrap; }
+      #bulk-actions { flex-direction: column !important; align-items: flex-start !important; gap: 0.5rem !important; }
+      .filter-bar { gap: 0.5rem; }
+    }
   </style>
 </head>
 <body>
   ${nav}
   <main>${body}</main>
+  ${session ? `<nav class="bottom-nav-mobile" aria-label="Main navigation">
+    <a href="/" class="bn-item" data-path="/" data-exact="1"><span class="bn-ic">⌂</span><span>home</span></a>
+    <a href="/albums" class="bn-item" data-path="/albums"><span class="bn-ic">▦</span><span>albums</span></a>
+    <a href="/photos/upload" class="bn-item bn-upload" data-path="/photos/upload"><span class="bn-ic">+</span></a>
+    <a href="/timeline" class="bn-item" data-path="/timeline"><span class="bn-ic">◷</span><span>timeline</span></a>
+    <a href="/map" class="bn-item" data-path="/map"><span class="bn-ic">⌖</span><span>map</span></a>
+  </nav>
+  <script>(function(){
+    var p=window.location.pathname;
+    document.querySelectorAll('.bn-item[data-path]').forEach(function(a){
+      var dp=a.getAttribute('data-path');
+      var exact=a.getAttribute('data-exact');
+      if(exact?p===dp:p===dp||p.startsWith(dp+'/')||p.startsWith(dp+'?')){
+        a.classList.add('bn-on');
+      }
+    });
+  })();</script>` : ''}
   ${session ? `<script>(function(){
     var w=document.querySelector('.nav-avatar-wrap');
     if(!w)return;
