@@ -856,8 +856,8 @@ function page(title, body, session) {
 
     /* ── Mobile responsive ── */
     @media (max-width: 640px) {
-      /* Nav → compact app bar */
-      nav { padding: 10px 1rem; position: sticky; top: 0; z-index: 200; }
+      /* Nav → compact app bar (top nav only, not the bottom nav) */
+      nav:not(.bottom-nav-mobile) { padding: 10px 1rem; position: sticky; top: 0; z-index: 200; }
       .nav-right > a { display: none; }
 
       /* Main → reduce padding, space for fixed bottom nav */
