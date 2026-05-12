@@ -25,6 +25,7 @@ app.use(helmet({
 }));
 
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-secret',
   resave: false,
@@ -47,6 +48,7 @@ app.use('/albums', require('./routes/albums'));
 app.use('/tags', require('./routes/tags'));
 app.use('/timeline', require('./routes/timeline'));
 app.use('/map', require('./routes/map'));
+app.use('/api', require('./routes/api'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
 
 module.exports = app;
