@@ -6,29 +6,48 @@ const { parseState, buildWhere, SECTIONS, DEFAULT_LOGIC, LOGIC_OPTS, ORDER_SQL }
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function fetchTagVocabulary(isViewer, userId) {
-  const { rows } = isViewer
-    ? await db.query(`
-        SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
-        FROM tags t
-        JOIN photo_tags pt ON pt.tag_id = t.id
-        JOIN photos p ON p.id = pt.photo_id
-        JOIN album_access aa ON aa.album_id = p.album_id
-        WHERE aa.viewer_id = $1
-        GROUP BY t.name, t.category ORDER BY t.name
-      `, [userId])
-    : await db.query(`
-        SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
-        FROM tags t
-        JOIN photo_tags pt ON pt.tag_id = t.id
-        JOIN photos p ON p.id = pt.photo_id
-        GROUP BY t.name, t.category ORDER BY t.name
-      `);
+  const [{ rows: tagRows }, { rows: yearRows }] = await Promise.all([
+    isViewer
+      ? db.query(`
+          SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
+          FROM tags t
+          JOIN photo_tags pt ON pt.tag_id = t.id
+          JOIN photos p ON p.id = pt.photo_id
+          JOIN album_access aa ON aa.album_id = p.album_id
+          WHERE aa.viewer_id = $1 AND (t.category IS NULL OR t.category != 'years')
+          GROUP BY t.name, t.category ORDER BY t.name
+        `, [userId])
+      : db.query(`
+          SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
+          FROM tags t
+          JOIN photo_tags pt ON pt.tag_id = t.id
+          JOIN photos p ON p.id = pt.photo_id
+          WHERE (t.category IS NULL OR t.category != 'years')
+          GROUP BY t.name, t.category ORDER BY t.name
+        `),
+    isViewer
+      ? db.query(`
+          SELECT EXTRACT(YEAR FROM p.taken_at)::int::text AS name, COUNT(DISTINCT p.id)::int AS count
+          FROM photos p
+          JOIN album_access aa ON aa.album_id = p.album_id
+          WHERE p.taken_at IS NOT NULL AND aa.viewer_id = $1
+          GROUP BY 1 ORDER BY 1 DESC
+        `, [userId])
+      : db.query(`
+          SELECT EXTRACT(YEAR FROM taken_at)::int::text AS name, COUNT(*)::int AS count
+          FROM photos
+          WHERE taken_at IS NOT NULL
+          GROUP BY 1 ORDER BY 1 DESC
+        `),
+  ]);
+
   const grouped = {};
   for (const s of SECTIONS) grouped[s] = [];
-  for (const r of rows) {
-    const key = (r.category && SECTIONS.includes(r.category)) ? r.category : 'other';
+  for (const r of tagRows) {
+    const key = (r.category && SECTIONS.includes(r.category) && r.category !== 'years') ? r.category : 'other';
     grouped[key].push({ name: r.name, count: r.count });
   }
+  grouped.years = yearRows.map(r => ({ name: String(r.name), count: r.count }));
   return grouped;
 }
 
@@ -109,8 +128,8 @@ function renderPills(state) {
 }
 
 function renderGrid(photos, view, hasFilters) {
-  if (!hasFilters) return `<div class="cb-no-filter">no filters yet — tick a tag on the left to begin.</div>`;
-  if (!photos.length) return `<div class="cb-no-results">nothing matches this recipe yet. loosen a filter?</div>`;
+  if (!hasFilters) return `<div id="cb-grid"><div class="cb-no-filter">no filters yet — tick a tag on the left to begin.</div></div>`;
+  if (!photos.length) return `<div id="cb-grid"><div class="cb-no-results">nothing matches this recipe yet. loosen a filter?</div></div>`;
   const tiles = photos.map(p => {
     if (view === 'list') {
       return `<div class="cb-tile" data-id="${p.id}">` +

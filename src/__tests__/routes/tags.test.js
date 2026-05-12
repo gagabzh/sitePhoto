@@ -28,13 +28,14 @@ function makeApp(sessionData) {
 
 describe('GET /tags — Combinator page', () => {
   it('returns 200 with sidebar sections', async () => {
+    // fetchTagVocabulary makes 2 parallel calls: tags then years-from-taken_at
     db.query
       .mockResolvedValueOnce({ rows: [
         { name: 'alice', category: 'people', count: 3 },
         { name: 'paris', category: 'places', count: 2 },
-        { name: '2023',  category: 'years',  count: 5 },
-      ]})
-      .mockResolvedValueOnce({ rows: [] }); // recipes
+      ]})                                          // tags vocab
+      .mockResolvedValueOnce({ rows: [{ name: '2023', count: 5 }] }) // years vocab
+      .mockResolvedValueOnce({ rows: [] });         // recipes
     const res = await request(makeApp(EDITOR_SESSION)).get('/tags');
     expect(res.status).toBe(200);
     expect(res.text).toContain('PEOPLE');
@@ -45,32 +46,34 @@ describe('GET /tags — Combinator page', () => {
 
   it('renders uncategorised tags under OTHER section', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ name: 'sunset', category: null, count: 1 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [{ name: 'sunset', category: null, count: 1 }] }) // tags
+      .mockResolvedValueOnce({ rows: [] })          // years
+      .mockResolvedValueOnce({ rows: [] });          // recipes
     const res = await request(makeApp(EDITOR_SESSION)).get('/tags');
     expect(res.text).toContain('OTHER');
     expect(res.text).toContain('sunset');
   });
 
   it('marks a tag as checked when its section param is set', async () => {
-    // Promise.all order: vocabulary → count → recipes → photos
-    // fetchInitialResults runs concurrently and calls db.query(count) before the inline
-    // recipes query fires, so count comes before recipes in the mock queue.
+    // Promise.all order: tags-vocab[0], years-vocab[1], count[2], recipes[3], photos[4]
+    // fetchTagVocabulary fires both its queries before fetchInitialResults hits its first await.
     db.query
-      .mockResolvedValueOnce({ rows: [{ name: 'alice', category: 'people', count: 3 }] }) // vocabulary
-      .mockResolvedValueOnce({ rows: [{ total: 2 }] })   // count
-      .mockResolvedValueOnce({ rows: [] })                // recipes
-      .mockResolvedValueOnce({ rows: [] });               // photos
+      .mockResolvedValueOnce({ rows: [{ name: 'alice', category: 'people', count: 3 }] }) // tags vocab
+      .mockResolvedValueOnce({ rows: [] })           // years vocab
+      .mockResolvedValueOnce({ rows: [{ total: 2 }] }) // count
+      .mockResolvedValueOnce({ rows: [] })           // recipes
+      .mockResolvedValueOnce({ rows: [] });           // photos
     const res = await request(makeApp(EDITOR_SESSION)).get('/tags?people=alice');
     expect(res.text).toContain('data-state="on"');
   });
 
   it('shows recipe bar pill for checked tag', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ name: 'alice', category: 'people', count: 3 }] }) // vocabulary
-      .mockResolvedValueOnce({ rows: [{ total: 1 }] })   // count
-      .mockResolvedValueOnce({ rows: [] })                // recipes
-      .mockResolvedValueOnce({ rows: [] });               // photos
+      .mockResolvedValueOnce({ rows: [{ name: 'alice', category: 'people', count: 3 }] }) // tags vocab
+      .mockResolvedValueOnce({ rows: [] })           // years vocab
+      .mockResolvedValueOnce({ rows: [{ total: 1 }] }) // count
+      .mockResolvedValueOnce({ rows: [] })           // recipes
+      .mockResolvedValueOnce({ rows: [] });           // photos
     const res = await request(makeApp(EDITOR_SESSION)).get('/tags?people=alice');
     expect(res.text).toContain('cb-pill');
     expect(res.text).toContain('alice');
@@ -78,17 +81,20 @@ describe('GET /tags — Combinator page', () => {
 
   it('viewer vocabulary query uses album_access join', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] }) // tags vocab
+      .mockResolvedValueOnce({ rows: [] }) // years vocab
+      .mockResolvedValueOnce({ rows: [] }); // recipes
     await request(makeApp(VIEWER_SESSION)).get('/tags');
+    // Both vocab queries filter by album_access; check the tags query (call[0])
     const [sql] = db.query.mock.calls[0];
     expect(sql).toContain('album_access');
   });
 
   it('shows no-filter hint when no tags exist', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] }) // tags vocab
+      .mockResolvedValueOnce({ rows: [] }) // years vocab
+      .mockResolvedValueOnce({ rows: [] }); // recipes
     const res = await request(makeApp(EDITOR_SESSION)).get('/tags');
     expect(res.text).toContain('no filters yet');
   });
@@ -170,12 +176,14 @@ describe('GET /tags/:name — photos by single tag', () => {
 
 describe('GET /api/tags/index — TG-3', () => {
   it('returns tags grouped by category', async () => {
-    db.query.mockResolvedValue({ rows: [
-      { name: 'alice', category: 'people', count: 3 },
-      { name: 'paris', category: 'places', count: 2 },
-      { name: '2023',  category: 'years',  count: 5 },
-      { name: 'sunset',category: null,     count: 1 },
-    ]});
+    // Two parallel queries: tags (excl. years category) then years from taken_at
+    db.query
+      .mockResolvedValueOnce({ rows: [
+        { name: 'alice', category: 'people', count: 3 },
+        { name: 'paris', category: 'places', count: 2 },
+        { name: 'sunset',category: null,     count: 1 },
+      ]})
+      .mockResolvedValueOnce({ rows: [{ name: '2023', count: 5 }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/api/tags/index');
     expect(res.status).toBe(200);
     expect(res.body.people).toEqual([{ name: 'alice', count: 3 }]);
@@ -238,14 +246,16 @@ describe('GET /api/photos/combinator — TG-4, TG-5, TG-6', () => {
     expect(sql).toContain('NOT IN (SELECT pt.photo_id');
   });
 
-  it('TG-5 not state: NOT IN exclude subquery', async () => {
+  it('TG-5 years.not: EXTRACT year exclude filter', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ total: 0 }] })
       .mockResolvedValueOnce({ rows: [] });
     await request(makeApp(EDITOR_SESSION))
       .get('/api/photos/combinator?years.not=2023');
-    const [sql] = db.query.mock.calls[0];
-    expect(sql).toContain('NOT IN (SELECT pt.photo_id');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('EXTRACT(YEAR FROM');
+    expect(sql).toContain('!= ALL(');
+    expect(params[0]).toContain(2023);
   });
 
   it('TG-4 cross-section: two IN subqueries present', async () => {

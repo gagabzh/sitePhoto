@@ -29,6 +29,19 @@ function buildConditions(state, isViewer, userId, excludeSection) {
     if (sec === excludeSection) continue;
     const { on, not, logic } = state.sections[sec];
 
+    if (sec === 'years') {
+      const yr = `EXTRACT(YEAR FROM COALESCE(p.taken_at, p.created_at::date))::int`;
+      if (on.length > 0) {
+        conds.push(logic === 'exclude'
+          ? `${yr} != ALL(${p(on.map(Number))})`
+          : `${yr} = ANY(${p(on.map(Number))})`);
+      }
+      if (not.length > 0) {
+        conds.push(`${yr} != ALL(${p(not.map(Number))})`);
+      }
+      continue;
+    }
+
     if (on.length > 0) {
       if (logic === 'any' || logic === 'include') {
         conds.push(`p.id IN (SELECT pt.photo_id FROM photo_tags pt JOIN tags t ON t.id=pt.tag_id WHERE t.name=ANY(${p(on)}))`);

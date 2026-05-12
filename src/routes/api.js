@@ -7,33 +7,51 @@ const { parseState, buildWhere, buildConditions, SECTIONS, ORDER_SQL } = require
 
 router.get('/tags/index', async (req, res) => {
   const isViewer = req.session.role === 'viewer';
-  const { rows } = isViewer
-    ? await db.query(`
-        SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
-        FROM tags t
-        JOIN photo_tags pt ON pt.tag_id = t.id
-        JOIN photos p ON p.id = pt.photo_id
-        JOIN album_access aa ON aa.album_id = p.album_id
-        WHERE aa.viewer_id = $1
-        GROUP BY t.name, t.category
-        ORDER BY t.name
-      `, [req.session.userId])
-    : await db.query(`
-        SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
-        FROM tags t
-        JOIN photo_tags pt ON pt.tag_id = t.id
-        JOIN photos p ON p.id = pt.photo_id
-        GROUP BY t.name, t.category
-        ORDER BY t.name
-      `);
+  const uid = req.session.userId;
+
+  const [{ rows: tagRows }, { rows: yearRows }] = await Promise.all([
+    isViewer
+      ? db.query(`
+          SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
+          FROM tags t
+          JOIN photo_tags pt ON pt.tag_id = t.id
+          JOIN photos p ON p.id = pt.photo_id
+          JOIN album_access aa ON aa.album_id = p.album_id
+          WHERE aa.viewer_id = $1 AND (t.category IS NULL OR t.category != 'years')
+          GROUP BY t.name, t.category ORDER BY t.name
+        `, [uid])
+      : db.query(`
+          SELECT t.name, t.category, COUNT(DISTINCT p.id)::int AS count
+          FROM tags t
+          JOIN photo_tags pt ON pt.tag_id = t.id
+          JOIN photos p ON p.id = pt.photo_id
+          WHERE (t.category IS NULL OR t.category != 'years')
+          GROUP BY t.name, t.category ORDER BY t.name
+        `),
+    isViewer
+      ? db.query(`
+          SELECT EXTRACT(YEAR FROM p.taken_at)::int::text AS name, COUNT(DISTINCT p.id)::int AS count
+          FROM photos p
+          JOIN album_access aa ON aa.album_id = p.album_id
+          WHERE p.taken_at IS NOT NULL AND aa.viewer_id = $1
+          GROUP BY 1 ORDER BY 1 DESC
+        `, [uid])
+      : db.query(`
+          SELECT EXTRACT(YEAR FROM taken_at)::int::text AS name, COUNT(*)::int AS count
+          FROM photos
+          WHERE taken_at IS NOT NULL
+          GROUP BY 1 ORDER BY 1 DESC
+        `),
+  ]);
 
   const grouped = {};
   for (const s of SECTIONS) grouped[s] = [];
-  for (const r of rows) {
+  for (const r of tagRows) {
     const bucket = r.category || 'other';
-    const key    = SECTIONS.includes(bucket) ? bucket : 'other';
+    const key    = (SECTIONS.includes(bucket) && bucket !== 'years') ? bucket : 'other';
     grouped[key].push({ name: r.name, count: r.count });
   }
+  grouped.years = yearRows.map(r => ({ name: String(r.name), count: r.count }));
   res.json(grouped);
 });
 
@@ -81,29 +99,46 @@ router.get('/tags/counts', async (req, res) => {
   for (const sec of SECTIONS) {
     const checked = new Set([...state.sections[sec].on, ...state.sections[sec].not]);
     const { conds, vals } = buildConditions(state, isViewer, req.session.userId, sec);
-
-    // Add: join to photo_tags+tags to count per unchecked tag in this section
-    const secCategoryCheck = sec === 'other'
-      ? `(t.category IS NULL OR t.category NOT IN ('people','places','years','themes'))`
-      : `t.category = $${vals.length + 1}`;
-    if (sec !== 'other') vals.push(sec);
-
     const checkedArr = [...checked];
-    const excludeCond = checkedArr.length > 0
-      ? `AND t.name != ALL($${vals.length + 1})`
-      : '';
-    if (checkedArr.length > 0) vals.push(checkedArr);
-
     const baseConds = conds.length ? conds.join(' AND ') + ' AND ' : '';
-    const sql = `
-      SELECT t.name, COUNT(DISTINCT p.id)::int AS count
-      FROM photos p
-      JOIN photo_tags pt ON pt.photo_id = p.id
-      JOIN tags t ON t.id = pt.tag_id
-      WHERE ${baseConds}${secCategoryCheck} ${excludeCond}
-      GROUP BY t.name
-    `;
-    const { rows } = await db.query(sql, vals);
+
+    let sql, rows;
+
+    if (sec === 'years') {
+      const yr = `EXTRACT(YEAR FROM COALESCE(p.taken_at, p.created_at::date))::int`;
+      const excludeCond = checkedArr.length > 0
+        ? `AND ${yr} != ALL($${vals.length + 1})`
+        : '';
+      if (checkedArr.length > 0) vals.push(checkedArr.map(Number));
+      sql = `
+        SELECT ${yr}::text AS name, COUNT(DISTINCT p.id)::int AS count
+        FROM photos p
+        WHERE ${baseConds}p.taken_at IS NOT NULL ${excludeCond}
+        GROUP BY 1
+      `;
+      ({ rows } = await db.query(sql, vals));
+    } else {
+      const secCategoryCheck = sec === 'other'
+        ? `(t.category IS NULL OR t.category NOT IN ('people','places','years','themes'))`
+        : `t.category = $${vals.length + 1}`;
+      if (sec !== 'other') vals.push(sec);
+
+      const excludeCond = checkedArr.length > 0
+        ? `AND t.name != ALL($${vals.length + 1})`
+        : '';
+      if (checkedArr.length > 0) vals.push(checkedArr);
+
+      sql = `
+        SELECT t.name, COUNT(DISTINCT p.id)::int AS count
+        FROM photos p
+        JOIN photo_tags pt ON pt.photo_id = p.id
+        JOIN tags t ON t.id = pt.tag_id
+        WHERE ${baseConds}${secCategoryCheck} ${excludeCond}
+        GROUP BY t.name
+      `;
+      ({ rows } = await db.query(sql, vals));
+    }
+
     result[sec] = {};
     for (const r of rows) result[sec][r.name] = r.count;
   }
