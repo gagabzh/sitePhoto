@@ -107,7 +107,7 @@ function page(title, body, session) {
       position: absolute; right: 0; top: calc(100% + 10px);
       background: var(--paper); border: 2px solid var(--ink);
       box-shadow: 4px 4px 0 var(--ink);
-      min-width: 148px; z-index: 200;
+      min-width: 148px; z-index: 1500;
     }
     .nav-avatar-wrap.open .nav-menu { display: flex; }
     .nav-menu a {
