@@ -351,7 +351,7 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
           <label>Location <small>(optional — search a place or click × to remove)</small>
             <div class="tag-ac-wrap loc-search-wrap">
               <input type="text" class="loc-search-input" autocomplete="off"
-                placeholder="${photo.latitude != null ? photo.latitude.toFixed(5) + ', ' + photo.longitude.toFixed(5) : 'Search a place…'}">
+                placeholder="${photo.latitude != null ? parseFloat(photo.latitude).toFixed(5) + ', ' + parseFloat(photo.longitude).toFixed(5) : 'Search a place…'}">
               <button type="button" class="loc-clear-btn"${photo.latitude == null ? ' style="display:none"' : ''}>× clear</button>
             </div>
             <input type="hidden" name="latitude"  value="${photo.latitude  ?? ''}">
