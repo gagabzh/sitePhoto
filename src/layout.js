@@ -923,10 +923,13 @@ function page(title, body, session) {
       .tl-grid.k4 .tl-cell:first-child { grid-column: span 1; }
       .tl-grid.k5 { grid-template-columns: 1.5fr 1fr 1fr; grid-template-rows: 80px 80px; }
 
-      /* ── Map ── */
-      .map-frame { grid-template-columns: 1fr; margin: -1.25rem -1rem -5.5rem; }
-      .map-side { display: none; }
-      .map-area, #map { min-height: calc(100dvh - 120px); }
+      /* ── Map: sidebar → compact filter strip above the map ── */
+      .map-frame { grid-template-columns: 1fr; grid-template-rows: auto 1fr; margin: -1.25rem -1rem -5.5rem; }
+      .map-side { border-right: none; border-bottom: 2px solid var(--ink); padding: 0.75rem 1rem; max-height: none; overflow-y: visible; }
+      .map-side h1, .map-side .map-sub, .map-side-h, .map-place { display: none; }
+      .map-filter-form { flex-direction: row; flex-wrap: wrap; padding-bottom: 0; border-bottom: none; gap: 0.5rem; }
+      .map-filter-form select { width: auto; flex: 1; min-width: 0; }
+      .map-area, #map { min-height: calc(100vh - 180px); min-height: calc(100dvh - 180px); }
       .map-strip { left: 8px; right: 8px; bottom: 8px; }
       .map-strip-photos { grid-template-columns: repeat(4, 1fr); }
 
