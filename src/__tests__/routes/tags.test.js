@@ -361,3 +361,46 @@ describe('Saved recipes API — TG-7', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── GET /api/geocode — Nominatim proxy ────────────────────────────────────────
+
+describe('GET /api/geocode', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns places from Nominatim as [{name, lat, lon}]', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      json: () => Promise.resolve([
+        { display_name: 'Paris, Île-de-France, France', lat: '48.8566101', lon: '2.3514992' },
+        { display_name: 'Paris, Texas, USA',            lat: '33.6609',    lon: '-95.5555'  },
+      ]),
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/geocode?q=Paris');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toEqual({ name: 'Paris, Île-de-France, France', lat: 48.8566101, lon: 2.3514992 });
+  });
+
+  it('returns empty array for queries shorter than 2 characters', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/geocode?q=P');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns empty array when Nominatim fetch fails', async () => {
+    jest.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('network error'));
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/geocode?q=Paris');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('sends a User-Agent header to Nominatim', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      json: () => Promise.resolve([]),
+    });
+    await request(makeApp(EDITOR_SESSION)).get('/api/geocode?q=Lyon');
+    const [, opts] = fetchSpy.mock.calls[0];
+    expect(opts.headers['User-Agent']).toMatch(/sitephoto/);
+  });
+});

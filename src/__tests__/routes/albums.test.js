@@ -597,6 +597,23 @@ describe('POST /albums/:id/photos/upload', () => {
     expect(res.headers.location).toBe('/albums/1');
   });
 
+  it('EXIF GPS takes priority over place-search GPS', async () => {
+    const { extractMetadata } = require('../../extractMetadata');
+    extractMetadata.mockResolvedValueOnce({ latitude: 51.5074, longitude: -0.1278 });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 21 }] });
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/upload')
+      .send('title=T&latitude=48.8566&longitude=2.3522'); // form says Paris
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    // albums INSERT has album_id at [7], so latitude=[11], longitude=[12]
+    expect(call[1][11]).toBeCloseTo(51.5074); // EXIF (London) wins
+    expect(call[1][12]).toBeCloseTo(-0.1278);
+  });
+
   it('returns 403 for viewer', async () => {
     const res = await request(makeApp(VIEWER_SESSION)).post('/albums/1/photos/upload').send('title=X');
     expect(res.status).toBe(403);
