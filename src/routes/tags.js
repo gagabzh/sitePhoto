@@ -436,6 +436,19 @@ router.get('/', async (req, res) => {
         });
       }
       document.querySelectorAll('.cb-recipe-row').forEach(bindRow);
+
+      /* mobile: collapsible sections — inactive ones start collapsed */
+      if (window.innerWidth <= 900) {
+        document.querySelectorAll('.cb-section').forEach(function(secEl) {
+          var sec = secEl.dataset.section;
+          var hasActive = state.sections[sec].on.length > 0 || state.sections[sec].not.length > 0;
+          if (!hasActive) secEl.classList.add('cb-collapsed');
+          secEl.querySelector('.cb-section-head').addEventListener('click', function(ev) {
+            if (ev.target.closest('.cb-clear')) return;
+            secEl.classList.toggle('cb-collapsed');
+          });
+        });
+      }
     })();</script>`;
 
   res.send(page('Tags', body, req.session));

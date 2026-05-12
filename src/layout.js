@@ -896,6 +896,7 @@ function page(title, body, session) {
       width: 14px; height: 14px; flex: none; border: 1.5px solid var(--ink);
       display: inline-flex; align-items: center; justify-content: center;
       font-size: 10px; line-height: 1; background: var(--paper);
+      transition: background 0.1s, border-color 0.1s;
     }
     .cb-tag-item[data-state="on"]  .cb-box { background: var(--ink); color: var(--paper); }
     .cb-tag-item[data-state="on"]  .cb-box::after { content: '✓'; }
@@ -910,6 +911,7 @@ function page(title, body, session) {
       border: 1.5px solid var(--ink); border-radius: 999px;
       padding: 1px 10px; cursor: pointer; user-select: none;
       background: var(--paper); color: var(--ink);
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
     }
     .cb-chip[data-state="on"]  { background: var(--ink); color: var(--paper); }
     .cb-chip[data-state="not"] { background: var(--paper); color: var(--accent); border-color: var(--accent); text-decoration: line-through; }
@@ -953,11 +955,13 @@ function page(title, body, session) {
     }
     .cb-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
     .cb-empty-hint { font-family: 'Kalam', cursive; font-size: 0.82rem; color: var(--ink-faint); font-style: italic; }
+    @keyframes cb-pill-in { from { opacity: 0; transform: scale(0.75); } to { opacity: 1; transform: scale(1); } }
     .cb-pill {
       display: inline-flex; align-items: center; gap: 4px;
       font-family: 'Kalam', cursive; font-size: 0.82rem;
       background: var(--ink); color: var(--paper);
       border: 1.5px solid var(--ink); border-radius: 999px; padding: 2px 10px;
+      animation: cb-pill-in 0.12s ease both;
     }
     .cb-pill.not {
       background: var(--paper); color: var(--accent);
@@ -1025,14 +1029,17 @@ function page(title, body, session) {
     .cb-no-results { padding: 3rem 22px; font-family: 'Kalam', cursive; font-size: 1rem; color: var(--ink-faint); font-style: italic; }
     /* save dialog */
     .cb-dialog-backdrop {
-      display: none; position: fixed; inset: 0; z-index: 2000;
+      position: fixed; inset: 0; z-index: 2000; display: flex;
       background: rgba(26,24,20,0.5); align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.15s;
     }
-    .cb-dialog-backdrop.open { display: flex; }
+    .cb-dialog-backdrop.open { opacity: 1; pointer-events: auto; }
     .cb-dialog {
       background: var(--paper); border: 2px solid var(--ink);
       box-shadow: 6px 6px 0 var(--ink); padding: 1.5rem; min-width: 280px;
+      transform: scale(0.94) translateY(-8px); transition: transform 0.15s;
     }
+    .cb-dialog-backdrop.open .cb-dialog { transform: scale(1) translateY(0); }
     .cb-dialog h3 { font-family: 'Caveat', cursive; font-size: 1.5rem; margin: 0 0 0.75rem; font-weight: 700; }
     .cb-dialog input { width: 100%; margin-bottom: 0.875rem; padding: 0.4rem 0.6rem; font-family: 'Kalam', cursive; font-size: 0.95rem; border: 1.5px solid var(--ink); background: var(--paper); }
     .cb-dialog input:focus { outline: none; box-shadow: 2px 2px 0 var(--ink); }
@@ -1164,6 +1171,19 @@ function page(title, body, session) {
       .cb-grid.view-grid4, .cb-grid.view-grid6 { grid-template-columns: repeat(2, 1fr); }
       .cb-grid.view-mosaic { grid-template-columns: repeat(2, 1fr); }
       .cb-grid.view-mosaic .cb-tile:nth-child(5n+1) { grid-column: span 1; grid-row: span 1; }
+
+      /* collapsible sidebar sections on mobile */
+      .cb-section-head { cursor: pointer; }
+      .cb-section-h::after { content: ' ▾'; font-size: 0.6em; display: inline-block; transition: transform 0.15s; }
+      .cb-section.cb-collapsed .cb-section-h::after { transform: rotate(-90deg); }
+      .cb-section .cb-search,
+      .cb-section .cb-tag-list,
+      .cb-section .cb-chips,
+      .cb-section .cb-logic { overflow: hidden; max-height: 600px; transition: max-height 0.22s ease; }
+      .cb-section.cb-collapsed .cb-search,
+      .cb-section.cb-collapsed .cb-tag-list,
+      .cb-section.cb-collapsed .cb-chips,
+      .cb-section.cb-collapsed .cb-logic { max-height: 0; }
     }
   </style>
 </head>
