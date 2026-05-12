@@ -1087,6 +1087,24 @@ function page(title, body, session) {
         font-size: 24px; font-family: 'Caveat', cursive; font-weight: 700; line-height: 1;
         transform: translateY(-8px); box-shadow: 2px 2px 0 rgba(26,24,20,0.35);
       }
+      /* "more" menu */
+      .bn-more-wrap { position: relative; display: flex; }
+      .bn-more-btn { background: none; border: none; padding: 0; cursor: pointer; width: 100%; }
+      @keyframes bn-more-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+      .bn-more-menu {
+        display: none; position: absolute; bottom: calc(100% + 6px); right: -2px;
+        background: var(--paper); border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+        min-width: 130px; padding: 4px 0;
+      }
+      .bn-more-menu.open { display: block; animation: bn-more-in 0.12s ease; }
+      .bn-more-item {
+        display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+        text-decoration: none; color: var(--ink-faint);
+        font-family: 'Kalam', cursive; font-size: 13px;
+      }
+      .bn-more-item .bn-ic { font-size: 12px; }
+      .bn-more-item.bn-on { color: var(--ink); font-weight: 600; }
+      .bn-more-item.bn-on .bn-ic { background: var(--ink); color: var(--paper); }
 
       /* ── Photo grid ── */
       .photo-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1194,8 +1212,14 @@ function page(title, body, session) {
     <a href="/" class="bn-item" data-path="/" data-exact="1"><span class="bn-ic">⌂</span><span>home</span></a>
     <a href="/albums" class="bn-item" data-path="/albums"><span class="bn-ic">▦</span><span>albums</span></a>
     <a href="/photos/upload" class="bn-item bn-upload" data-path="/photos/upload"><span class="bn-ic">+</span></a>
-    <a href="/timeline" class="bn-item" data-path="/timeline"><span class="bn-ic">◷</span><span>timeline</span></a>
     <a href="/map" class="bn-item" data-path="/map"><span class="bn-ic">⌖</span><span>map</span></a>
+    <div class="bn-more-wrap">
+      <button class="bn-item bn-more-btn" id="bn-more" aria-label="More"><span class="bn-ic">···</span><span>more</span></button>
+      <div class="bn-more-menu" id="bn-more-menu" role="menu">
+        <a href="/timeline" class="bn-more-item" data-path="/timeline"><span class="bn-ic">◷</span><span>timeline</span></a>
+        <a href="/tags"     class="bn-more-item" data-path="/tags"><span class="bn-ic">#</span><span>tags</span></a>
+      </div>
+    </div>
   </nav>
   <script>(function(){
     var p=window.location.pathname;
@@ -1206,6 +1230,19 @@ function page(title, body, session) {
         a.classList.add('bn-on');
       }
     });
+    document.querySelectorAll('.bn-more-item[data-path]').forEach(function(a){
+      if(p===a.dataset.path||p.startsWith(a.dataset.path+'/')||p.startsWith(a.dataset.path+'?')){
+        a.classList.add('bn-on');
+        var btn=document.getElementById('bn-more');
+        if(btn)btn.classList.add('bn-on');
+      }
+    });
+    var btn=document.getElementById('bn-more');
+    var menu=document.getElementById('bn-more-menu');
+    if(btn&&menu){
+      btn.addEventListener('click',function(e){e.stopPropagation();menu.classList.toggle('open');});
+      document.addEventListener('click',function(){menu.classList.remove('open');});
+    }
   })();</script>` : ''}
   ${session ? `<script>(function(){
     var w=document.querySelector('.nav-avatar-wrap');
