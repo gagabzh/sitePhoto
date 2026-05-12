@@ -168,7 +168,7 @@ router.get('/', async (req, res) => {
              attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
              subdomains:'abcd', maxZoom:20
            }).addTo(map);
-           var cluster = L.markerClusterGroup({ spiderfyOnMaxZoom: true, maxClusterRadius: 40 });
+           var cluster = L.markerClusterGroup({ spiderfyOnMaxZoom: true, maxClusterRadius: 40, zoomToBoundsOnClick: false });
            var bounds = [];
 
            var strip      = document.getElementById('map-strip');
@@ -215,6 +215,15 @@ router.get('/', async (req, res) => {
            });
 
            map.addLayer(cluster);
+           if (zone) {
+             L.circle([zone.lat, zone.lon], {
+               radius: zone.radius * 1000,
+               color: 'var(--accent, #b35c2e)',
+               weight: 2,
+               fillOpacity: 0.06,
+               dashArray: '6 4'
+             }).addTo(map);
+           }
            setTimeout(function() {
              map.invalidateSize();
              if (zone) {

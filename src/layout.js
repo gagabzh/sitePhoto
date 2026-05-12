@@ -1356,6 +1356,8 @@ function page(title, body, session) {
         });
       }
       input.addEventListener('input', function(){
+        latIn.value = ''; lonIn.value = '';
+        if(clearBtn) clearBtn.style.display = 'none';
         clearTimeout(timer);
         var q = this.value.trim();
         if(q.length < 2){ closeDrop(); return; }
@@ -1365,6 +1367,22 @@ function page(title, body, session) {
         }, 350);
       });
       input.addEventListener('blur', function(){ setTimeout(closeDrop, 150); });
+      var form = wrap.closest('form');
+      if(form){
+        form.addEventListener('submit', function(e){
+          var q = input.value.trim();
+          if(q.length >= 2 && !latIn.value){
+            e.preventDefault();
+            fetch('/api/geocode?q='+encodeURIComponent(q))
+              .then(function(r){ return r.json(); })
+              .then(function(results){
+                if(results.length){ latIn.value = results[0].lat; lonIn.value = results[0].lon; }
+                form.submit();
+              })
+              .catch(function(){ form.submit(); });
+          }
+        });
+      }
     }
     document.querySelectorAll('.loc-search-wrap').forEach(initLocationSearch);
   })();</script>
