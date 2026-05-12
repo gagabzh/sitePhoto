@@ -50,11 +50,17 @@ Depends on phase 1 (travel tables).
 
 ---
 
-## Phase 5 — Tag multi-filter (TG-1)
+## Phase 5 — Tag Combinator ✅ DONE (PR #24, merged 2026-05-12)
 
-- Tags page: replace single-select dropdown with checkboxes
-- URL: `?tags=paris,rome` (comma-separated)
-- SQL: `WHERE photo has ALL selected tags` using a `HAVING COUNT(DISTINCT tag) = N` pattern
+Full tag filter builder replacing the single-tag page.
+
+- `migrations/v3.sql`: `category` column on `tags` (`people/places/years/themes`), `tag_recipes` table
+- `src/combinator.js`: shared `parseState` / `buildWhere` / `buildConditions` — ANY/ALL/NONE/not tri-state logic; years section uses `EXTRACT(YEAR FROM taken_at)` instead of tag subqueries
+- `src/routes/api.js`: `GET /api/tags/index`, `GET /api/photos/combinator` (paginated), `GET /api/tags/counts`, CRUD `/api/recipes`
+- `src/routes/tags.js`: server-renders initial results from URL params; ~200 lines embedded vanilla JS for live debounced updates (150 ms), `history.replaceState`, tri-state toggles, recipe save/load/delete
+- CSS: two-column layout, chip/checkbox transitions, pill scale-in animation, dialog fade+scale, mobile collapsible sidebar sections (≤900px)
+- Mobile bottom nav: "more" button (···) groups timeline + tags above the bar
+- 33 unit tests, 257 total passing
 
 ---
 
