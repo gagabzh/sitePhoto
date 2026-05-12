@@ -661,8 +661,8 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
       ]);
       const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
       const takenAt = exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null;
-      const lat = parseCoord(latitude, -90, 90) ?? exif.latitude ?? null;
-      const lon = parseCoord(longitude, -180, 180) ?? exif.longitude ?? null;
+      const lat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
+      const lon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
       const { rows: [photo] } = await db.query(
         'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, album_id, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id',
         [req.session.userId, req.file.filename, req.file.originalname, title, description || null,

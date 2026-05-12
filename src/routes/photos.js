@@ -237,8 +237,8 @@ router.post('/upload', requireEditor, (req, res, next) => {
       const finalSize = await optimizePhoto(filepath, req.file.mimetype);
       const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
       const resolvedTakenAt = taken_at || (exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null);
-      const resolvedLat = parseCoord(latitude, -90, 90)   ?? exif.latitude  ?? null;
-      const resolvedLon = parseCoord(longitude, -180, 180) ?? exif.longitude ?? null;
+      const resolvedLat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
+      const resolvedLon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
       const { rows } = await db.query(
         'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id',
         [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, resolvedLat, resolvedLon, ncUrl]
@@ -348,11 +348,14 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
           <label>Date taken
             <input type="date" name="taken_at" value="${photo.taken_at ? new Date(photo.taken_at).toISOString().split('T')[0] : ''}">
           </label>
-          <label>GPS coordinates <small>(optional — leave blank to remove)</small>
-            <div class="row" style="gap:0.5rem">
-              <input type="text" name="latitude"  placeholder="48.8566 ou 48°51′21″N" value="${photo.latitude  ?? ''}" style="flex:1">
-              <input type="text" name="longitude" placeholder="2.3522  ou 2°21′08″E"  value="${photo.longitude ?? ''}" style="flex:1">
+          <label>Location <small>(optional — search a place or click × to remove)</small>
+            <div class="tag-ac-wrap loc-search-wrap">
+              <input type="text" class="loc-search-input" autocomplete="off"
+                placeholder="${photo.latitude != null ? parseFloat(photo.latitude).toFixed(5) + ', ' + parseFloat(photo.longitude).toFixed(5) : 'Search a place…'}">
+              <button type="button" class="loc-clear-btn"${photo.latitude == null ? ' style="display:none"' : ''}>× clear</button>
             </div>
+            <input type="hidden" name="latitude"  value="${photo.latitude  ?? ''}">
+            <input type="hidden" name="longitude" value="${photo.longitude ?? ''}">
           </label>
           <label>Nextcloud link <small>(optional — leave blank to remove)</small>
             <input type="url" name="nextcloud_url" value="${esc(photo.nextcloud_url || '')}">

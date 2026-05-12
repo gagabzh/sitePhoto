@@ -408,6 +408,66 @@
 ### Preconditions
 - At least two photos with GPS coordinates exist and belong to albums the viewer has access to.
 - At least one photo has no GPS coordinates.
+- At least one photo file has embedded GPS in its EXIF metadata (e.g. taken on a phone with location on).
+
+---
+
+### GPS location search — upload
+
+**Steps:**
+1. Go to **Photos** → **+ Upload** (or open an album → **+ Upload photo**).
+2. Fill in a title, then click in the **Location** field and type a city name (e.g. `Lyon`).
+3. Wait ~350 ms for suggestions to appear. Click one.
+
+**Expected:**
+- A dropdown of matching places appears below the field.
+- After selecting, the place name fills the search box and a **× clear** button appears.
+
+4. Submit the form.
+
+**Expected:**
+- The photo is saved with the coordinates of the selected place. A mini-map appears on the photo detail page.
+
+**Edge case — EXIF takes priority:**
+
+5. Upload a photo whose file contains EXIF GPS. Select a *different* place in the Location field. Submit.
+
+**Expected:**
+- The saved photo uses the **EXIF coordinates** — the place search is ignored when EXIF GPS is present.
+
+---
+
+### GPS location search — edit
+
+**Steps:**
+1. Open a photo that **has** GPS coordinates → click **Edit**.
+
+**Expected:**
+- The Location field shows a place search input.
+- The placeholder displays the current coordinates as `lat, lon` (e.g. `48.85660, 2.35220`).
+- A **× clear** button is visible.
+
+2. Without touching the Location field, save.
+
+**Expected:** Coordinates are unchanged.
+
+3. Edit again, type a new place, select a suggestion, save.
+
+**Expected:** Photo saved with new coordinates; mini-map on detail page updates.
+
+4. Edit again, click **× clear**, save.
+
+**Expected:** GPS removed; mini-map no longer appears on the detail page.
+
+5. Open a photo with **no GPS** → click **Edit**.
+
+**Expected:**
+- Location field shows `Search a place…` placeholder.
+- No **× clear** button is shown.
+
+6. Search a place, select it, save.
+
+**Expected:** Photo now has GPS; mini-map appears on the detail page.
 
 ---
 

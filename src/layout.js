@@ -839,6 +839,14 @@ function page(title, body, session) {
 
     /* ── Tag autocomplete ── */
     .tag-ac-wrap { position: relative; }
+    .loc-search-wrap { display: flex; align-items: center; gap: 6px; }
+    .loc-search-input { flex: 1; }
+    .loc-clear-btn {
+      background: none; border: none; cursor: pointer; padding: 0 4px;
+      font-family: 'Kalam', cursive; font-size: 0.8rem; color: var(--ink-faint);
+      white-space: nowrap;
+    }
+    .loc-clear-btn:hover { color: var(--accent); }
     .tag-ac {
       position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
       background: var(--paper); border: 1.5px solid var(--ink);
@@ -1300,6 +1308,56 @@ function page(title, body, session) {
       input.addEventListener('blur', function(){ setTimeout(close, 150); });
     }
     document.querySelectorAll('input[name="tags"]').forEach(initAc);
+
+    function initLocationSearch(wrap) {
+      var input   = wrap.querySelector('.loc-search-input');
+      var latIn   = wrap.parentNode.querySelector('input[name="latitude"]');
+      var lonIn   = wrap.parentNode.querySelector('input[name="longitude"]');
+      var clearBtn = wrap.querySelector('.loc-clear-btn');
+      if (!input || !latIn || !lonIn) return;
+      var drop = null, timer = null;
+      function closeDrop(){ if(drop){ drop.remove(); drop=null; } }
+      function openDrop(items){
+        closeDrop();
+        if(!items.length) return;
+        drop = document.createElement('div');
+        drop.className = 'tag-ac';
+        items.forEach(function(item){
+          var d = document.createElement('div');
+          d.className = 'tag-ac-item';
+          d.textContent = item.name;
+          d.addEventListener('mousedown', function(e){
+            e.preventDefault();
+            latIn.value = item.lat;
+            lonIn.value = item.lon;
+            input.value = item.name;
+            if(clearBtn) clearBtn.style.display = '';
+            closeDrop();
+          });
+          drop.appendChild(d);
+        });
+        wrap.appendChild(drop);
+      }
+      if(clearBtn){
+        clearBtn.addEventListener('click', function(){
+          latIn.value = ''; lonIn.value = '';
+          input.value = ''; input.placeholder = 'Search a place…';
+          clearBtn.style.display = 'none';
+          closeDrop();
+        });
+      }
+      input.addEventListener('input', function(){
+        clearTimeout(timer);
+        var q = this.value.trim();
+        if(q.length < 2){ closeDrop(); return; }
+        timer = setTimeout(function(){
+          fetch('/api/geocode?q='+encodeURIComponent(q))
+            .then(function(r){ return r.json(); }).then(openDrop).catch(closeDrop);
+        }, 350);
+      });
+      input.addEventListener('blur', function(){ setTimeout(closeDrop, 150); });
+    }
+    document.querySelectorAll('.loc-search-wrap').forEach(initLocationSearch);
   })();</script>
 </body>
 </html>`;

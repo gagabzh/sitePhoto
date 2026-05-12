@@ -694,7 +694,7 @@ describe('EXIF metadata: GET /photos/:id — display', () => {
 describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
   const { extractMetadata } = require('../../extractMetadata');
 
-  it('stores user-provided lat/lon', async () => {
+  it('uses place-search hidden lat/lon when EXIF has no GPS', async () => {
     extractMetadata.mockResolvedValueOnce({});
     db.query.mockResolvedValueOnce({ rows: [{ id: 20 }] });
 
@@ -707,9 +707,23 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
     expect(call[1][11]).toBeCloseTo(2.3522);
   });
 
-  it('falls back to EXIF GPS when form fields are empty', async () => {
+  it('EXIF GPS takes priority over place-search GPS when both present', async () => {
     extractMetadata.mockResolvedValueOnce({ latitude: 51.5074, longitude: -0.1278 });
     db.query.mockResolvedValueOnce({ rows: [{ id: 21 }] });
+
+    // Simulates user selecting "Paris" from place search, but photo EXIF says London
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/upload')
+      .send('title=T&latitude=48.8566&longitude=2.3522');
+
+    const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
+    expect(call[1][10]).toBeCloseTo(51.5074); // EXIF wins
+    expect(call[1][11]).toBeCloseTo(-0.1278);
+  });
+
+  it('falls back to place-search GPS when EXIF has no GPS', async () => {
+    extractMetadata.mockResolvedValueOnce({ latitude: 51.5074, longitude: -0.1278 });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 22 }] });
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/upload')
@@ -722,7 +736,7 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
 
   it('rejects out-of-range coordinates', async () => {
     extractMetadata.mockResolvedValueOnce({});
-    db.query.mockResolvedValueOnce({ rows: [{ id: 22 }] });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 23 }] });
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/upload')
@@ -735,7 +749,7 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
 
   it('accepts DMS coordinates and converts to decimal', async () => {
     extractMetadata.mockResolvedValueOnce({});
-    db.query.mockResolvedValueOnce({ rows: [{ id: 23 }] });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 24 }] });
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/upload')
@@ -746,8 +760,10 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
     expect(call[1][11]).toBeCloseTo(-71.2474, 3);
   });
 
-  it('upload form contains GPS fields', async () => {
+  it('upload form shows place search input and hidden lat/lon fields', async () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos/upload');
+    expect(res.text).toContain('loc-search-input');
+    expect(res.text).toContain('Search a place');
     expect(res.text).toContain('name="latitude"');
     expect(res.text).toContain('name="longitude"');
   });
@@ -769,7 +785,7 @@ describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
     expect(call[1][5]).toBeCloseTo(2.3522);
   });
 
-  it('clears coordinates when fields are empty', async () => {
+  it('clears coordinates when fields are empty (user clicked × clear)', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
       .mockResolvedValueOnce({ rows: [] })
@@ -782,6 +798,29 @@ describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
     const call = db.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
     expect(call[1][4]).toBeNull();
     expect(call[1][5]).toBeNull();
+  });
+
+  it('edit form shows place search with current lat/lon as placeholder', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{
+      ...FAKE_PHOTO, latitude: 48.8566, longitude: 2.3522,
+    }]});
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit');
+    expect(res.text).toContain('loc-search-input');
+    expect(res.text).toContain('48.85660');
+    expect(res.text).toContain('2.35220');
+    // Hidden fields pre-filled so user doing nothing preserves existing coords
+    expect(res.text).toContain('value="48.8566"');
+    expect(res.text).toContain('value="2.3522"');
+  });
+
+  it('edit form shows empty place search when photo has no GPS', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{
+      ...FAKE_PHOTO, latitude: null, longitude: null,
+    }]});
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit');
+    expect(res.text).toContain('loc-search-input');
+    expect(res.text).toContain('Search a place');
+    expect(res.text).not.toContain('48.8566');
   });
 });
 
