@@ -67,11 +67,13 @@ async function setTags(photoId, rawTags) {
 // Shared GPS + Nextcloud fields for single-photo upload forms
 function singleUploadFields() {
   return `
-    <label>GPS coordinates <small>(optional — auto-filled from photo EXIF if available)</small>
-      <div class="row" style="gap:0.5rem">
-        <input type="text" name="latitude"  placeholder="48.8566 ou 48°51′21″N" style="flex:1">
-        <input type="text" name="longitude" placeholder="2.3522  ou 2°21′08″E"  style="flex:1">
+    <label>Location <small>(optional — EXIF GPS from the photo takes priority if present)</small>
+      <div class="tag-ac-wrap loc-search-wrap">
+        <input type="text" class="loc-search-input" placeholder="Search a place…" autocomplete="off">
+        <button type="button" class="loc-clear-btn" style="display:none">× clear</button>
       </div>
+      <input type="hidden" name="latitude">
+      <input type="hidden" name="longitude">
     </label>
     <label>Nextcloud link <small>(optional — https:// share link for original download)</small>
       <input type="url" name="nextcloud_url" placeholder="https://cloud.example/s/…">
@@ -84,17 +86,14 @@ function batchUploadFields() {
     <label>Tags for all <small>(optional, comma-separated — e.g. Paris, 2024)</small>
       <input type="text" name="tags" placeholder="Paris, 2024">
     </label>
-    <p style="margin:0.5rem 0 0.25rem;font-weight:500;font-size:0.9rem">
-      GPS for all <small style="font-weight:normal">(optional — applied to photos without EXIF GPS)</small>
-    </p>
-    <div style="display:flex;gap:0.75rem">
-      <label style="flex:1">Latitude
-        <input type="text" name="latitude" placeholder="48.8566">
-      </label>
-      <label style="flex:1">Longitude
-        <input type="text" name="longitude" placeholder="2.3522">
-      </label>
-    </div>`;
+    <label>Location for all <small>(optional — applied to photos without EXIF GPS)</small>
+      <div class="tag-ac-wrap loc-search-wrap">
+        <input type="text" class="loc-search-input" placeholder="Search a place…" autocomplete="off">
+        <button type="button" class="loc-clear-btn" style="display:none">× clear</button>
+      </div>
+      <input type="hidden" name="latitude">
+      <input type="hidden" name="longitude">
+    </label>`;
 }
 
 // Delete photos from DB and remove their files from disk

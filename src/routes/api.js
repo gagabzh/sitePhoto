@@ -146,6 +146,26 @@ router.get('/tags/counts', async (req, res) => {
   res.json(result);
 });
 
+// ── GET /api/geocode ─────────────────────────────────────────────────────────
+// Nominatim proxy — keeps Nominatim calls server-side (avoids CSP issues, central
+// place to add caching or rate-limit handling later).
+
+router.get('/geocode', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json([]);
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search?q='
+      + encodeURIComponent(q) + '&format=json&limit=5&addressdetails=0';
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'sitephoto/1.0 (personal photo app; contact via github)' },
+    });
+    const data = await r.json();
+    res.json(data.map(d => ({ name: d.display_name, lat: parseFloat(d.lat), lon: parseFloat(d.lon) })));
+  } catch {
+    res.json([]);
+  }
+});
+
 // ── GET /api/recipes ──────────────────────────────────────────────────────────
 
 router.get('/recipes', async (req, res) => {
