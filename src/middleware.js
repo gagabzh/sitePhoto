@@ -1,5 +1,8 @@
 function requireAuth(req, res, next) {
   if (req.session.userId) return next();
+  if (req.method === 'GET' && !/\.(ico|png|jpg|svg|css|js|woff2?)(\?|$)/i.test(req.path)) {
+    req.session.returnTo = req.originalUrl;
+  }
   res.redirect('/login');
 }
 

@@ -35,10 +35,12 @@ router.post('/login', loginLimiter, async (req, res) => {
   );
   const user = rows[0];
   if (user && await bcrypt.compare(password, user.password_hash)) {
+    const returnTo = req.session.returnTo;
     req.session.userId = user.id;
     req.session.name = user.name;
     req.session.role = user.role;
-    res.redirect(user.role === 'viewer' ? '/albums' : '/photos');
+    delete req.session.returnTo;
+    res.redirect(returnTo || (user.role === 'viewer' ? '/albums' : '/photos'));
   } else {
     res.redirect('/login?error=1');
   }

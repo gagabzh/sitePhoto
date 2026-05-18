@@ -21,12 +21,12 @@ function page(title, body, session) {
           <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>
           <div class="nav-menu" role="menu">
             <a href="/account/password" role="menuitem">Account</a>
-            ${session.role !== 'viewer' ? '<a href="/tags/recipes" role="menuitem">My Recipes</a>' : ''}
+            <a href="/tags/recipes" role="menuitem">My Recipes</a>
             ${session.role === 'admin' ? `<hr class="nav-menu-sep">
             <span class="nav-menu-section">ADMIN</span>
             <a href="/admin/users" role="menuitem">Users</a>
             <a href="/tags/manage" role="menuitem">Manage Tags</a>
-            <a href="/tags/recipes" role="menuitem">All Recipes</a>` : ''}
+            <a href="/tags/recipes?scope=all" role="menuitem">All Recipes</a>` : ''}
             <hr class="nav-menu-sep">
             <form method="POST" action="/logout">
               <button class="nav-menu-logout" type="submit">Logout</button>
@@ -990,13 +990,31 @@ function page(title, body, session) {
       font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
       color: var(--accent); letter-spacing: 0.05em; font-weight: 600;
     }
-    .cb-save-btn {
+    .cb-save-btn, .cb-share-btn {
       font-family: 'Kalam', cursive; font-size: 0.82rem;
       background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink);
       padding: 3px 12px; cursor: pointer; white-space: nowrap; flex: none;
     }
-    .cb-save-btn:disabled { opacity: 0.4; cursor: default; }
-    .cb-save-btn:not(:disabled):hover { background: var(--paper-2); }
+    .cb-save-btn:disabled, .cb-share-btn:disabled { opacity: 0.4; cursor: default; }
+    .cb-save-btn:not(:disabled):hover, .cb-share-btn:not(:disabled):hover { background: var(--paper-2); }
+    .cb-shared-banner {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 22px; background: oklch(96% 0.04 220);
+      border-bottom: 1.5px dashed var(--accent-cool);
+      font-family: 'Kalam', cursive; font-size: 0.85rem; flex: none;
+    }
+    .cb-banner-warn { color: var(--danger); flex: 1; }
+    .cb-banner-fork {
+      font-family: 'Kalam', cursive; font-size: 0.82rem;
+      background: var(--ink); color: var(--paper); border: 1.5px solid var(--ink);
+      padding: 3px 12px; cursor: pointer; white-space: nowrap; margin-left: auto;
+    }
+    .cb-banner-fork:hover { opacity: 0.85; }
+    .cb-recipe-share {
+      font-size: 0.72rem; color: var(--ink-faint); background: none; border: none;
+      cursor: pointer; padding: 0 2px; display: none;
+    }
+    .cb-recipe-row:hover .cb-recipe-share { display: inline; color: var(--accent); }
     /* result header */
     .cb-result-head {
       display: flex; align-items: center; justify-content: space-between;
@@ -1327,6 +1345,16 @@ function page(title, body, session) {
     .tr-row-actions .primary { background:var(--ink); color:var(--paper); }
     .tr-row-actions .danger { color:var(--danger); border-color:var(--danger); }
     .tr-empty { padding:40px 20px; text-align:center; font-family:'Caveat',cursive; font-size:22px; color:var(--ink-faint); }
+    .tr-shared-from { font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1px; text-transform:uppercase; background:oklch(90% 0.06 220); color:oklch(40% 0.1 220); padding:3px 10px; text-align:center; }
+    .tr-row-owner { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--accent-cool); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tr-row-dup { background: oklch(97% 0.04 35); }
+    .tr-dup-badge { font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--danger); letter-spacing:1px; text-transform:uppercase; vertical-align:middle; }
+    .tr-share-modal-backdrop { display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.45); align-items:center; justify-content:center; }
+    .tr-share-modal { background:var(--paper); border:2px solid var(--ink); padding:24px; min-width:320px; max-width:400px; width:90%; }
+    .tr-share-results { display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; }
+    .tr-share-user { font-family:'Kalam',cursive; font-size:14px; padding:8px 12px; border:1.5px solid var(--ink-faint); background:var(--paper); cursor:pointer; text-align:left; }
+    .tr-share-user:hover { background:var(--paper-2); border-color:var(--ink); }
+    .tr-share-none { font-family:'Kalam',cursive; font-size:13px; color:var(--ink-faint); padding:8px 0; }
 
     @media (max-width: 900px) {
       .cb-layout { grid-template-columns: 1fr; margin: -1.25rem -1rem -5.5rem; }

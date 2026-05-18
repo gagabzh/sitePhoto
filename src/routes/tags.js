@@ -148,14 +148,23 @@ function renderGrid(photos, view, hasFilters) {
 // ── GET / — Tag Combinator ────────────────────────────────────────────────────
 
 router.get('/', async (req, res) => {
-  const isViewer = req.session.role === 'viewer';
-  const state    = parseState(req.query);
+  const isViewer   = req.session.role === 'viewer';
+  const state      = parseState(req.query);
+  const sharedToken = req.query._shared || null;
 
-  const [vocabulary, initial, recipeRows] = await Promise.all([
+  const [vocabulary, initial, recipeRows, sharedInfo] = await Promise.all([
     fetchTagVocabulary(isViewer, req.session.userId),
     fetchInitialResults(state, isViewer, req.session.userId),
     db.query('SELECT id, name, query_json FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC', [req.session.userId])
       .then(r => r.rows),
+    sharedToken
+      ? db.query(
+          `SELECT tr.name, u.name AS owner_name, u.id AS owner_id
+           FROM tag_recipes tr JOIN users u ON u.id = tr.user_id
+           WHERE tr.share_token = $1`,
+          [sharedToken]
+        ).then(r => r.rows[0] || null)
+      : Promise.resolve(null),
   ]);
 
   const { total, photos, hasFilters } = initial;
@@ -166,8 +175,35 @@ router.get('/', async (req, res) => {
   const recipesHtml = recipeRows.map(r =>
     `<div class="cb-recipe-row" data-id="${r.id}" data-query="${esc(JSON.stringify(r.query_json))}">` +
     `<span>★</span><span class="cb-recipe-n">${esc(r.name)}</span>` +
+    `<button class="cb-recipe-share" data-share-id="${r.id}" title="Share" aria-label="Share">⤴</button>` +
     `<button class="cb-recipe-del" aria-label="Delete">\xd7</button></div>`
   ).join('');
+
+  // ── Shared recipe banner ──────────────────────────────────────────────────
+  let sharedBanner = '';
+  if (sharedInfo) {
+    let accessWarning = '';
+    if (isViewer) {
+      const { where: whereAll, vals: valsAll } = require('../combinator').buildWhere(state, false, null);
+      const { where: whereMe,  vals: valsMe  } = require('../combinator').buildWhere(state, true, req.session.userId);
+      const hasF = SECTIONS.some(s => state.sections[s].on.length > 0 || state.sections[s].not.length > 0);
+      if (hasF) {
+        const [{ rows: allR }, { rows: meR }] = await Promise.all([
+          db.query(`SELECT COUNT(DISTINCT p.id)::int AS n FROM photos p ${whereAll}`, valsAll),
+          db.query(`SELECT COUNT(DISTINCT p.id)::int AS n FROM photos p ${whereMe}`,  valsMe),
+        ]);
+        const hidden = (allR[0].n || 0) - (meR[0].n || 0);
+        if (hidden > 0) {
+          accessWarning = `<span class="cb-banner-warn">⚠ ${hidden} photo${hidden !== 1 ? 's' : ''} not shared with you — ask ${esc(sharedInfo.owner_name)} for access.</span>`;
+        }
+      }
+    }
+    sharedBanner = `<div class="cb-shared-banner">
+      <span>Recipe shared by <strong>${esc(sharedInfo.owner_name)}</strong></span>
+      ${accessWarning}
+      <button class="cb-banner-fork" data-token="${esc(sharedToken)}">+ add to my recipes</button>
+    </div>`;
+  }
 
   const body = `
     <div class="cb-layout">
@@ -186,8 +222,10 @@ router.get('/', async (req, res) => {
         </div>
       </aside>
       <div class="cb-main">
+        ${sharedBanner}
         <div class="cb-recipe-bar">
           <div class="cb-pills" id="cb-pills">${renderPills(state)}</div>
+          <button class="cb-share-btn" id="cb-share-btn"${!hasAnyFilter ? ' disabled' : ''}>⤴ share</button>
           <button class="cb-save-btn" id="cb-save-btn"${!hasAnyFilter ? ' disabled' : ''}>★ save recipe</button>
         </div>
         <div class="cb-result-head">
@@ -318,8 +356,9 @@ router.get('/', async (req, res) => {
       }
 
       function updateSaveBtn(){
-        var btn=document.getElementById('cb-save-btn'); if(!btn) return;
-        btn.disabled=!SECTIONS.some(function(s){return state.sections[s].on.length>0||state.sections[s].not.length>0;});
+        var hasF=!SECTIONS.some(function(s){return state.sections[s].on.length>0||state.sections[s].not.length>0;});
+        var btn=document.getElementById('cb-save-btn'); if(btn) btn.disabled=hasF;
+        var shr=document.getElementById('cb-share-btn'); if(shr) shr.disabled=hasF;
       }
 
       function toggleTag(el,forceNot){
@@ -450,6 +489,48 @@ router.get('/', async (req, res) => {
           });
         });
       }
+
+      /* share current filter (recipe bar) */
+      function showToast(msg){
+        var t=document.getElementById('cb-toast');
+        if(!t){t=document.createElement('div');t.id='cb-toast';t.className='tm-toast';document.body.appendChild(t);}
+        t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);
+      }
+      var shrBtn=document.getElementById('cb-share-btn');
+      if(shrBtn) shrBtn.addEventListener('click',function(){
+        if(this.disabled) return;
+        var link=location.href.replace(/[?&]_shared=[^&]*/,'');
+        if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){showToast('link copied ✓');});}
+        else{prompt('share link:',link);}
+      });
+
+      /* share button on sidebar recipe rows */
+      document.addEventListener('click',function(ev){
+        var btn=ev.target.closest('.cb-recipe-share');
+        if(!btn) return;
+        ev.stopPropagation();
+        var id=btn.dataset.shareId;
+        fetch('/api/recipes/'+id+'/share',{method:'POST'})
+          .then(function(r){return r.json();})
+          .then(function(d){
+            if(!d.token) return;
+            var link=location.origin+'/tags/recipes/fork/'+d.token;
+            if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){showToast('link copied ✓');});}
+            else{prompt('share link:',link);}
+          });
+      });
+
+      /* fork banner: add shared recipe to my collection */
+      var forkBtn=document.querySelector('.cb-banner-fork');
+      if(forkBtn) forkBtn.addEventListener('click',function(){
+        this.disabled=true;
+        var token=this.dataset.token;
+        fetch('/api/recipes/fork/'+token,{method:'POST'})
+          .then(function(r){return r.json();})
+          .then(function(d){
+            if(d.id){showToast('added to my recipes ✓');setTimeout(function(){location.href='/tags/recipes';},900);}
+          });
+      });
     })();</script>`;
 
   res.send(page('Tags', body, req.session));
@@ -1171,17 +1252,167 @@ router.get('/manage', requireEditor, async (req, res) => {
   res.send(page('Manage Tags', body, req.session));
 });
 
+// ── GET /tags/recipes/fork/:token — redirect to tag view with shared recipe ───
+
+router.get('/recipes/fork/:token', async (req, res) => {
+  const { token } = req.params;
+  const { rows } = await db.query(
+    'SELECT query_json FROM tag_recipes WHERE share_token = $1',
+    [token]
+  );
+  if (!rows.length) return res.status(404).send(page('Recipe not found',
+    '<p style="padding:40px;font-family:\'Kalam\',cursive;font-size:18px;color:var(--ink-soft)">This share link is invalid or has been removed.</p>',
+    req.session));
+  const q = rows[0].query_json;
+  const params = [];
+  for (const sec of ['people','places','years','themes','other']) {
+    const s = (q.sections && q.sections[sec]) || { on: [], not: [] };
+    if (s.on && s.on.length)  params.push(`${sec}=${s.on.map(encodeURIComponent).join(',')}`);
+    if (s.not && s.not.length) params.push(`${sec}.not=${s.not.map(encodeURIComponent).join(',')}`);
+  }
+  params.push(`_shared=${encodeURIComponent(token)}`);
+  res.redirect('/tags?' + params.join('&'));
+});
+
 // ── GET /tags/recipes — saved recipes management ──────────────────────────────
 
-router.get('/recipes', requireEditor, async (req, res) => {
-  const search = String(req.query.search || '').trim().toLowerCase();
-  const view   = req.query.view === 'list' ? 'list' : 'cards';
+router.get('/recipes', async (req, res) => {
+  const search   = String(req.query.search || '').trim().toLowerCase();
+  const view     = req.query.view === 'list' ? 'list' : 'cards';
+  const scopeAll = req.session.role === 'admin' && req.query.scope === 'all';
 
-  const { rows: recipes } = await db.query(
-    `SELECT id, name, query_json, pinned, use_count, last_used_at, created_at
-     FROM tag_recipes WHERE user_id = $1 ORDER BY pinned DESC, created_at DESC`,
-    [req.session.userId]
-  );
+  if (scopeAll) {
+    // Admin all-recipes view ─────────────────────────────────────────────────
+    const { rows: allRecipes } = await db.query(
+      `SELECT tr.id, tr.name, tr.query_json, tr.pinned, tr.use_count, tr.last_used_at,
+              tr.created_at, tr.user_id AS owner_id, u.name AS owner_name
+       FROM tag_recipes tr JOIN users u ON u.id = tr.user_id
+       WHERE tr.shared_by IS NULL
+       ORDER BY tr.name ASC, u.name ASC`
+    );
+
+    const filtered = search
+      ? allRecipes.filter(r => {
+          if (r.name.toLowerCase().includes(search)) return true;
+          if (r.owner_name.toLowerCase().includes(search)) return true;
+          const secs = (r.query_json || {}).sections || {};
+          for (const s of Object.values(secs)) {
+            if ((s.on || []).some(t => t.toLowerCase().includes(search))) return true;
+            if ((s.not || []).some(t => t.toLowerCase().includes(search))) return true;
+          }
+          return false;
+        })
+      : allRecipes;
+
+    // Detect exact-duplicate query_json groups
+    const sigMap = {};
+    for (const r of filtered) {
+      const sig = JSON.stringify(r.query_json);
+      if (!sigMap[sig]) sigMap[sig] = [];
+      sigMap[sig].push(r.id);
+    }
+    const dupIds = new Set(
+      Object.values(sigMap).filter(ids => ids.length > 1).flat()
+    );
+
+    function renderRecipePills(query_json) {
+      const secs  = (query_json || {}).sections || {};
+      const pills = [];
+      let first   = true;
+      for (const sec of SECTIONS) {
+        const s = secs[sec]; if (!s) continue;
+        const ons = s.on || [], nots = s.not || [];
+        if (!ons.length && !nots.length) continue;
+        if (!first) pills.push(`<span class="tr-op">AND</span>`);
+        first = false;
+        ons.forEach((tag, i) => { if (i > 0) pills.push(`<span class="tr-op">AND</span>`); pills.push(`<span class="tr-pill inc">${esc(tag)}</span>`); });
+        nots.forEach(tag => { pills.push(`<span class="tr-op">NOT</span>`); pills.push(`<span class="tr-pill exc">${esc(tag)}</span>`); });
+      }
+      return pills.length ? pills.join(' ') : `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-faint)">(empty)</span>`;
+    }
+
+    function recipeUrl(query_json) {
+      const secs = (query_json || {}).sections || {};
+      const p = [];
+      for (const sec of SECTIONS) {
+        const s = secs[sec]; if (!s) continue;
+        (s.on  || []).forEach(t => p.push(sec + '=' + encodeURIComponent(t)));
+        (s.not || []).forEach(t => p.push(sec + '.not=' + encodeURIComponent(t)));
+      }
+      return '/tags' + (p.length ? '?' + p.join('&') : '');
+    }
+
+    const rows = filtered.map(r => {
+      const isDup = dupIds.has(r.id);
+      const mono  = new Date(r.created_at).toLocaleDateString('en', {month:'short', day:'numeric', year:'numeric'});
+      return `<div class="tr-row${isDup ? ' tr-row-dup' : ''}" data-id="${r.id}">
+        <span class="tr-row-owner">${esc(r.owner_name)}</span>
+        <span class="rname">${esc(r.name)}${isDup ? ' <span class="tr-dup-badge">⚠ duplicate</span>' : ''}</span>
+        <div class="tr-pills">${renderRecipePills(r.query_json)}</div>
+        <span class="mono n">${r.use_count} uses</span>
+        <span class="mono">${mono}</span>
+        <div class="tr-row-actions">
+          <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+          <button data-del-recipe="${r.id}" data-name="${esc(r.name)}" class="danger">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    const viewAllUrl = p => `/tags/recipes?scope=all${search ? `&search=${encodeURIComponent(search)}` : ''}${p}`;
+    const body = `<div class="tr-page">
+      <div style="padding:24px 20px 16px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;border-bottom:1.5px dashed var(--ink-faint);">
+        <div>
+          <h1 style="font-family:'Caveat',cursive;font-size:48px;font-weight:700;margin:0;line-height:1;">all <em style="color:var(--accent);font-style:italic;">recipes.</em></h1>
+          <p style="font-family:'Kalam',cursive;font-size:14px;color:var(--ink-soft);margin:6px 0 0;">${filtered.length} recipes across all users${dupIds.size ? ` · <span style="color:var(--danger)">${dupIds.size} duplicates detected</span>` : ''}</p>
+        </div>
+        <a href="/tags/recipes" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-soft);text-decoration:none;">← my recipes</a>
+      </div>
+      <div class="tr-filter">
+        <form method="GET" action="/tags/recipes" style="display:contents">
+          <input type="hidden" name="scope" value="all">
+          <input class="tr-search" type="text" name="search" value="${esc(search)}" placeholder="search by name, owner, tag…" autocomplete="off">
+        </form>
+      </div>
+      <div class="tr-sec-h" style="border-top:none">
+        all users · sorted by name
+        <span class="tr-sec-count">// ${filtered.length} total</span>
+      </div>
+      <div class="tr-list" style="padding:0 20px 40px">
+        ${rows || `<div class="tr-empty">no recipes found.</div>`}
+      </div>
+    </div>
+    <script>(function(){
+      function showToast(msg){var t=document.getElementById('tm-toast');if(!t){t=document.createElement('div');t.id='tm-toast';t.className='tm-toast';document.body.appendChild(t);}t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
+      document.querySelectorAll('[data-del-recipe]').forEach(function(btn){
+        btn.addEventListener('click',function(ev){
+          ev.stopPropagation();
+          var id=this.dataset.delRecipe, name=this.dataset.name||'this recipe';
+          if(!confirm('delete recipe "'+name+'"?')) return;
+          fetch('/api/recipes/'+id,{method:'DELETE'}).then(function(r){
+            if(r.status===204||r.ok){showToast('deleted');setTimeout(function(){location.reload();},500);}
+          });
+        });
+      });
+    })();</script>`;
+
+    return res.send(page('All Recipes', body, req.session));
+  }
+
+  // My-recipes view (default) ────────────────────────────────────────────────
+  const [{ rows: recipes }, { rows: sharedWithMe }] = await Promise.all([
+    db.query(
+      `SELECT id, name, query_json, pinned, use_count, last_used_at, created_at
+       FROM tag_recipes WHERE user_id = $1 AND shared_by IS NULL ORDER BY pinned DESC, created_at DESC`,
+      [req.session.userId]
+    ),
+    db.query(
+      `SELECT tr.id, tr.name, tr.query_json, tr.pinned, tr.use_count, tr.last_used_at, tr.created_at,
+              u.name AS shared_by_name
+       FROM tag_recipes tr JOIN users u ON u.id = tr.shared_by
+       WHERE tr.user_id = $1 AND tr.shared_by IS NOT NULL ORDER BY tr.created_at DESC`,
+      [req.session.userId]
+    ),
+  ]);
 
   // Filter by search
   const filtered = search
@@ -1263,6 +1494,8 @@ router.get('/recipes', requireEditor, async (req, res) => {
       </div>
       <div class="tr-card-footer">
         <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+        <button class="icon" data-share="${r.id}" title="Share link">⤴</button>
+        <button class="icon" data-share-to="${r.id}" data-name="${esc(r.name)}" title="Share to user">👤</button>
         <button class="icon" data-dup="${r.id}" title="Duplicate">⎘</button>
         <button class="icon danger" data-del-recipe="${r.id}" data-name="${esc(r.name)}" title="Delete">🗑</button>
       </div>
@@ -1282,8 +1515,30 @@ router.get('/recipes', requireEditor, async (req, res) => {
       <span class="mono">${mono}</span>
       <div class="tr-row-actions">
         <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+        <button data-share="${r.id}" title="Share link">⤴</button>
+        <button data-share-to="${r.id}" data-name="${esc(r.name)}" title="Share to user">👤</button>
         <button data-dup="${r.id}" title="Duplicate">⎘</button>
         <button class="danger" data-del-recipe="${r.id}" data-name="${esc(r.name)}" title="Delete">🗑</button>
+      </div>
+    </div>`;
+  }
+
+  // ── Render a shared-with-me card (no pin/dup/del — simple) ───────────────
+  function renderSharedCard(r) {
+    const createdDate = new Date(r.created_at).toLocaleDateString('en', {month:'short', year:'numeric'});
+    return `<div class="tr-card" data-id="${r.id}">
+      <div class="tr-shared-from">shared by ${esc(r.shared_by_name)}</div>
+      <div class="tr-covers">
+        <div class="tc"></div><div class="tc"></div><div class="tc"></div>
+      </div>
+      <div class="tr-card-body">
+        <h3>${esc(r.name)}</h3>
+        <div class="tr-pills">${renderRecipePills(r.query_json)}</div>
+        <div class="tr-by">from ${esc(r.shared_by_name)} · ${createdDate}</div>
+      </div>
+      <div class="tr-card-footer">
+        <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+        <button class="icon danger" data-del-recipe="${r.id}" data-name="${esc(r.name)}" title="Remove">🗑</button>
       </div>
     </div>`;
   }
@@ -1331,6 +1586,13 @@ router.get('/recipes', requireEditor, async (req, res) => {
       <div class="tr-list">${rows || `<div class="tr-empty">all recipes are pinned above.</div>`}${emptyRow}</div>`;
   }
 
+  const sharedSection = sharedWithMe.length ? `
+    <div class="tr-sec-h" style="border-top:none;background:oklch(95% 0.04 220)">
+      📬 shared with you
+      <span class="tr-sec-count">// ${sharedWithMe.length}</span>
+    </div>
+    <div class="tr-cards">${sharedWithMe.map(renderSharedCard).join('')}</div>` : '';
+
   const body = `<div class="tr-page">
     <div style="padding:24px 20px 16px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;border-bottom:1.5px dashed var(--ink-faint);">
       <div>
@@ -1354,8 +1616,24 @@ router.get('/recipes', requireEditor, async (req, res) => {
       </div>
     </div>
 
+    ${sharedSection}
     ${pinnedSection}
     ${allSection}
+  </div>
+
+  <!-- Share-to-user modal -->
+  <div id="tr-share-modal" class="tr-share-modal-backdrop" style="display:none">
+    <div class="tr-share-modal">
+      <h3 style="font-family:'Caveat',cursive;font-size:26px;font-weight:700;margin:0 0 12px">share recipe</h3>
+      <p id="tr-share-recipe-name" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-soft);margin:0 0 12px"></p>
+      <input id="tr-share-user-q" type="text" placeholder="search by name…" autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding:6px 10px;border:1.5px solid var(--ink);background:var(--paper);font-family:'Kalam',cursive;font-size:14px;margin-bottom:6px">
+      <div id="tr-share-results" class="tr-share-results"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:16px">
+        ${req.session.role === 'admin' ? `<button id="tr-share-all" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;">📢 everyone</button>` : '<span></span>'}
+        <button id="tr-share-cancel" style="font-family:'Kalam',cursive;font-size:13px;background:none;border:none;cursor:pointer;color:var(--ink-soft)">cancel</button>
+      </div>
+    </div>
   </div>
 
   <script>(function(){
@@ -1402,6 +1680,85 @@ router.get('/recipes', requireEditor, async (req, res) => {
         });
       });
     });
+
+    // Share link
+    document.addEventListener('click',function(ev){
+      var btn=ev.target.closest('[data-share]');
+      if(!btn) return;
+      ev.stopPropagation();
+      var id=btn.dataset.share;
+      fetch('/api/recipes/'+id+'/share',{method:'POST'})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(!d.token) return;
+          var link=location.origin+'/tags/recipes/fork/'+d.token;
+          if(navigator.clipboard){navigator.clipboard.writeText(link).then(function(){showToast('link copied ✓');});}
+          else{prompt('share link:',link);}
+        });
+    });
+
+    // Share to user — open modal
+    var shareMod=document.getElementById('tr-share-modal');
+    var shareQ=document.getElementById('tr-share-user-q');
+    var shareRes=document.getElementById('tr-share-results');
+    var shareName=document.getElementById('tr-share-recipe-name');
+    var shareRecipeId=null;
+    var shareTimer=null;
+
+    document.addEventListener('click',function(ev){
+      var btn=ev.target.closest('[data-share-to]');
+      if(!btn) return;
+      ev.stopPropagation();
+      shareRecipeId=btn.dataset.shareTo;
+      if(shareName) shareName.textContent='"'+(btn.dataset.name||'recipe')+'"';
+      if(shareQ){shareQ.value='';shareQ.focus();}
+      if(shareRes) shareRes.innerHTML='';
+      if(shareMod) shareMod.style.display='flex';
+    });
+
+    document.getElementById('tr-share-cancel').addEventListener('click',function(){
+      if(shareMod) shareMod.style.display='none';
+    });
+    if(shareMod) shareMod.addEventListener('click',function(ev){if(ev.target===this)this.style.display='none';});
+
+    var shareAllBtn=document.getElementById('tr-share-all');
+    if(shareAllBtn) shareAllBtn.addEventListener('click',function(){
+      if(!confirm('Share this recipe with ALL users?')) return;
+      this.disabled=true;
+      fetch('/api/recipes/'+shareRecipeId+'/share-to',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({everyone:true})})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d.ok){showToast('shared with everyone ✓ ('+d.count+' users)');shareMod.style.display='none';}
+        });
+    });
+
+    if(shareQ) shareQ.addEventListener('input',function(){
+      clearTimeout(shareTimer);
+      var q=this.value.trim();
+      if(!q){if(shareRes)shareRes.innerHTML='';return;}
+      shareTimer=setTimeout(function(){
+        fetch('/api/users/search?q='+encodeURIComponent(q))
+          .then(function(r){return r.json();})
+          .then(function(users){
+            if(!shareRes) return;
+            if(!users.length){shareRes.innerHTML='<div class="tr-share-none">no users found</div>';return;}
+            shareRes.innerHTML=users.map(function(u){
+              return '<button class="tr-share-user" data-uid="'+u.id+'" data-uname="'+e(u.name)+'">'+e(u.name)+'</button>';
+            }).join('');
+            shareRes.querySelectorAll('.tr-share-user').forEach(function(btn){
+              btn.addEventListener('click',function(){
+                var uid=this.dataset.uid,uname=this.dataset.uname;
+                fetch('/api/recipes/'+shareRecipeId+'/share-to',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:parseInt(uid,10)})})
+                  .then(function(r){return r.json();})
+                  .then(function(d){
+                    if(d.ok){showToast('shared with '+uname+' ✓');shareMod.style.display='none';}
+                  });
+              });
+            });
+          });
+      },250);
+    });
+
   })();</script>`;
 
   res.send(page('My Recipes', body, req.session));
