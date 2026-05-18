@@ -1171,6 +1171,55 @@ router.get('/manage', requireEditor, async (req, res) => {
   res.send(page('Manage Tags', body, req.session));
 });
 
+// ── GET /tags/recipes/fork/:token — preview and add a shared recipe ───────────
+
+router.get('/recipes/fork/:token', async (req, res) => {
+  const { token } = req.params;
+  const { rows } = await db.query(
+    `SELECT tr.id, tr.name, tr.query_json, u.name AS owner_name
+     FROM tag_recipes tr JOIN users u ON u.id = tr.user_id
+     WHERE tr.share_token = $1`,
+    [token]
+  );
+  if (!rows.length) return res.status(404).send(page('Recipe not found', '<p style="padding:40px;font-family:\'Kalam\',cursive;font-size:18px;color:var(--ink-soft)">This share link is invalid or has been removed.</p>', req.session));
+
+  const r = rows[0];
+  const tagPills = (r.query_json.tags || []).map(t =>
+    `<span class="tr-pill">${esc(t)}</span>`
+  ).join('');
+  const modePill = r.query_json.mode
+    ? `<span class="tr-pill tr-pill-mode">${esc(r.query_json.mode)}</span>` : '';
+
+  const body = `
+  <div style="max-width:520px;margin:60px auto;padding:0 20px">
+    <p style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint);margin:0 0 4px">shared recipe</p>
+    <h1 style="font-family:'Caveat',cursive;font-size:40px;font-weight:700;margin:0 0 4px">${esc(r.name)}</h1>
+    <p style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-soft);margin:0 0 20px">by ${esc(r.owner_name)}</p>
+    <div class="tr-pills" style="margin-bottom:28px">${modePill}${tagPills}</div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <button id="fork-btn" class="btn btn-primary">add to my recipes</button>
+      <a href="/tags/recipes" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-soft)">cancel</a>
+    </div>
+    <p id="fork-msg" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-soft);margin-top:12px;display:none"></p>
+  </div>
+  <script>(function(){
+    document.getElementById('fork-btn').addEventListener('click',function(){
+      this.disabled=true;
+      fetch('/api/recipes/fork/${esc(token)}',{method:'POST'})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d.id){
+            document.getElementById('fork-msg').style.display='';
+            document.getElementById('fork-msg').textContent='added! redirecting…';
+            setTimeout(function(){location.href='/tags/recipes';},800);
+          }
+        });
+    });
+  })();</script>`;
+
+  res.send(page('Add Recipe', body, req.session));
+});
+
 // ── GET /tags/recipes — saved recipes management ──────────────────────────────
 
 router.get('/recipes', requireEditor, async (req, res) => {
@@ -1263,6 +1312,7 @@ router.get('/recipes', requireEditor, async (req, res) => {
       </div>
       <div class="tr-card-footer">
         <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+        <button class="icon" data-share="${r.id}" title="Share">⤴</button>
         <button class="icon" data-dup="${r.id}" title="Duplicate">⎘</button>
         <button class="icon danger" data-del-recipe="${r.id}" data-name="${esc(r.name)}" title="Delete">🗑</button>
       </div>
@@ -1282,6 +1332,7 @@ router.get('/recipes', requireEditor, async (req, res) => {
       <span class="mono">${mono}</span>
       <div class="tr-row-actions">
         <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+        <button data-share="${r.id}" title="Share">⤴</button>
         <button data-dup="${r.id}" title="Duplicate">⎘</button>
         <button class="danger" data-del-recipe="${r.id}" data-name="${esc(r.name)}" title="Delete">🗑</button>
       </div>
@@ -1401,6 +1452,25 @@ router.get('/recipes', requireEditor, async (req, res) => {
           if(r.status===204||r.ok){showToast('deleted');setTimeout(function(){location.reload();},500);}
         });
       });
+    });
+
+    // Share
+    document.addEventListener('click',function(ev){
+      var btn=ev.target.closest('[data-share]');
+      if(!btn) return;
+      ev.stopPropagation();
+      var id=btn.dataset.share;
+      fetch('/api/recipes/'+id+'/share',{method:'POST'})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(!d.token) return;
+          var link=location.origin+'/tags/recipes/fork/'+d.token;
+          if(navigator.clipboard){
+            navigator.clipboard.writeText(link).then(function(){showToast('link copied ✓');});
+          } else {
+            prompt('share link:', link);
+          }
+        });
     });
   })();</script>`;
 

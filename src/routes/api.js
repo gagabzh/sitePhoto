@@ -338,4 +338,43 @@ router.post('/recipes/:id/duplicate', async (req, res) => {
   res.status(201).json({ id: newRows[0].id });
 });
 
+// ── POST /api/recipes/:id/share — generate share token ───────────────────────
+
+router.post('/recipes/:id/share', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  const { rows } = await db.query(
+    'SELECT share_token FROM tag_recipes WHERE id = $1 AND user_id = $2',
+    [id, req.session.userId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  let token = rows[0].share_token;
+  if (!token) {
+    const { rows: updated } = await db.query(
+      'UPDATE tag_recipes SET share_token = gen_random_uuid() WHERE id = $1 RETURNING share_token',
+      [id]
+    );
+    token = updated[0].share_token;
+  }
+  res.json({ token });
+});
+
+// ── POST /api/recipes/fork/:token — copy shared recipe into own collection ────
+
+router.post('/recipes/fork/:token', async (req, res) => {
+  const { token } = req.params;
+  const { rows } = await db.query(
+    `SELECT tr.name, tr.query_json, u.name AS owner_name
+     FROM tag_recipes tr JOIN users u ON u.id = tr.user_id
+     WHERE tr.share_token = $1`,
+    [token]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  const { rows: newRows } = await db.query(
+    'INSERT INTO tag_recipes (user_id, name, query_json) VALUES ($1, $2, $3) RETURNING id',
+    [req.session.userId, rows[0].name, JSON.stringify(rows[0].query_json)]
+  );
+  res.status(201).json({ id: newRows[0].id });
+});
+
 module.exports = router;
