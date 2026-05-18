@@ -977,12 +977,6 @@ router.get('/manage', requireEditor, async (req, res) => {
       });
     });
 
-    // Autosave on blur
-    var saveTimer=null;
-    function schedSave(){
-      clearTimeout(saveTimer);
-      saveTimer=setTimeout(doSave,400);
-    }
     function doSave(){
       var id=drawer&&drawer.dataset.id;
       if(!id) return;
@@ -997,13 +991,6 @@ router.get('/manage', requireEditor, async (req, res) => {
       return fetch('/api/tags/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
         .then(function(r){ if(r.ok) showToast('saved ✓'); });
     }
-
-    var nameIn=document.getElementById('tm-dr-name');
-    var kindSel=document.getElementById('tm-dr-kind');
-    var descIn=document.getElementById('tm-dr-desc');
-    if(nameIn)  nameIn.addEventListener('blur', doSave);
-    if(kindSel) kindSel.addEventListener('change', doSave);
-    if(descIn)  descIn.addEventListener('blur', doSave);
 
     // ── Alias pills ───────────────────────────────────────────────────────────
     var currentAliases=(${JSON.stringify((editTag && editTag.aliases) || [])}).slice();
