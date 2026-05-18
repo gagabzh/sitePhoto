@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { parseState, buildWhere, buildConditions, SECTIONS, ORDER_SQL } = require('../combinator');
+const { requireEditor } = require('../middleware');
 
 // ── GET /api/tags/index ───────────────────────────────────────────────────────
 // Returns the full tag vocabulary grouped by category with global photo counts.
@@ -203,6 +204,138 @@ router.delete('/recipes/:id', async (req, res) => {
 
   await db.query('DELETE FROM tag_recipes WHERE id = $1', [id]);
   res.status(204).end();
+});
+
+// ── GET /api/tags/:id/detail — fetch one tag for the drawer ──────────────────
+
+router.get('/tags/:id/detail', requireEditor, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  const { rows } = await db.query(
+    'SELECT id, name, category, aliases, description FROM tags WHERE id = $1', [id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  res.json(rows[0]);
+});
+
+// ── POST /api/tags — create tag ───────────────────────────────────────────────
+
+router.post('/tags', requireEditor, async (req, res) => {
+  const name     = String(req.body.name || '').trim().toLowerCase().slice(0, 100);
+  const category = ['people','places','years','themes'].includes(req.body.category) ? req.body.category : null;
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const { rows } = await db.query(
+    'INSERT INTO tags (name, category) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING RETURNING id',
+    [name, category]
+  );
+  if (!rows.length) return res.status(409).json({ error: 'tag already exists' });
+  res.status(201).json({ id: rows[0].id });
+});
+
+// ── POST /api/tags/merge — merge tags ─────────────────────────────────────────
+
+router.post('/tags/merge', requireEditor, async (req, res) => {
+  const targetId  = parseInt(req.body.targetId, 10);
+  const sourceIds = (req.body.sourceIds || []).map(Number).filter(n => !isNaN(n) && n !== targetId);
+  if (isNaN(targetId) || !sourceIds.length) return res.status(400).json({ error: 'invalid params' });
+  // Re-point photo_tags from sources to target
+  await db.query(
+    'INSERT INTO photo_tags (photo_id, tag_id) SELECT photo_id, $1 FROM photo_tags WHERE tag_id = ANY($2::int[]) ON CONFLICT DO NOTHING',
+    [targetId, sourceIds]
+  );
+  await db.query('DELETE FROM tags WHERE id = ANY($1::int[])', [sourceIds]);
+  res.json({ ok: true });
+});
+
+// ── PATCH /api/tags/:id — update tag ─────────────────────────────────────────
+
+router.patch('/tags/:id', requireEditor, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  const { rows: exist } = await db.query('SELECT id FROM tags WHERE id = $1', [id]);
+  if (!exist.length) return res.status(404).json({ error: 'not found' });
+
+  const updates = [];
+  const vals    = [];
+  if (req.body.name !== undefined) {
+    vals.push(String(req.body.name).trim().toLowerCase().slice(0, 100));
+    updates.push(`name = $${vals.length}`);
+  }
+  if (req.body.category !== undefined) {
+    const cat = ['people','places','years','themes'].includes(req.body.category) ? req.body.category : null;
+    vals.push(cat);
+    updates.push(`category = $${vals.length}`);
+  }
+  if (req.body.aliases !== undefined) {
+    const aliases = Array.isArray(req.body.aliases)
+      ? req.body.aliases.map(a => String(a).trim().toLowerCase()).filter(Boolean)
+      : [];
+    vals.push(aliases);
+    updates.push(`aliases = $${vals.length}`);
+  }
+  if (req.body.description !== undefined) {
+    vals.push(String(req.body.description).slice(0, 500) || null);
+    updates.push(`description = $${vals.length}`);
+  }
+  if (!updates.length) return res.json({ ok: true });
+  vals.push(id);
+  await db.query(`UPDATE tags SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
+  res.json({ ok: true });
+});
+
+// ── DELETE /api/tags/:id — delete tag ────────────────────────────────────────
+
+router.delete('/tags/:id', requireEditor, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  await db.query('DELETE FROM tags WHERE id = $1', [id]);
+  res.status(204).end();
+});
+
+// ── PATCH /api/recipes/:id — update recipe ───────────────────────────────────
+
+router.patch('/recipes/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  const { rows } = await db.query('SELECT user_id FROM tag_recipes WHERE id = $1', [id]);
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (rows[0].user_id !== req.session.userId) return res.status(403).json({ error: 'forbidden' });
+
+  const updates = [];
+  const vals    = [];
+  if (req.body.name !== undefined) {
+    vals.push(String(req.body.name).trim().slice(0, 100));
+    updates.push(`name = $${vals.length}`);
+  }
+  if (req.body.pinned !== undefined) {
+    vals.push(!!req.body.pinned);
+    updates.push(`pinned = $${vals.length}`);
+  }
+  if (req.body.query !== undefined && typeof req.body.query === 'object') {
+    vals.push(JSON.stringify(req.body.query));
+    updates.push(`query_json = $${vals.length}`);
+  }
+  if (!updates.length) return res.json({ ok: true });
+  vals.push(id);
+  await db.query(`UPDATE tag_recipes SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
+  res.json({ ok: true });
+});
+
+// ── POST /api/recipes/:id/duplicate — clone recipe ───────────────────────────
+
+router.post('/recipes/:id/duplicate', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  const { rows } = await db.query(
+    'SELECT name, query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
+    [id, req.session.userId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  const { rows: newRows } = await db.query(
+    'INSERT INTO tag_recipes (user_id, name, query_json) VALUES ($1, $2, $3) RETURNING id',
+    [req.session.userId, rows[0].name + ' (copy)', JSON.stringify(rows[0].query_json)]
+  );
+  res.status(201).json({ id: newRows[0].id });
 });
 
 module.exports = router;
