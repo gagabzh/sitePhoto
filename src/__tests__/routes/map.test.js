@@ -4,7 +4,7 @@ const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => jest.resetAllMocks());
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
 const VIEWER_SESSION = { userId: 20, name: 'Bob',   role: 'viewer' };
@@ -138,5 +138,89 @@ describe('GPS4: GET /map?album&tag — filtered map', () => {
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/map');
     expect(res.text).not.toContain('Clear');
+  });
+});
+
+// ── GPS5: zone search (Haversine filter) ─────────────────────────────────────
+
+describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
+  it('adds Haversine condition when lat+lon provided', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522&radius=10');
+    const photoQuery = db.query.mock.calls[0][0];
+    expect(photoQuery).toContain('asin');
+    expect(photoQuery).toContain('radians');
+  });
+
+  it('passes lat, lon, radius as params to photo query', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522&radius=10');
+    const params = db.query.mock.calls[0][1];
+    expect(params).toContain(48.8566);
+    expect(params).toContain(2.3522);
+    expect(params).toContain(10);
+  });
+
+  it('defaults radius to 25 when omitted', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522');
+    const params = db.query.mock.calls[0][1];
+    expect(params).toContain(25);
+  });
+
+  it('ignores location filter when lat or lon is missing', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566');
+    const photoQuery = db.query.mock.calls[0][0];
+    expect(photoQuery).not.toContain('asin');
+  });
+
+  it('shows Clear button when location filter is active', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522');
+    expect(res.text).toContain('Clear');
+  });
+
+  it('renders zone search UI with radius input', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/map');
+    expect(res.text).toContain('loc-search-input');
+    expect(res.text).toContain('name="radius"');
+    expect(res.text).toContain('Zone search');
+  });
+
+  it('pre-fills coords as placeholder when location filter active', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522');
+    expect(res.text).toContain('48.85660');
+    expect(res.text).toContain('2.35220');
   });
 });
