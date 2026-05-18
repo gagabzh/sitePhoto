@@ -733,6 +733,7 @@ router.get('/manage', requireEditor, async (req, res) => {
         <label>DESCRIPTION</label>
         <textarea id="tm-dr-desc" rows="3" maxlength="500" placeholder="optional description…">${esc(t.description || '')}</textarea>
       </div>
+      <button class="btn btn-primary" id="tm-dr-save" style="margin-top:auto;">save</button>
       <div class="tm-dz">
         <h4>DANGER ZONE</h4>
         <button class="tm-dz-btn" id="tm-dr-delete">🗑 delete this tag</button>
@@ -861,6 +862,7 @@ router.get('/manage', requireEditor, async (req, res) => {
 
     ${totalTags > PAGE_SIZE ? renderPager() : ''}
 
+    <div id="tm-backdrop" class="tm-backdrop"></div>
     ${renderDrawer()}
     <div class="tm-toast" id="tm-toast">saved ✓</div>
     ${mergeModal}
@@ -924,6 +926,7 @@ router.get('/manage', requireEditor, async (req, res) => {
     // ── Drawer ────────────────────────────────────────────────────────────────
     var drawer=document.getElementById('tm-drawer');
     var drawerClose=document.getElementById('tm-drawer-close');
+    var backdrop=document.getElementById('tm-backdrop');
 
     function openDrawer(id){
       if(!drawer) return;
@@ -942,21 +945,29 @@ router.get('/manage', requireEditor, async (req, res) => {
         if(descEl)  descEl.value=t.description||'';
         renderAliasPills(t.aliases||[]);
         drawer.classList.add('open');
+        if(backdrop) backdrop.classList.add('show');
       }).catch(function(){
-        // Fallback: just open with existing data
         drawer.classList.add('open');
+        if(backdrop) backdrop.classList.add('show');
       });
     }
 
     function closeDrawer(){
       if(!drawer) return;
       drawer.classList.remove('open');
+      if(backdrop) backdrop.classList.remove('show');
       var url=new URL(window.location.href);
       url.searchParams.delete('edit');
       history.replaceState(null,'',url.toString());
     }
 
     if(drawerClose) drawerClose.addEventListener('click', closeDrawer);
+    if(backdrop) backdrop.addEventListener('click', closeDrawer);
+
+    var saveBtn=document.getElementById('tm-dr-save');
+    if(saveBtn) saveBtn.addEventListener('click', function(){
+      doSave().then(closeDrawer);
+    });
 
     // Open drawer from row
     document.querySelectorAll('[data-edit]').forEach(function(el){
@@ -983,13 +994,8 @@ router.get('/manage', requireEditor, async (req, res) => {
       if(kindEl) body.category=kindEl.value||null;
       if(descEl) body.description=descEl.value;
       body.aliases=currentAliases;
-      fetch('/api/tags/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-        .then(function(r){
-          if(r.ok){
-            showToast('saved ✓');
-            if(!drawer.contains(document.activeElement)) closeDrawer();
-          }
-        });
+      return fetch('/api/tags/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(function(r){ if(r.ok) showToast('saved ✓'); });
     }
 
     var nameIn=document.getElementById('tm-dr-name');
@@ -1171,7 +1177,7 @@ router.get('/manage', requireEditor, async (req, res) => {
     }
 
     // ── Open drawer if edit param ─────────────────────────────────────────────
-    ${editTag ? `drawer && drawer.classList.add('open');` : ''}
+    ${editTag ? `drawer && drawer.classList.add('open'); backdrop && backdrop.classList.add('show');` : ''}
 
   })();</script>`;
 

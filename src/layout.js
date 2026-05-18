@@ -1256,6 +1256,8 @@ function page(title, body, session) {
     .tm-pager-btns a.disabled { opacity:.4; pointer-events:none; }
 
     /* Tag manage drawer */
+    .tm-backdrop { display:none; position:fixed; inset:0; z-index:150; }
+    .tm-backdrop.show { display:block; }
     .tm-drawer { position:fixed; top:0; right:0; bottom:0; width:380px; background:var(--paper); border-left:2px solid var(--ink); box-shadow:-4px 0 0 rgba(0,0,0,0.04); padding:20px; overflow-y:auto; z-index:200; display:flex; flex-direction:column; gap:14px; transform:translateX(100%); transition:transform .2s ease; }
     .tm-drawer.open { transform:translateX(0); }
     .tm-drawer-close { align-self:flex-end; font-family:'Caveat',cursive; font-size:20px; border:1.5px solid var(--ink); background:var(--paper); width:30px; height:30px; border-radius:50%; cursor:pointer; }
