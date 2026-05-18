@@ -21,7 +21,7 @@ function page(title, body, session) {
           <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>
           <div class="nav-menu" role="menu">
             <a href="/account/password" role="menuitem">Account</a>
-            ${session.role !== 'viewer' ? '<a href="/tags/recipes" role="menuitem">My Recipes</a>' : ''}
+            <a href="/tags/recipes" role="menuitem">My Recipes</a>
             ${session.role === 'admin' ? `<hr class="nav-menu-sep">
             <span class="nav-menu-section">ADMIN</span>
             <a href="/admin/users" role="menuitem">Users</a>

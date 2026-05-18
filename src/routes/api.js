@@ -392,18 +392,33 @@ router.post('/recipes/fork/:token', async (req, res) => {
 
 router.post('/recipes/:id/share-to', async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const toUserId = parseInt(req.body.userId, 10);
-  if (isNaN(id) || isNaN(toUserId)) return res.status(400).json({ error: 'invalid id' });
-  if (toUserId === req.session.userId) return res.status(400).json({ error: 'cannot share with yourself' });
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows } = await db.query(
     'SELECT name, query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
     [id, req.session.userId]
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
+
+  if (req.body.everyone) {
+    if (req.session.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+    const { rows: allUsers } = await db.query(
+      'SELECT id FROM users WHERE id != $1', [req.session.userId]
+    );
+    if (allUsers.length) {
+      const placeholders = allUsers.map((_, i) => `($${i*4+1},$${i*4+2},$${i*4+3},$${i*4+4})`).join(',');
+      const params = allUsers.flatMap(u => [u.id, rows[0].name, JSON.stringify(rows[0].query_json), req.session.userId]);
+      await db.query(`INSERT INTO tag_recipes (user_id,name,query_json,shared_by) VALUES ${placeholders}`, params);
+    }
+    return res.status(201).json({ ok: true, count: allUsers.length });
+  }
+
+  const toUserId = parseInt(req.body.userId, 10);
+  if (isNaN(toUserId)) return res.status(400).json({ error: 'invalid id' });
+  if (toUserId === req.session.userId) return res.status(400).json({ error: 'cannot share with yourself' });
   const { rows: targetUser } = await db.query('SELECT id FROM users WHERE id = $1', [toUserId]);
   if (!targetUser.length) return res.status(404).json({ error: 'user not found' });
   await db.query(
-    'INSERT INTO tag_recipes (user_id, name, query_json, shared_by) VALUES ($1, $2, $3, $4)',
+    'INSERT INTO tag_recipes (user_id,name,query_json,shared_by) VALUES ($1,$2,$3,$4)',
     [toUserId, rows[0].name, JSON.stringify(rows[0].query_json), req.session.userId]
   );
   res.status(201).json({ ok: true });

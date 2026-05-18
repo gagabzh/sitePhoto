@@ -1276,7 +1276,7 @@ router.get('/recipes/fork/:token', async (req, res) => {
 
 // ── GET /tags/recipes — saved recipes management ──────────────────────────────
 
-router.get('/recipes', requireEditor, async (req, res) => {
+router.get('/recipes', async (req, res) => {
   const search = String(req.query.search || '').trim().toLowerCase();
   const view   = req.query.view === 'list' ? 'list' : 'cards';
 
@@ -1510,7 +1510,8 @@ router.get('/recipes', requireEditor, async (req, res) => {
       <input id="tr-share-user-q" type="text" placeholder="search by name…" autocomplete="off"
         style="width:100%;box-sizing:border-box;padding:6px 10px;border:1.5px solid var(--ink);background:var(--paper);font-family:'Kalam',cursive;font-size:14px;margin-bottom:6px">
       <div id="tr-share-results" class="tr-share-results"></div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:16px">
+        ${req.session.role === 'admin' ? `<button id="tr-share-all" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;">📢 everyone</button>` : '<span></span>'}
         <button id="tr-share-cancel" style="font-family:'Kalam',cursive;font-size:13px;background:none;border:none;cursor:pointer;color:var(--ink-soft)">cancel</button>
       </div>
     </div>
@@ -1600,6 +1601,17 @@ router.get('/recipes', requireEditor, async (req, res) => {
       if(shareMod) shareMod.style.display='none';
     });
     if(shareMod) shareMod.addEventListener('click',function(ev){if(ev.target===this)this.style.display='none';});
+
+    var shareAllBtn=document.getElementById('tr-share-all');
+    if(shareAllBtn) shareAllBtn.addEventListener('click',function(){
+      if(!confirm('Share this recipe with ALL users?')) return;
+      this.disabled=true;
+      fetch('/api/recipes/'+shareRecipeId+'/share-to',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({everyone:true})})
+        .then(function(r){return r.json();})
+        .then(function(d){
+          if(d.ok){showToast('shared with everyone ✓ ('+d.count+' users)');shareMod.style.display='none';}
+        });
+    });
 
     if(shareQ) shareQ.addEventListener('input',function(){
       clearTimeout(shareTimer);
