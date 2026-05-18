@@ -338,6 +338,18 @@ router.post('/recipes/:id/duplicate', async (req, res) => {
   res.status(201).json({ id: newRows[0].id });
 });
 
+// ── GET /api/users/search — typeahead for share-to-user ──────────────────────
+
+router.get('/users/search', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+  const { rows } = await db.query(
+    `SELECT id, name FROM users WHERE name ILIKE $1 AND id != $2 ORDER BY name LIMIT 10`,
+    [`%${q}%`, req.session.userId]
+  );
+  res.json(rows);
+});
+
 // ── POST /api/recipes/:id/share — generate share token ───────────────────────
 
 router.post('/recipes/:id/share', async (req, res) => {
@@ -364,17 +376,37 @@ router.post('/recipes/:id/share', async (req, res) => {
 router.post('/recipes/fork/:token', async (req, res) => {
   const { token } = req.params;
   const { rows } = await db.query(
-    `SELECT tr.name, tr.query_json, u.name AS owner_name
-     FROM tag_recipes tr JOIN users u ON u.id = tr.user_id
-     WHERE tr.share_token = $1`,
+    `SELECT tr.id, tr.name, tr.query_json, tr.user_id
+     FROM tag_recipes tr WHERE tr.share_token = $1`,
     [token]
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   const { rows: newRows } = await db.query(
-    'INSERT INTO tag_recipes (user_id, name, query_json) VALUES ($1, $2, $3) RETURNING id',
-    [req.session.userId, rows[0].name, JSON.stringify(rows[0].query_json)]
+    'INSERT INTO tag_recipes (user_id, name, query_json, shared_by) VALUES ($1, $2, $3, $4) RETURNING id',
+    [req.session.userId, rows[0].name, JSON.stringify(rows[0].query_json), rows[0].user_id]
   );
   res.status(201).json({ id: newRows[0].id });
+});
+
+// ── POST /api/recipes/:id/share-to — push recipe directly to another user ────
+
+router.post('/recipes/:id/share-to', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const toUserId = parseInt(req.body.userId, 10);
+  if (isNaN(id) || isNaN(toUserId)) return res.status(400).json({ error: 'invalid id' });
+  if (toUserId === req.session.userId) return res.status(400).json({ error: 'cannot share with yourself' });
+  const { rows } = await db.query(
+    'SELECT name, query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
+    [id, req.session.userId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  const { rows: targetUser } = await db.query('SELECT id FROM users WHERE id = $1', [toUserId]);
+  if (!targetUser.length) return res.status(404).json({ error: 'user not found' });
+  await db.query(
+    'INSERT INTO tag_recipes (user_id, name, query_json, shared_by) VALUES ($1, $2, $3, $4)',
+    [toUserId, rows[0].name, JSON.stringify(rows[0].query_json), req.session.userId]
+  );
+  res.status(201).json({ ok: true });
 });
 
 module.exports = router;

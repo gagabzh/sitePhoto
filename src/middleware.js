@@ -1,5 +1,6 @@
 function requireAuth(req, res, next) {
   if (req.session.userId) return next();
+  req.session.returnTo = req.originalUrl;
   res.redirect('/login');
 }
 
