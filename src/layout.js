@@ -21,7 +21,12 @@ function page(title, body, session) {
           <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>
           <div class="nav-menu" role="menu">
             <a href="/account/password" role="menuitem">Account</a>
-            ${session.role === 'admin' ? '<a href="/admin/users" role="menuitem">Admin</a>' : ''}
+            ${session.role !== 'viewer' ? '<a href="/tags/recipes" role="menuitem">My Recipes</a>' : ''}
+            ${session.role === 'admin' ? `<hr class="nav-menu-sep">
+            <span class="nav-menu-section">ADMIN</span>
+            <a href="/admin/users" role="menuitem">Users</a>
+            <a href="/tags/manage" role="menuitem">Manage Tags</a>
+            <a href="/tags/recipes" role="menuitem">All Recipes</a>` : ''}
             <hr class="nav-menu-sep">
             <form method="POST" action="/logout">
               <button class="nav-menu-logout" type="submit">Logout</button>
@@ -118,6 +123,7 @@ function page(title, body, session) {
     }
     .nav-menu a:hover { background: var(--paper-2); }
     .nav-menu-sep { border: none; border-top: 1.5px dashed var(--ink-faint); margin: 0; }
+    .nav-menu-section { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 1.5px; color: var(--ink-faint); padding: 6px 14px 2px; display: block; }
     .nav-menu-logout {
       font-family: 'Kalam', cursive; font-size: 0.9rem;
       padding: 0.5rem 0.875rem; color: var(--ink-soft); background: none;
