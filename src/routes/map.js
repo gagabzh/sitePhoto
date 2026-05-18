@@ -82,12 +82,28 @@ async function fetchFilterOptions(session) {
        WHERE p.latitude IS NOT NULL
        ORDER BY t.name`;
 
+  const placeTagSql = isViewer
+    ? `SELECT t.name, COUNT(DISTINCT p.id) AS photo_count
+       FROM tags t
+       JOIN photo_tags pt ON pt.tag_id = t.id
+       JOIN photos p ON p.id = pt.photo_id
+       JOIN album_access aa ON aa.album_id = p.album_id
+       WHERE t.category = 'places' AND p.latitude IS NOT NULL AND aa.viewer_id = $1
+       GROUP BY t.name ORDER BY COUNT(DISTINCT p.id) DESC`
+    : `SELECT t.name, COUNT(DISTINCT p.id) AS photo_count
+       FROM tags t
+       JOIN photo_tags pt ON pt.tag_id = t.id
+       JOIN photos p ON p.id = pt.photo_id
+       WHERE t.category = 'places' AND p.latitude IS NOT NULL
+       GROUP BY t.name ORDER BY COUNT(DISTINCT p.id) DESC`;
+
   const args = isViewer ? [session.userId] : [];
-  const [albumRes, tagRes] = await Promise.all([
+  const [albumRes, tagRes, placeTagRes] = await Promise.all([
     db.query(albumSql, args),
     db.query(tagSql, args),
+    db.query(placeTagSql, args),
   ]);
-  return { albums: albumRes.rows, tags: tagRes.rows };
+  return { albums: albumRes.rows, tags: tagRes.rows, placeTags: placeTagRes.rows };
 }
 
 router.get('/', async (req, res) => {
@@ -101,7 +117,7 @@ router.get('/', async (req, res) => {
   const effectiveLat = hasLocFilter ? latFilter : null;
   const effectiveLon = hasLocFilter ? lonFilter : null;
 
-  const [photos, { albums, tags }] = await Promise.all([
+  const [photos, { albums, tags, placeTags }] = await Promise.all([
     fetchGeoPhotos(req.session, albumFilter, tagFilter, effectiveLat, effectiveLon, radiusFilter),
     fetchFilterOptions(req.session),
   ]);
@@ -121,13 +137,13 @@ router.get('/', async (req, res) => {
     ? `${latFilter.toFixed(5)}, ${lonFilter.toFixed(5)}`
     : 'Search a place…';
 
-  const placeList = albums.map(a => {
-    const active = albumFilter === a.id ? ' active' : '';
-    const count = a.photo_count != null ? a.photo_count : '';
-    return `<a class="map-place${active}" href="/map?album=${a.id}">
+  const placeList = placeTags.map(t => {
+    const active = tagFilter === t.name ? ' active' : '';
+    const href = '/map?tag=' + encodeURIComponent(t.name) + (albumFilter ? '&album=' + albumFilter : '');
+    return `<a class="map-place${active}" href="${href}">
       <span class="map-place-pin">📍</span>
-      <span class="map-place-name">${esc(a.title)}</span>
-      <span class="map-place-n">${count}</span>
+      <span class="map-place-name">${esc(t.name)}</span>
+      <span class="map-place-n">${t.photo_count}</span>
     </a>`;
   }).join('');
 
@@ -275,7 +291,7 @@ router.get('/', async (req, res) => {
           ${clearLink}
         </form>
 
-        ${albums.length ? `
+        ${placeTags.length ? `
           <h4 class="map-side-h">PLACES</h4>
           ${placeList}
         ` : ''}
