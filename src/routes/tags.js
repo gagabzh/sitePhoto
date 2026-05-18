@@ -966,7 +966,7 @@ router.get('/manage', requireEditor, async (req, res) => {
 
     var saveBtn=document.getElementById('tm-dr-save');
     if(saveBtn) saveBtn.addEventListener('click', function(){
-      doSave().then(closeDrawer);
+      doSave().then(function(){ location.reload(); });
     });
 
     // Open drawer from row
