@@ -1277,9 +1277,128 @@ router.get('/recipes/fork/:token', async (req, res) => {
 // ── GET /tags/recipes — saved recipes management ──────────────────────────────
 
 router.get('/recipes', async (req, res) => {
-  const search = String(req.query.search || '').trim().toLowerCase();
-  const view   = req.query.view === 'list' ? 'list' : 'cards';
+  const search   = String(req.query.search || '').trim().toLowerCase();
+  const view     = req.query.view === 'list' ? 'list' : 'cards';
+  const scopeAll = req.session.role === 'admin' && req.query.scope === 'all';
 
+  if (scopeAll) {
+    // Admin all-recipes view ─────────────────────────────────────────────────
+    const { rows: allRecipes } = await db.query(
+      `SELECT tr.id, tr.name, tr.query_json, tr.pinned, tr.use_count, tr.last_used_at,
+              tr.created_at, tr.user_id AS owner_id, u.name AS owner_name
+       FROM tag_recipes tr JOIN users u ON u.id = tr.user_id
+       WHERE tr.shared_by IS NULL
+       ORDER BY tr.name ASC, u.name ASC`
+    );
+
+    const filtered = search
+      ? allRecipes.filter(r => {
+          if (r.name.toLowerCase().includes(search)) return true;
+          if (r.owner_name.toLowerCase().includes(search)) return true;
+          const secs = (r.query_json || {}).sections || {};
+          for (const s of Object.values(secs)) {
+            if ((s.on || []).some(t => t.toLowerCase().includes(search))) return true;
+            if ((s.not || []).some(t => t.toLowerCase().includes(search))) return true;
+          }
+          return false;
+        })
+      : allRecipes;
+
+    // Detect exact-duplicate query_json groups
+    const sigMap = {};
+    for (const r of filtered) {
+      const sig = JSON.stringify(r.query_json);
+      if (!sigMap[sig]) sigMap[sig] = [];
+      sigMap[sig].push(r.id);
+    }
+    const dupIds = new Set(
+      Object.values(sigMap).filter(ids => ids.length > 1).flat()
+    );
+
+    function renderRecipePills(query_json) {
+      const secs  = (query_json || {}).sections || {};
+      const pills = [];
+      let first   = true;
+      for (const sec of SECTIONS) {
+        const s = secs[sec]; if (!s) continue;
+        const ons = s.on || [], nots = s.not || [];
+        if (!ons.length && !nots.length) continue;
+        if (!first) pills.push(`<span class="tr-op">AND</span>`);
+        first = false;
+        ons.forEach((tag, i) => { if (i > 0) pills.push(`<span class="tr-op">AND</span>`); pills.push(`<span class="tr-pill inc">${esc(tag)}</span>`); });
+        nots.forEach(tag => { pills.push(`<span class="tr-op">NOT</span>`); pills.push(`<span class="tr-pill exc">${esc(tag)}</span>`); });
+      }
+      return pills.length ? pills.join(' ') : `<span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-faint)">(empty)</span>`;
+    }
+
+    function recipeUrl(query_json) {
+      const secs = (query_json || {}).sections || {};
+      const p = [];
+      for (const sec of SECTIONS) {
+        const s = secs[sec]; if (!s) continue;
+        (s.on  || []).forEach(t => p.push(sec + '=' + encodeURIComponent(t)));
+        (s.not || []).forEach(t => p.push(sec + '.not=' + encodeURIComponent(t)));
+      }
+      return '/tags' + (p.length ? '?' + p.join('&') : '');
+    }
+
+    const rows = filtered.map(r => {
+      const isDup = dupIds.has(r.id);
+      const mono  = new Date(r.created_at).toLocaleDateString('en', {month:'short', day:'numeric', year:'numeric'});
+      return `<div class="tr-row${isDup ? ' tr-row-dup' : ''}" data-id="${r.id}">
+        <span class="tr-row-owner">${esc(r.owner_name)}</span>
+        <span class="rname">${esc(r.name)}${isDup ? ' <span class="tr-dup-badge">⚠ duplicate</span>' : ''}</span>
+        <div class="tr-pills">${renderRecipePills(r.query_json)}</div>
+        <span class="mono n">${r.use_count} uses</span>
+        <span class="mono">${mono}</span>
+        <div class="tr-row-actions">
+          <a href="${esc(recipeUrl(r.query_json))}" class="primary">open ↗</a>
+          <button data-del-recipe="${r.id}" data-name="${esc(r.name)}" class="danger">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    const viewAllUrl = p => `/tags/recipes?scope=all${search ? `&search=${encodeURIComponent(search)}` : ''}${p}`;
+    const body = `<div class="tr-page">
+      <div style="padding:24px 20px 16px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;border-bottom:1.5px dashed var(--ink-faint);">
+        <div>
+          <h1 style="font-family:'Caveat',cursive;font-size:48px;font-weight:700;margin:0;line-height:1;">all <em style="color:var(--accent);font-style:italic;">recipes.</em></h1>
+          <p style="font-family:'Kalam',cursive;font-size:14px;color:var(--ink-soft);margin:6px 0 0;">${filtered.length} recipes across all users${dupIds.size ? ` · <span style="color:var(--danger)">${dupIds.size} duplicates detected</span>` : ''}</p>
+        </div>
+        <a href="/tags/recipes" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-soft);text-decoration:none;">← my recipes</a>
+      </div>
+      <div class="tr-filter">
+        <form method="GET" action="/tags/recipes" style="display:contents">
+          <input type="hidden" name="scope" value="all">
+          <input class="tr-search" type="text" name="search" value="${esc(search)}" placeholder="search by name, owner, tag…" autocomplete="off">
+        </form>
+      </div>
+      <div class="tr-sec-h" style="border-top:none">
+        all users · sorted by name
+        <span class="tr-sec-count">// ${filtered.length} total</span>
+      </div>
+      <div class="tr-list" style="padding:0 20px 40px">
+        ${rows || `<div class="tr-empty">no recipes found.</div>`}
+      </div>
+    </div>
+    <script>(function(){
+      function showToast(msg){var t=document.getElementById('tm-toast');if(!t){t=document.createElement('div');t.id='tm-toast';t.className='tm-toast';document.body.appendChild(t);}t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2000);}
+      document.querySelectorAll('[data-del-recipe]').forEach(function(btn){
+        btn.addEventListener('click',function(ev){
+          ev.stopPropagation();
+          var id=this.dataset.delRecipe, name=this.dataset.name||'this recipe';
+          if(!confirm('delete recipe "'+name+'"?')) return;
+          fetch('/api/recipes/'+id,{method:'DELETE'}).then(function(r){
+            if(r.status===204||r.ok){showToast('deleted');setTimeout(function(){location.reload();},500);}
+          });
+        });
+      });
+    })();</script>`;
+
+    return res.send(page('All Recipes', body, req.session));
+  }
+
+  // My-recipes view (default) ────────────────────────────────────────────────
   const [{ rows: recipes }, { rows: sharedWithMe }] = await Promise.all([
     db.query(
       `SELECT id, name, query_json, pinned, use_count, last_used_at, created_at

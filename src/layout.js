@@ -26,7 +26,7 @@ function page(title, body, session) {
             <span class="nav-menu-section">ADMIN</span>
             <a href="/admin/users" role="menuitem">Users</a>
             <a href="/tags/manage" role="menuitem">Manage Tags</a>
-            <a href="/tags/recipes" role="menuitem">All Recipes</a>` : ''}
+            <a href="/tags/recipes?scope=all" role="menuitem">All Recipes</a>` : ''}
             <hr class="nav-menu-sep">
             <form method="POST" action="/logout">
               <button class="nav-menu-logout" type="submit">Logout</button>
@@ -1346,6 +1346,9 @@ function page(title, body, session) {
     .tr-row-actions .danger { color:var(--danger); border-color:var(--danger); }
     .tr-empty { padding:40px 20px; text-align:center; font-family:'Caveat',cursive; font-size:22px; color:var(--ink-faint); }
     .tr-shared-from { font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:1px; text-transform:uppercase; background:oklch(90% 0.06 220); color:oklch(40% 0.1 220); padding:3px 10px; text-align:center; }
+    .tr-row-owner { font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--accent-cool); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .tr-row-dup { background: oklch(97% 0.04 35); }
+    .tr-dup-badge { font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--danger); letter-spacing:1px; text-transform:uppercase; vertical-align:middle; }
     .tr-share-modal-backdrop { display:none; position:fixed; inset:0; z-index:200; background:rgba(0,0,0,.45); align-items:center; justify-content:center; }
     .tr-share-modal { background:var(--paper); border:2px solid var(--ink); padding:24px; min-width:320px; max-width:400px; width:90%; }
     .tr-share-results { display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; }
