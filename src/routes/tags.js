@@ -984,7 +984,12 @@ router.get('/manage', requireEditor, async (req, res) => {
       if(descEl) body.description=descEl.value;
       body.aliases=currentAliases;
       fetch('/api/tags/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-        .then(function(r){if(r.ok) showToast('saved ✓');});
+        .then(function(r){
+          if(r.ok){
+            showToast('saved ✓');
+            if(!drawer.contains(document.activeElement)) closeDrawer();
+          }
+        });
     }
 
     var nameIn=document.getElementById('tm-dr-name');
