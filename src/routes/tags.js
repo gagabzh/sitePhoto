@@ -1628,7 +1628,6 @@ router.get('/recipes', requireEditor, async (req, res) => {
       },250);
     });
 
-    function e(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   })();</script>`;
 
   res.send(page('My Recipes', body, req.session));
