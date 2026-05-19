@@ -367,11 +367,12 @@ describe('Saved recipes API — TG-7', () => {
 
 describe('RA-1: POST /api/recipes/:id/album', () => {
   it('creates an album with all matching photos and returns 201', async () => {
+    const recipeState = { sections: { people: { on: ['alice'], not: [], logic: 'any' }, places: { on: [], not: [], logic: 'any' }, years: { on: [], not: [], logic: 'include' }, themes: { on: [], not: [], logic: 'any' }, other: { on: [], not: [], logic: 'any' } }, sort: 'newest', view: 'grid4' };
     db.query
-      .mockResolvedValueOnce({ rows: [{ query_json: { people: { on: ['alice'], not: [], logic: 'any' }, places: { on: [], not: [], logic: 'any' }, years: { on: [], not: [], logic: 'include' }, themes: { on: [], not: [], logic: 'any' }, other: { on: [], not: [], logic: 'any' } } }] }) // recipe lookup
-      .mockResolvedValueOnce({ rows: [{ id: 7 }, { id: 8 }] })  // matching photos
-      .mockResolvedValueOnce({ rows: [{ id: 42 }] })              // INSERT album
-      .mockResolvedValueOnce({ rows: [] });                       // INSERT album_photos
+      .mockResolvedValueOnce({ rows: [{ query_json: recipeState }] })  // recipe lookup
+      .mockResolvedValueOnce({ rows: [{ id: 7 }, { id: 8 }] })        // matching photos
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })                   // INSERT album
+      .mockResolvedValueOnce({ rows: [] });                            // INSERT album_photos
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/api/recipes/1/album')
@@ -391,7 +392,7 @@ describe('RA-1: POST /api/recipes/:id/album', () => {
   });
 
   it('creates an empty album when recipe filters match no photos', async () => {
-    const filteredQuery = { people: { on: ['nobody'], not: [], logic: 'any' }, places: { on: [], not: [], logic: 'any' }, years: { on: [], not: [], logic: 'include' }, themes: { on: [], not: [], logic: 'any' }, other: { on: [], not: [], logic: 'any' } };
+    const filteredQuery = { sections: { people: { on: ['nobody'], not: [], logic: 'any' }, places: { on: [], not: [], logic: 'any' }, years: { on: [], not: [], logic: 'include' }, themes: { on: [], not: [], logic: 'any' }, other: { on: [], not: [], logic: 'any' } }, sort: 'newest', view: 'grid4' };
     db.query
       .mockResolvedValueOnce({ rows: [{ query_json: filteredQuery }] })  // recipe
       .mockResolvedValueOnce({ rows: [] })                               // no matching photos

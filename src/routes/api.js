@@ -340,10 +340,11 @@ router.post('/recipes/:id/album', requireEditor, wrapAsync(async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
 
-  const state = parseState(rows[0].query_json);
-  const hasFilters = SECTIONS.some(s =>
-    state.sections[s].on.length > 0 || state.sections[s].not.length > 0
-  );
+  const state = rows[0].query_json;
+  const hasFilters = SECTIONS.some(s => {
+    const sec = state.sections?.[s];
+    return sec && (sec.on?.length > 0 || sec.not?.length > 0);
+  });
   if (!hasFilters) return res.status(422).json({ error: 'recipe has no filters' });
 
   const { where, vals } = buildWhere(state, false, req.session.userId);
