@@ -1,6 +1,6 @@
 # V3 — Implementation Plan
 
-## Phase 1 — Multi-album schema (MA)
+## Phase 1 — Multi-album schema (MA) ✅
 
 Biggest breaking change: reverses IMP-5 and restores a many-to-many relationship between photos and albums.
 
@@ -28,21 +28,19 @@ Every route that reads or writes `p.album_id` must be rewritten to use the join 
 
 ---
 
-## Phase 2 — Album UX + Recipe album (ALB + RA)
+## Phase 2 — Album UX + Recipe album (ALB + RA) ✅
 
 These are independent of each other but both depend on Phase 1 completing first.
 
-### ALB-1 — Click-to-edit / lightbox button in album
-- On album detail, each photo thumbnail gets an overlay icon (e.g. ✏️ or expand icon)
-- For editor/admin: thumbnail click → `/photos/:id/edit`; icon click → opens lightbox
-- For viewer: thumbnail click → lightbox (no change from current)
-- Role check is server-side (rendered HTML differs per role) and client-side for icon visibility
+### ALB-1 — Click-to-edit / lightbox button in album ✅
+- ✅ Editor/admin: thumbnail click → `/photos/:id/edit?from=/albums/:id`; ⛶ hover button → lightbox
+- ✅ Viewer: thumbnail click → lightbox (unchanged)
+- ✅ Role check server-side; lightbox script shared via `lbOverlay()` + `lbScript()`
 
-### RA-1 — Snapshot album from recipe
-- Add a "Create album" button to the recipe detail view (or the combinator sidebar when a recipe is loaded)
-- `POST /api/recipes/:id/album` — accepts `{ title }`, runs the recipe query, creates the album, bulk-inserts into `album_photos`, returns new album id
-- Redirect to the new album's page
-- Error if recipe produces zero results (show message, don't create empty album)
+### RA-1 — Snapshot album from recipe ✅
+- ✅ 📁 button on every recipe row in the combinator sidebar (hover to reveal)
+- ✅ `POST /api/recipes/:id/album` — `requireEditor` + `wrapAsync`; guards empty-filter recipes (422); bulk-inserts into `album_photos`; redirects to new album
+- ✅ Empty-filter guard prevents full-table scan; recipes with filters but no matching photos create an empty album
 
 ---
 
@@ -122,7 +120,7 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - ✅ All raw `db.query` calls extracted from `manage.js` and `recipes.js` into `queries.js`
 - ✅ `manage.js` (722 → 44 lines) split into `manageViews.js` + `manageScript.js`
 - ✅ `recipes.js` (519 → 73 lines) split into `recipesViews.js`
-- ✅ `combinator.js` (473 → 400 lines) render helpers extracted to `combinatorViews.js`
+- ✅ `combinator.js` (473 → 140 lines) render helpers → `combinatorViews.js`; inline script → `combinatorScript.js`
 - ✅ 21 new tests for all extracted query functions
 
 **TQ-4 — Integer coercion on all ID inputs**
