@@ -237,6 +237,61 @@ As a user, I can switch the timeline grouping between Year, Month (default), and
 
 ---
 
+## Version 3
+
+---
+
+## Feature: Multi-album (MA)
+
+**MA-1 — A photo can belong to multiple albums**
+As an editor, I can add any photo to more than one album. Removing a photo from an album does not delete the photo — it only removes the membership. A photo with no album memberships remains visible as a standalone photo.
+
+**MA-2 — Photo detail shows album memberships**
+As a user viewing a photo's detail page, I can see the list of albums the photo belongs to, each as a clickable link — so I can navigate to any of those albums directly.
+
+**MA-3 — Manage album memberships from the edit form**
+As an editor, on the photo edit page I can add the photo to additional albums or remove it from existing ones — so I can curate membership without going album by album.
+
+---
+
+## Feature: Album UX (ALB)
+
+**ALB-1 — Click-to-edit in album, explicit lightbox button**
+As an editor or admin browsing an album, clicking a photo thumbnail opens the photo edit page. A visible lightbox icon on the thumbnail opens the fullscreen viewer instead — so editing is one click away and the lightbox is still accessible.
+As a viewer, clicking a photo thumbnail opens the lightbox (unchanged), since viewers have no edit access.
+
+---
+
+## Feature: Recipe album (RA)
+
+**RA-1 — Create a snapshot album from a tag recipe**
+As an editor, on the tag combinator page I can select a saved recipe and click "Create album from recipe". I give the album a name, and the app creates a new album containing all photos that currently match the recipe — so I can save a curated set without manually selecting each photo.
+
+---
+
+## Feature: Design refresh (DS)
+
+**DS-11 — Travel pages redesign + interactions**
+As a user viewing a travel, the map, GPX trace, photo pins, and linked albums are presented in a polished layout consistent with the rest of the app. I can interact with the map (click a pin to jump to the photo, click the trace to see the date/time), and link or unlink albums/photos inline without leaving the page.
+
+**DS-12 — Tag combinator redesign + interactions**
+As a user on the tag combinator, the two-column filter builder is visually consistent with the app's design system. I can create new tags inline (without leaving the page), drag sections to reorder them, and the mobile layout is fully usable on small screens.
+
+**DS-13 — Photo selection redesign + interactions**
+As an editor selecting photos (on the photo list or album detail), I can rubber-band select a range by clicking and dragging, use keyboard shortcuts (Shift+click for range, Cmd/Ctrl+click for individual), and the selected state is clearly visible — so bulk operations are fast and comfortable.
+
+---
+
+## Feature: Local AI (AI)
+
+**AI-1 — Duplicate photo detection**
+As an admin, I can trigger a duplicate scan from the admin panel. The app uses a local Ollama vision model to find visually similar or identical photos across the library and presents them grouped for review. I can then delete duplicates or dismiss false positives — so the library stays clean without manual comparison.
+
+**AI-2 — People identification and tagging**
+As an editor, I can ask the app to identify people in a photo (or a batch) using a local Ollama vision model. The app suggests existing people tags (from the `people` tag category) or proposes a new tag based on the description. I confirm or reject each suggestion — so people tags are applied consistently without fully manual work.
+
+---
+
 ## Infrastructure & Quality
 
 **IQ-1 — Application security hardening**
