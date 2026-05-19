@@ -1,4 +1,4 @@
-const { requireAuth, requireAdmin, errorHandler } = require('../middleware');
+const { requireAuth, requireAdmin, errorHandler, wrapAsync } = require('../middleware');
 
 describe('requireAuth', () => {
   const next = jest.fn();
@@ -130,5 +130,41 @@ describe('errorHandler', () => {
     const res = makeRes();
     errorHandler({}, {}, res, next);
     expect(res.send).toHaveBeenCalledWith('Internal server error');
+  });
+});
+
+describe('wrapAsync', () => {
+  it('calls the handler and returns its promise', async () => {
+    const handler = jest.fn().mockResolvedValue('ok');
+    const wrapped = wrapAsync(handler);
+    const req = {}, res = {}, next = jest.fn();
+    await wrapped(req, res, next);
+    expect(handler).toHaveBeenCalledWith(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('calls next(err) when the handler rejects', async () => {
+    const err = new Error('db down');
+    const wrapped = wrapAsync(jest.fn().mockRejectedValue(err));
+    const next = jest.fn();
+    await wrapped({}, {}, next);
+    expect(next).toHaveBeenCalledWith(err);
+  });
+
+  it('integrates with errorHandler: DB rejection → 500 response', async () => {
+    const request = require('supertest');
+    const express = require('express');
+    const { errorHandler: eh } = require('../middleware');
+
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const app = express();
+    app.get('/test', wrapAsync(async () => { throw new Error('db down'); }));
+    app.use(eh);
+
+    const res = await request(app).get('/test');
+    expect(res.status).toBe(500);
+
+    console.error.mockRestore();
   });
 });

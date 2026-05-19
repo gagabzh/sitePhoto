@@ -2,10 +2,11 @@ const router = require('express').Router();
 const db = require('../../db');
 const { page, esc } = require('../../layout');
 const { SECTIONS } = require('../../combinator');
+const { wrapAsync } = require('../../middleware');
 
 // ── GET /recipes/fork/:token — redirect to tag view with shared recipe ────────
 
-router.get('/recipes/fork/:token', async (req, res) => {
+router.get('/recipes/fork/:token', wrapAsync(async (req, res) => {
   const { token } = req.params;
   const { rows } = await db.query(
     'SELECT query_json FROM tag_recipes WHERE share_token = $1',
@@ -23,11 +24,11 @@ router.get('/recipes/fork/:token', async (req, res) => {
   }
   params.push(`_shared=${encodeURIComponent(token)}`);
   res.redirect('/tags?' + params.join('&'));
-});
+}));
 
 // ── GET /recipes — saved recipes management ───────────────────────────────────
 
-router.get('/recipes', async (req, res) => {
+router.get('/recipes', wrapAsync(async (req, res) => {
   const search   = String(req.query.search || '').trim().toLowerCase();
   const view     = req.query.view === 'list' ? 'list' : 'cards';
   const scopeAll = req.session.role === 'admin' && req.query.scope === 'all';
@@ -513,6 +514,6 @@ router.get('/recipes', async (req, res) => {
   })();</script>`;
 
   res.send(page('My Recipes', body, req.session));
-});
+}));
 
 module.exports = router;

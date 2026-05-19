@@ -3,6 +3,7 @@ const db = require('../../db');
 const { page, esc } = require('../../layout');
 const { parseState, buildWhere, SECTIONS, DEFAULT_LOGIC, LOGIC_OPTS } = require('../../combinator');
 const { fetchTagVocabulary, fetchInitialResults } = require('./queries');
+const { wrapAsync } = require('../../middleware');
 
 // ── Render helpers ────────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ function renderGrid(photos, view, hasFilters) {
 
 // ── GET / — Tag Combinator ────────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
+router.get('/', wrapAsync(async (req, res) => {
   const isViewer   = req.session.role === 'viewer';
   const state      = parseState(req.query);
   const sharedToken = req.query._shared || null;
@@ -467,6 +468,6 @@ router.get('/', async (req, res) => {
     })();</script>`;
 
   res.send(page('Tags', body, req.session));
-});
+}));
 
 module.exports = router;

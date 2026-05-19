@@ -2,6 +2,7 @@ const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
+const { wrapAsync } = require('../middleware');
 
 router.get('/', (req, res) => {
   const isAdmin = req.session.role === 'admin';
@@ -35,7 +36,7 @@ router.get('/account/password', (req, res) => {
   `, req.session));
 });
 
-router.post('/account/password', async (req, res) => {
+router.post('/account/password', wrapAsync(async (req, res) => {
   const { current, password } = req.body;
   const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
   const valid = await bcrypt.compare(current, rows[0].password_hash);
@@ -43,6 +44,6 @@ router.post('/account/password', async (req, res) => {
   const hash = await bcrypt.hash(password, 10);
   await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.session.userId]);
   res.redirect('/account/password?done=1');
-});
+}));
 
 module.exports = router;

@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../../db');
 const { page, esc } = require('../../layout');
+const { wrapAsync } = require('../../middleware');
 
 router.use(require('./combinator'));
 router.use(require('./manage'));
@@ -8,7 +9,7 @@ router.use(require('./recipes'));
 
 // ── TG-2: Tag autocomplete ────────────────────────────────────────────────────
 
-router.get('/autocomplete', async (req, res) => {
+router.get('/autocomplete', wrapAsync(async (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   if (!q) return res.json([]);
   const { rows } = await db.query(
@@ -16,11 +17,11 @@ router.get('/autocomplete', async (req, res) => {
     [q + '%']
   );
   res.json(rows.map(r => r.name));
-});
+}));
 
 // ── V3: Photos by single tag ──────────────────────────────────────────────────
 
-router.get('/:name', async (req, res) => {
+router.get('/:name', wrapAsync(async (req, res) => {
   const tagName  = req.params.name;
   const isViewer = req.session.role === 'viewer';
 
@@ -66,6 +67,6 @@ router.get('/:name', async (req, res) => {
     </div>
     ${grid}
   `, req.session));
-});
+}));
 
 module.exports = router;

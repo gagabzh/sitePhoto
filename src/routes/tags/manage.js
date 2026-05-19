@@ -1,11 +1,11 @@
 const router = require('express').Router();
 const db = require('../../db');
 const { page, esc } = require('../../layout');
-const { requireEditor } = require('../../middleware');
+const { requireEditor, wrapAsync } = require('../../middleware');
 
 // ── GET /manage — tag admin table ─────────────────────────────────────────────
 
-router.get('/manage', requireEditor, async (req, res) => {
+router.get('/manage', requireEditor, wrapAsync(async (req, res) => {
   const search  = String(req.query.search || '').trim();
   const kind    = ['people','places','years','themes'].includes(req.query.kind) ? req.query.kind : 'all';
   const sort    = ['popularity','alpha','recent','lastUsed'].includes(req.query.sort) ? req.query.sort : 'popularity';
@@ -717,6 +717,6 @@ router.get('/manage', requireEditor, async (req, res) => {
   })();</script>`;
 
   res.send(page('Manage Tags', body, req.session));
-});
+}));
 
 module.exports = router;

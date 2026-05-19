@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { page, esc } = require('../layout');
+const { wrapAsync } = require('../middleware');
 
 function groupByInterval(rows, interval) {
   const groups = [];
@@ -125,7 +126,7 @@ function parseDate(s) {
 
 const VALID_INTERVALS = new Set(['year', 'month', 'day']);
 
-router.get('/', async (req, res) => {
+router.get('/', wrapAsync(async (req, res) => {
   const albumFilter = req.query.album || null;
   const tagFilter = req.query.tag || null;
   const fromFilter = parseDate(req.query.from);
@@ -309,6 +310,6 @@ router.get('/', async (req, res) => {
     ${filterBar}
     ${content}
   `, req.session));
-});
+}));
 
 module.exports = router;

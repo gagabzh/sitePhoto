@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 const { page, esc } = require('../layout');
-const { requireEditor } = require('../middleware');
+const { requireEditor, wrapAsync } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { bulkBar, bulkScript } = require('../components');
@@ -18,7 +18,7 @@ function canModify(session, photo) {
 }
 
 // US-P1: Photo list — Family Wall layout
-router.get('/', requireEditor, async (req, res) => {
+router.get('/', requireEditor, wrapAsync(async (req, res) => {
   const [photosResult, albumResult] = await Promise.all([
     db.query(`
       SELECT p.id, p.filename, p.title, p.user_id, u.name AS uploader,
@@ -144,10 +144,10 @@ router.get('/', requireEditor, async (req, res) => {
     </form>
     ${bulkScript()}
   `, req.session));
-});
+}));
 
 // Bulk tag selected photos
-router.post('/bulk-tag', requireEditor, async (req, res) => {
+router.post('/bulk-tag', requireEditor, wrapAsync(async (req, res) => {
   const tag = (req.body.tag || '').trim().toLowerCase();
   const raw = req.body.photo_ids;
   if (!tag || !raw) return res.redirect('/photos');
@@ -172,10 +172,10 @@ router.post('/bulk-tag', requireEditor, async (req, res) => {
   );
 
   res.redirect('/photos');
-});
+}));
 
 // Bulk delete selected photos
-router.post('/bulk-delete', requireEditor, async (req, res) => {
+router.post('/bulk-delete', requireEditor, wrapAsync(async (req, res) => {
   const raw = req.body.photo_ids;
   if (!raw) return res.redirect('/photos');
 
@@ -190,7 +190,7 @@ router.post('/bulk-delete', requireEditor, async (req, res) => {
 
   await deletePhotos(rows.map(r => r.id));
   res.redirect('/photos');
-});
+}));
 
 // US-P1: Upload form
 router.get('/upload', requireEditor, (req, res) => {
@@ -253,7 +253,7 @@ router.post('/upload', requireEditor, (req, res, next) => {
 });
 
 // View single photo (all authenticated users)
-router.get('/:id', async (req, res) => {
+router.get('/:id', wrapAsync(async (req, res) => {
   const { rows } = await db.query(`
     SELECT p.*, u.name AS uploader,
       COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
@@ -313,10 +313,10 @@ router.get('/:id', async (req, res) => {
       </div>
     </div>
   `, req.session));
-});
+}));
 
 // US-P3: Edit form
-router.get('/:id/edit', requireEditor, async (req, res) => {
+router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query(`
     SELECT p.*,
       COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
@@ -369,10 +369,10 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
       </div>
     </div>
   `, req.session));
-});
+}));
 
 // US-P3: Save edits
-router.post('/:id', requireEditor, async (req, res) => {
+router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM photos WHERE id = $1', [req.params.id]);
   const photo = rows[0];
   if (!photo) return res.status(404).send('Photo not found');
@@ -388,10 +388,10 @@ router.post('/:id', requireEditor, async (req, res) => {
   );
   await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);
-});
+}));
 
 // US-P4: Delete
-router.post('/:id/delete', requireEditor, async (req, res) => {
+router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id, filename FROM photos WHERE id = $1', [req.params.id]);
   const photo = rows[0];
   if (!photo) return res.status(404).send('Photo not found');
@@ -399,6 +399,6 @@ router.post('/:id/delete', requireEditor, async (req, res) => {
 
   await deletePhotos([parseInt(req.params.id)]);
   res.redirect('/photos');
-});
+}));
 
 module.exports = router;

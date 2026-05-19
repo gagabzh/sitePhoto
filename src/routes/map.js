@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
 const { page, esc } = require('../layout');
+const { wrapAsync } = require('../middleware');
 
 async function fetchGeoPhotos(session, albumFilter, tagFilter, latFilter, lonFilter, radiusKm) {
   const isViewer = session.role === 'viewer';
@@ -109,7 +110,7 @@ async function fetchFilterOptions(session) {
   return { albums: albumRes.rows, tags: tagRes.rows, placeTags: placeTagRes.rows };
 }
 
-router.get('/', async (req, res) => {
+router.get('/', wrapAsync(async (req, res) => {
   const albumFilter  = req.query.album  ? parseInt(req.query.album)  : null;
   const tagFilter    = req.query.tag    || null;
   const latFilter    = req.query.lat    !== undefined ? parseFloat(req.query.lat)    : null;
@@ -305,6 +306,6 @@ router.get('/', async (req, res) => {
       </div>
     </div>
   `, req.session));
-});
+}));
 
 module.exports = router;

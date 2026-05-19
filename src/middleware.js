@@ -31,4 +31,6 @@ function errorHandler(err, req, res, next) {
   res.status(status).send(msg);
 }
 
-module.exports = { requireAuth, requireAdmin, requireEditor, errorHandler };
+const wrapAsync = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+module.exports = { requireAuth, requireAdmin, requireEditor, errorHandler, wrapAsync };

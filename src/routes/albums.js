@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { page, esc } = require('../layout');
-const { requireEditor } = require('../middleware');
+const { requireEditor, wrapAsync } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { photoThumb, bulkBar, bulkScript, lbOverlay, lbScript } = require('../components');
@@ -20,7 +20,7 @@ const TRASH = `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d
 
 // ── Album list (all roles) ───────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
+router.get('/', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
 
   const { rows } = isViewer
@@ -110,7 +110,7 @@ router.get('/', async (req, res) => {
     </div>
     ${grid}
   `, req.session));
-});
+}));
 
 // ── US-A1: Create album ──────────────────────────────────────────────────────
 
@@ -201,18 +201,18 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
   });
 });
 
-router.post('/', requireEditor, async (req, res) => {
+router.post('/', requireEditor, wrapAsync(async (req, res) => {
   const { title, description } = req.body;
   const { rows } = await db.query(
     'INSERT INTO albums (user_id, title, description) VALUES ($1, $2, $3) RETURNING id',
     [req.session.userId, title, description || null]
   );
   res.redirect(`/albums/${rows[0].id}`);
-});
+}));
 
 // ── Album detail (all roles) ─────────────────────────────────────────────────
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', wrapAsync(async (req, res) => {
   const [albumRes, photosRes] = await Promise.all([
     db.query(
       'SELECT a.*, u.name AS creator FROM albums a JOIN users u ON u.id = a.user_id WHERE a.id = $1',
@@ -312,11 +312,11 @@ router.get('/:id', async (req, res) => {
     </div>
     ${photoSection}
   `, req.session));
-});
+}));
 
 // ── Bulk remove photos from album ────────────────────────────────────────────
 
-router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
+router.post('/:id/photos/bulk-remove', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -333,11 +333,11 @@ router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
     [req.params.id, ids]
   );
   res.redirect(`/albums/${req.params.id}`);
-});
+}));
 
 // ── Bulk delete photos from album ────────────────────────────────────────────
 
-router.post('/:id/photos/bulk-delete', requireEditor, async (req, res) => {
+router.post('/:id/photos/bulk-delete', requireEditor, wrapAsync(async (req, res) => {
   const { rows: albumRows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = albumRows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -363,11 +363,11 @@ router.post('/:id/photos/bulk-delete', requireEditor, async (req, res) => {
 
   await deletePhotos(rows.map(r => r.id));
   res.redirect(`/albums/${req.params.id}`);
-});
+}));
 
 // ── US-A3: Edit album ────────────────────────────────────────────────────────
 
-router.get('/:id/edit', requireEditor, async (req, res) => {
+router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -389,11 +389,11 @@ router.get('/:id/edit', requireEditor, async (req, res) => {
       </form>
     </div>
   `, req.session));
-});
+}));
 
 // ── AC1-AC2: Manage viewer access ────────────────────────────────────────────
 
-router.get('/:id/access', requireEditor, async (req, res) => {
+router.get('/:id/access', requireEditor, wrapAsync(async (req, res) => {
   const { rows: albumRows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
   const album = albumRows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -472,9 +472,9 @@ router.get('/:id/access', requireEditor, async (req, res) => {
       </aside>
     </div>
   `, req.session));
-});
+}));
 
-router.post('/:id/access/add', requireEditor, async (req, res) => {
+router.post('/:id/access/add', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -485,9 +485,9 @@ router.post('/:id/access/add', requireEditor, async (req, res) => {
     [req.params.id, req.body.viewer_id]
   );
   res.redirect(`/albums/${req.params.id}/access`);
-});
+}));
 
-router.post('/:id/access/remove', requireEditor, async (req, res) => {
+router.post('/:id/access/remove', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -498,9 +498,9 @@ router.post('/:id/access/remove', requireEditor, async (req, res) => {
     [req.params.id, req.body.viewer_id]
   );
   res.redirect(`/albums/${req.params.id}/access`);
-});
+}));
 
-router.post('/:id', requireEditor, async (req, res) => {
+router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -512,11 +512,11 @@ router.post('/:id', requireEditor, async (req, res) => {
     [title, description || null, req.params.id]
   );
   res.redirect(`/albums/${req.params.id}`);
-});
+}));
 
 // ── US-A3: Delete album ──────────────────────────────────────────────────────
 
-router.post('/:id/delete', requireEditor, async (req, res) => {
+router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -524,11 +524,11 @@ router.post('/:id/delete', requireEditor, async (req, res) => {
 
   await db.query('DELETE FROM albums WHERE id = $1', [req.params.id]);
   res.redirect('/albums');
-});
+}));
 
 // ── US-A2: Add photos to album (moves photo from its current album) ──────────
 
-router.get('/:id/photos/add', requireEditor, async (req, res) => {
+router.get('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
   const { rows: albumRows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
   const album = albumRows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -572,9 +572,9 @@ router.get('/:id/photos/add', requireEditor, async (req, res) => {
     </div>
     ${grid}
   `, req.session));
-});
+}));
 
-router.post('/:id/photos/add', requireEditor, async (req, res) => {
+router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -585,11 +585,11 @@ router.post('/:id/photos/add', requireEditor, async (req, res) => {
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}/photos/add`);
-});
+}));
 
 // ── US-A2: Remove photo from album ──────────────────────────────────────────
 
-router.post('/:id/photos/remove', requireEditor, async (req, res) => {
+router.post('/:id/photos/remove', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -600,11 +600,11 @@ router.post('/:id/photos/remove', requireEditor, async (req, res) => {
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}`);
-});
+}));
 
 // ── Upload photo directly into album ────────────────────────────────────────
 
-router.get('/:id/photos/upload', requireEditor, async (req, res) => {
+router.get('/:id/photos/upload', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -641,7 +641,7 @@ router.get('/:id/photos/upload', requireEditor, async (req, res) => {
       </form>
     </div>
   `, req.session));
-});
+}));
 
 router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
@@ -684,7 +684,7 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
 
 // ── IMP-2: Batch upload to album ─────────────────────────────────────────────
 
-router.get('/:id/photos/batch', requireEditor, async (req, res) => {
+router.get('/:id/photos/batch', requireEditor, wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -710,7 +710,7 @@ router.get('/:id/photos/batch', requireEditor, async (req, res) => {
       </form>
     </div>
   `, req.session));
-});
+}));
 
 router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);

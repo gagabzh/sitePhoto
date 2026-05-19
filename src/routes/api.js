@@ -1,12 +1,12 @@
 const router = require('express').Router();
 const db = require('../db');
 const { parseState, buildWhere, buildConditions, SECTIONS, ORDER_SQL } = require('../combinator');
-const { requireEditor } = require('../middleware');
+const { requireEditor, wrapAsync } = require('../middleware');
 
 // ── GET /api/tags/index ───────────────────────────────────────────────────────
 // Returns the full tag vocabulary grouped by category with global photo counts.
 
-router.get('/tags/index', async (req, res) => {
+router.get('/tags/index', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
   const uid = req.session.userId;
 
@@ -56,12 +56,12 @@ router.get('/tags/index', async (req, res) => {
   }
   grouped.years = yearRows.map(r => ({ name: String(r.name), count: r.count }));
   res.json(grouped);
-});
+}));
 
 // ── GET /api/photos/combinator ────────────────────────────────────────────────
 // Returns paginated photo results matching the combinator query.
 
-router.get('/photos/combinator', async (req, res) => {
+router.get('/photos/combinator', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
   const state    = parseState(req.query);
   const { where, vals } = buildWhere(state, isViewer, req.session.userId);
@@ -88,13 +88,13 @@ router.get('/photos/combinator', async (req, res) => {
     taken_at: p.taken_at,
     uploader: p.uploader,
   }))});
-});
+}));
 
 // ── GET /api/tags/counts ──────────────────────────────────────────────────────
 // For each unchecked tag in each section, returns how many photos in the
 // current filtered set also carry that tag.
 
-router.get('/tags/counts', async (req, res) => {
+router.get('/tags/counts', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
   const state    = parseState(req.query);
   const result   = {};
@@ -147,13 +147,13 @@ router.get('/tags/counts', async (req, res) => {
   }
 
   res.json(result);
-});
+}));
 
 // ── GET /api/geocode ─────────────────────────────────────────────────────────
 // Nominatim proxy — keeps Nominatim calls server-side (avoids CSP issues, central
 // place to add caching or rate-limit handling later).
 
-router.get('/geocode', async (req, res) => {
+router.get('/geocode', wrapAsync(async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json([]);
   try {
@@ -167,21 +167,21 @@ router.get('/geocode', async (req, res) => {
   } catch {
     res.json([]);
   }
-});
+}));
 
 // ── GET /api/recipes ──────────────────────────────────────────────────────────
 
-router.get('/recipes', async (req, res) => {
+router.get('/recipes', wrapAsync(async (req, res) => {
   const { rows } = await db.query(
     'SELECT id, name, query_json FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC',
     [req.session.userId]
   );
   res.json(rows);
-});
+}));
 
 // ── POST /api/recipes ─────────────────────────────────────────────────────────
 
-router.post('/recipes', async (req, res) => {
+router.post('/recipes', wrapAsync(async (req, res) => {
   const name  = String(req.body.name  || '').trim().slice(0, 100);
   const query = req.body.query;
   if (!name || !query || typeof query !== 'object') {
@@ -192,11 +192,11 @@ router.post('/recipes', async (req, res) => {
     [req.session.userId, name, JSON.stringify(query)]
   );
   res.status(201).json({ id: rows[0].id });
-});
+}));
 
 // ── DELETE /api/recipes/:id ───────────────────────────────────────────────────
 
-router.delete('/recipes/:id', async (req, res) => {
+router.delete('/recipes/:id', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
 
@@ -207,11 +207,11 @@ router.delete('/recipes/:id', async (req, res) => {
 
   await db.query('DELETE FROM tag_recipes WHERE id = $1', [id]);
   res.status(204).end();
-});
+}));
 
 // ── GET /api/tags/:id/detail — fetch one tag for the drawer ──────────────────
 
-router.get('/tags/:id/detail', requireEditor, async (req, res) => {
+router.get('/tags/:id/detail', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows } = await db.query(
@@ -219,11 +219,11 @@ router.get('/tags/:id/detail', requireEditor, async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);
-});
+}));
 
 // ── POST /api/tags — create tag ───────────────────────────────────────────────
 
-router.post('/tags', requireEditor, async (req, res) => {
+router.post('/tags', requireEditor, wrapAsync(async (req, res) => {
   const name     = String(req.body.name || '').trim().toLowerCase().slice(0, 100);
   const category = ['people','places','years','themes'].includes(req.body.category) ? req.body.category : null;
   if (!name) return res.status(400).json({ error: 'name required' });
@@ -233,11 +233,11 @@ router.post('/tags', requireEditor, async (req, res) => {
   );
   if (!rows.length) return res.status(409).json({ error: 'tag already exists' });
   res.status(201).json({ id: rows[0].id });
-});
+}));
 
 // ── POST /api/tags/merge — merge tags ─────────────────────────────────────────
 
-router.post('/tags/merge', requireEditor, async (req, res) => {
+router.post('/tags/merge', requireEditor, wrapAsync(async (req, res) => {
   const targetId  = parseInt(req.body.targetId, 10);
   const sourceIds = (req.body.sourceIds || []).map(Number).filter(n => !isNaN(n) && n !== targetId);
   if (isNaN(targetId) || !sourceIds.length) return res.status(400).json({ error: 'invalid params' });
@@ -248,11 +248,11 @@ router.post('/tags/merge', requireEditor, async (req, res) => {
   );
   await db.query('DELETE FROM tags WHERE id = ANY($1::int[])', [sourceIds]);
   res.json({ ok: true });
-});
+}));
 
 // ── PATCH /api/tags/:id — update tag ─────────────────────────────────────────
 
-router.patch('/tags/:id', requireEditor, async (req, res) => {
+router.patch('/tags/:id', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows: exist } = await db.query('SELECT id FROM tags WHERE id = $1', [id]);
@@ -284,20 +284,20 @@ router.patch('/tags/:id', requireEditor, async (req, res) => {
   vals.push(id);
   await db.query(`UPDATE tags SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
   res.json({ ok: true });
-});
+}));
 
 // ── DELETE /api/tags/:id — delete tag ────────────────────────────────────────
 
-router.delete('/tags/:id', requireEditor, async (req, res) => {
+router.delete('/tags/:id', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   await db.query('DELETE FROM tags WHERE id = $1', [id]);
   res.status(204).end();
-});
+}));
 
 // ── PATCH /api/recipes/:id — update recipe ───────────────────────────────────
 
-router.patch('/recipes/:id', async (req, res) => {
+router.patch('/recipes/:id', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows } = await db.query('SELECT user_id FROM tag_recipes WHERE id = $1', [id]);
@@ -323,11 +323,11 @@ router.patch('/recipes/:id', async (req, res) => {
   vals.push(id);
   await db.query(`UPDATE tag_recipes SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
   res.json({ ok: true });
-});
+}));
 
 // ── POST /api/recipes/:id/duplicate — clone recipe ───────────────────────────
 
-router.post('/recipes/:id/duplicate', async (req, res) => {
+router.post('/recipes/:id/duplicate', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows } = await db.query(
@@ -340,11 +340,11 @@ router.post('/recipes/:id/duplicate', async (req, res) => {
     [req.session.userId, rows[0].name + ' (copy)', JSON.stringify(rows[0].query_json)]
   );
   res.status(201).json({ id: newRows[0].id });
-});
+}));
 
 // ── GET /api/users/search — typeahead for share-to-user ──────────────────────
 
-router.get('/users/search', async (req, res) => {
+router.get('/users/search', wrapAsync(async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (!q) return res.json([]);
   const { rows } = await db.query(
@@ -352,11 +352,11 @@ router.get('/users/search', async (req, res) => {
     [`%${q}%`, req.session.userId]
   );
   res.json(rows);
-});
+}));
 
 // ── POST /api/recipes/:id/share — generate share token ───────────────────────
 
-router.post('/recipes/:id/share', async (req, res) => {
+router.post('/recipes/:id/share', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows } = await db.query(
@@ -373,11 +373,11 @@ router.post('/recipes/:id/share', async (req, res) => {
     token = updated[0].share_token;
   }
   res.json({ token });
-});
+}));
 
 // ── POST /api/recipes/fork/:token — copy shared recipe into own collection ────
 
-router.post('/recipes/fork/:token', async (req, res) => {
+router.post('/recipes/fork/:token', wrapAsync(async (req, res) => {
   const { token } = req.params;
   const { rows } = await db.query(
     `SELECT tr.id, tr.name, tr.query_json, tr.user_id
@@ -390,11 +390,11 @@ router.post('/recipes/fork/:token', async (req, res) => {
     [req.session.userId, rows[0].name, JSON.stringify(rows[0].query_json), rows[0].user_id]
   );
   res.status(201).json({ id: newRows[0].id });
-});
+}));
 
 // ── POST /api/recipes/:id/share-to — push recipe directly to another user ────
 
-router.post('/recipes/:id/share-to', async (req, res) => {
+router.post('/recipes/:id/share-to', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
   const { rows } = await db.query(
@@ -426,6 +426,6 @@ router.post('/recipes/:id/share-to', async (req, res) => {
     [toUserId, rows[0].name, JSON.stringify(rows[0].query_json), req.session.userId]
   );
   res.status(201).json({ ok: true });
-});
+}));
 
 module.exports = router;

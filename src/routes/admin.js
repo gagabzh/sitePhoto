@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { deletePhotos } = require('../uploadHelpers');
+const { wrapAsync } = require('../middleware');
 
 
 function roleOptions(selected) {
@@ -12,7 +13,7 @@ function roleOptions(selected) {
 }
 
 // US-1: List users
-router.get('/', async (req, res) => {
+router.get('/', wrapAsync(async (req, res) => {
   const { rows } = await db.query(
     'SELECT id, name, email, role, created_at FROM users ORDER BY created_at'
   );
@@ -71,7 +72,7 @@ router.get('/', async (req, res) => {
     </table>
     <div class="ul-foot">// ${rows.length} of ${rows.length} · sorted by join date</div>
   `, req.session));
-});
+}));
 
 // US-2: Create user
 router.get('/new', (req, res) => {
@@ -94,7 +95,7 @@ router.get('/new', (req, res) => {
   `, req.session));
 });
 
-router.post('/', async (req, res) => {
+router.post('/', wrapAsync(async (req, res) => {
   const { name, email, password, role } = req.body;
   try {
     const hash = await bcrypt.hash(password, 10);
@@ -107,10 +108,10 @@ router.post('/', async (req, res) => {
     if (err.code === '23505') return res.redirect('/admin/users/new?error=1');
     throw err;
   }
-});
+}));
 
 // US-3: Edit user
-router.get('/:id/edit', async (req, res) => {
+router.get('/:id/edit', wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT id, name, email, role FROM users WHERE id = $1', [req.params.id]);
   const u = rows[0];
   if (!u) return res.status(404).send('User not found');
@@ -135,9 +136,9 @@ router.get('/:id/edit', async (req, res) => {
       </form>
     </div>
   `, req.session));
-});
+}));
 
-router.post('/:id', async (req, res) => {
+router.post('/:id', wrapAsync(async (req, res) => {
   const { name, email, role } = req.body;
   try {
     await db.query(
@@ -149,19 +150,19 @@ router.post('/:id', async (req, res) => {
     if (err.code === '23505') return res.redirect(`/admin/users/${req.params.id}/edit?error=1`);
     throw err;
   }
-});
+}));
 
 // US-4: Delete user
-router.post('/:id/delete', async (req, res) => {
+router.post('/:id/delete', wrapAsync(async (req, res) => {
   if (parseInt(req.params.id) === req.session.userId) return res.redirect('/admin/users');
   const { rows: photos } = await db.query('SELECT id FROM photos WHERE user_id = $1', [req.params.id]);
   await deletePhotos(photos.map(p => p.id));
   await db.query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.redirect('/admin/users');
-});
+}));
 
 // US-5: Admin resets a user's password
-router.get('/:id/password', async (req, res) => {
+router.get('/:id/password', wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT id, name FROM users WHERE id = $1', [req.params.id]);
   const u = rows[0];
   if (!u) return res.status(404).send('User not found');
@@ -181,12 +182,12 @@ router.get('/:id/password', async (req, res) => {
       </form>
     </div>
   `, req.session));
-});
+}));
 
-router.post('/:id/password', async (req, res) => {
+router.post('/:id/password', wrapAsync(async (req, res) => {
   const hash = await bcrypt.hash(req.body.password, 10);
   await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.params.id]);
   res.redirect(`/admin/users/${req.params.id}/password?done=1`);
-});
+}));
 
 module.exports = router;
