@@ -59,7 +59,7 @@ function buildConditions(state, isViewer, userId, excludeSection) {
   }
 
   if (isViewer) {
-    conds.push(`p.album_id IN (SELECT album_id FROM album_access WHERE viewer_id=${p(userId)})`);
+    conds.push(`EXISTS (SELECT 1 FROM album_photos ap JOIN album_access aa ON aa.album_id = ap.album_id WHERE ap.photo_id = p.id AND aa.viewer_id = ${p(userId)})`);
   }
 
   return { conds, vals };

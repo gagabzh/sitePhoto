@@ -9,14 +9,13 @@ async function fetchGeoPhotos(session, albumFilter, tagFilter, latFilter, lonFil
   const conditions = ['p.latitude IS NOT NULL', 'p.longitude IS NOT NULL'];
 
   if (isViewer) {
-    joins.push('JOIN album_access aa ON aa.album_id = p.album_id');
     params.push(session.userId);
-    conditions.push(`aa.viewer_id = $${params.length}`);
+    conditions.push(`EXISTS (SELECT 1 FROM album_photos ap JOIN album_access aa ON aa.album_id = ap.album_id WHERE ap.photo_id = p.id AND aa.viewer_id = $${params.length})`);
   }
 
   if (albumFilter) {
     params.push(albumFilter);
-    conditions.push(`p.album_id = $${params.length}`);
+    conditions.push(`EXISTS (SELECT 1 FROM album_photos WHERE photo_id = p.id AND album_id = $${params.length})`);
   }
 
   if (tagFilter) {
@@ -57,14 +56,16 @@ async function fetchFilterOptions(session) {
   const albumSql = isViewer
     ? `SELECT a.id, a.title, COUNT(p.id) AS photo_count
        FROM albums a
-       JOIN photos p ON p.album_id = a.id
+       JOIN album_photos ap ON ap.album_id = a.id
+       JOIN photos p ON p.id = ap.photo_id
        JOIN album_access aa ON aa.album_id = a.id
        WHERE aa.viewer_id = $1 AND p.latitude IS NOT NULL
        GROUP BY a.id
        ORDER BY COUNT(p.id) DESC`
     : `SELECT a.id, a.title, COUNT(p.id) AS photo_count
        FROM albums a
-       JOIN photos p ON p.album_id = a.id
+       JOIN album_photos ap ON ap.album_id = a.id
+       JOIN photos p ON p.id = ap.photo_id
        WHERE p.latitude IS NOT NULL
        GROUP BY a.id
        ORDER BY COUNT(p.id) DESC`;
@@ -73,7 +74,8 @@ async function fetchFilterOptions(session) {
     ? `SELECT DISTINCT t.name FROM tags t
        JOIN photo_tags pt ON pt.tag_id = t.id
        JOIN photos p ON p.id = pt.photo_id
-       JOIN album_access aa ON aa.album_id = p.album_id
+       JOIN album_photos ap ON ap.photo_id = p.id
+       JOIN album_access aa ON aa.album_id = ap.album_id
        WHERE aa.viewer_id = $1 AND p.latitude IS NOT NULL
        ORDER BY t.name`
     : `SELECT DISTINCT t.name FROM tags t
@@ -87,7 +89,8 @@ async function fetchFilterOptions(session) {
        FROM tags t
        JOIN photo_tags pt ON pt.tag_id = t.id
        JOIN photos p ON p.id = pt.photo_id
-       JOIN album_access aa ON aa.album_id = p.album_id
+       JOIN album_photos ap ON ap.photo_id = p.id
+       JOIN album_access aa ON aa.album_id = ap.album_id
        WHERE t.category = 'places' AND p.latitude IS NOT NULL AND aa.viewer_id = $1
        GROUP BY t.name ORDER BY COUNT(DISTINCT p.id) DESC`
     : `SELECT t.name, COUNT(DISTINCT p.id) AS photo_count

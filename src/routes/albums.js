@@ -26,23 +26,27 @@ router.get('/', async (req, res) => {
   const { rows } = isViewer
     ? await db.query(`
         SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
-          COUNT(DISTINCT p.id)::int AS photo_count,
-          (SELECT p2.filename FROM photos p2 WHERE p2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
+          COUNT(DISTINCT ap.photo_id)::int AS photo_count,
+          (SELECT p2.filename FROM photos p2
+           JOIN album_photos ap2 ON ap2.photo_id = p2.id
+           WHERE ap2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
         FROM albums a
         JOIN users u ON u.id = a.user_id
         JOIN album_access aa ON aa.album_id = a.id
-        LEFT JOIN photos p ON p.album_id = a.id
+        LEFT JOIN album_photos ap ON ap.album_id = a.id
         WHERE aa.viewer_id = $1
         GROUP BY a.id, u.name
         ORDER BY a.created_at DESC
       `, [req.session.userId])
     : await db.query(`
         SELECT a.id, a.title, a.description, a.user_id, u.name AS creator,
-          COUNT(DISTINCT p.id)::int AS photo_count,
-          (SELECT p2.filename FROM photos p2 WHERE p2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
+          COUNT(DISTINCT ap.photo_id)::int AS photo_count,
+          (SELECT p2.filename FROM photos p2
+           JOIN album_photos ap2 ON ap2.photo_id = p2.id
+           WHERE ap2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
         FROM albums a
         JOIN users u ON u.id = a.user_id
-        LEFT JOIN photos p ON p.album_id = a.id
+        LEFT JOIN album_photos ap ON ap.album_id = a.id
         GROUP BY a.id, u.name
         ORDER BY a.created_at DESC
       `);
@@ -181,12 +185,12 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
 
         const { rows: [photo] } = await db.query(
           `INSERT INTO photos
-            (user_id, filename, original_filename, title, mime_type, size, album_id, taken_at, latitude, longitude)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+            (user_id, filename, original_filename, title, mime_type, size, taken_at, latitude, longitude)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
           [req.session.userId, file.filename, file.originalname, photoTitle,
-           file.mimetype, finalSize, album.id, meta.takenAt || null, lat, lon]
+           file.mimetype, finalSize, meta.takenAt || null, lat, lon]
         );
-
+        await db.query('INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)', [album.id, photo.id]);
         if (tags) await setTags(photo.id, tags);
       }
 
@@ -215,7 +219,7 @@ router.get('/:id', async (req, res) => {
       [req.params.id]
     ),
     db.query(
-      'SELECT p.id, p.filename, p.title, p.user_id FROM photos p WHERE p.album_id = $1 ORDER BY p.created_at ASC',
+      'SELECT p.id, p.filename, p.title, p.user_id FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 ORDER BY p.created_at ASC',
       [req.params.id]
     ),
   ]);
@@ -310,7 +314,7 @@ router.get('/:id', async (req, res) => {
   `, req.session));
 });
 
-// ── Bulk remove photos from album (set album_id to NULL) ─────────────────────
+// ── Bulk remove photos from album ────────────────────────────────────────────
 
 router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
@@ -325,7 +329,7 @@ router.post('/:id/photos/bulk-remove', requireEditor, async (req, res) => {
   if (!ids.length) return res.redirect(`/albums/${req.params.id}`);
 
   await db.query(
-    'UPDATE photos SET album_id = NULL WHERE album_id = $1 AND id = ANY($2::int[])',
+    'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = ANY($2::int[])',
     [req.params.id, ids]
   );
   res.redirect(`/albums/${req.params.id}`);
@@ -347,11 +351,11 @@ router.post('/:id/photos/bulk-delete', requireEditor, async (req, res) => {
 
   const { rows } = req.session.role === 'admin'
     ? await db.query(
-        'SELECT p.id FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[])',
+        'SELECT p.id FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[])',
         [req.params.id, ids]
       )
     : await db.query(
-        'SELECT p.id FROM photos p WHERE p.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
+        'SELECT p.id FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
         [req.params.id, ids, req.session.userId]
       );
 
@@ -534,7 +538,7 @@ router.get('/:id/photos/add', requireEditor, async (req, res) => {
     `SELECT p.id, p.filename, p.title, u.name AS uploader
      FROM photos p
      JOIN users u ON u.id = p.user_id
-     WHERE p.album_id != $1 OR p.album_id IS NULL
+     WHERE NOT EXISTS (SELECT 1 FROM album_photos WHERE photo_id = p.id AND album_id = $1)
      ORDER BY p.created_at DESC`,
     [req.params.id]
   );
@@ -577,7 +581,7 @@ router.post('/:id/photos/add', requireEditor, async (req, res) => {
   if (!canModify(req.session, album)) return res.status(403).send('Access denied');
 
   await db.query(
-    'UPDATE photos SET album_id = $1 WHERE id = $2',
+    'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}/photos/add`);
@@ -592,7 +596,7 @@ router.post('/:id/photos/remove', requireEditor, async (req, res) => {
   if (!canModify(req.session, album)) return res.status(403).send('Access denied');
 
   await db.query(
-    'UPDATE photos SET album_id = NULL WHERE id = $2 AND album_id = $1',
+    'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = $2',
     [req.params.id, req.body.photo_id]
   );
   res.redirect(`/albums/${req.params.id}`);
@@ -664,11 +668,12 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
       const lat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const lon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
       const { rows: [photo] } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, album_id, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id',
+        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id',
         [req.session.userId, req.file.filename, req.file.originalname, title, description || null,
-         req.file.mimetype, finalSize, albumId, takenAt, exif.exposureTime || null,
+         req.file.mimetype, finalSize, takenAt, exif.exposureTime || null,
          exif.focalLength || null, lat, lon, ncUrl]
       );
+      await db.query('INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)', [albumId, photo.id]);
       if (tags) await setTags(photo.id, tags);
       res.redirect(`/albums/${albumId}`);
     } catch (e) {
@@ -734,12 +739,12 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
 
         const { rows: [photo] } = await db.query(
           `INSERT INTO photos
-            (user_id, filename, original_filename, title, mime_type, size, album_id, taken_at, latitude, longitude)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+            (user_id, filename, original_filename, title, mime_type, size, taken_at, latitude, longitude)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
           [req.session.userId, file.filename, file.originalname, photoTitle,
-           file.mimetype, finalSize, req.params.id, meta.takenAt || null, lat, lon]
+           file.mimetype, finalSize, meta.takenAt || null, lat, lon]
         );
-
+        await db.query('INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)', [req.params.id, photo.id]);
         if (sharedTags) await setTags(photo.id, sharedTags);
       }
       res.redirect(`/albums/${req.params.id}`);

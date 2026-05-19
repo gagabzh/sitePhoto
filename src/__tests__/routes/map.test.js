@@ -23,7 +23,8 @@ function mockFilterOptions() {
   db.query
     .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })               // photos query
     .mockResolvedValueOnce({ rows: [{ id: 1, title: 'Trip' }] }) // albums
-    .mockResolvedValueOnce({ rows: [{ name: 'paris' }] });       // tags
+    .mockResolvedValueOnce({ rows: [{ name: 'paris' }] })        // tags
+    .mockResolvedValueOnce({ rows: [] });                        // placeTags
 }
 
 // ── GPS3: full map view ───────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ describe('GPS3: GET /map — full map view', () => {
 
   it('shows empty message when no GPS photos', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -62,6 +64,7 @@ describe('GPS3: GET /map — full map view', () => {
     db.query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await request(makeApp(VIEWER_SESSION)).get('/map');
@@ -72,6 +75,7 @@ describe('GPS3: GET /map — full map view', () => {
 
   it('editor query does not filter by album_access', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -89,18 +93,20 @@ describe('GPS4: GET /map?album&tag — filtered map', () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/map?album=3');
     expect(res.status).toBe(200);
     const photoQuery = db.query.mock.calls[0][0];
-    expect(photoQuery).toContain('album_id');
+    expect(photoQuery).toContain('album_photos');
     expect(db.query.mock.calls[0][1]).toContain(3);
   });
 
   it('filters by tag', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
@@ -124,6 +130,7 @@ describe('GPS4: GET /map?album&tag — filtered map', () => {
     db.query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/map?tag=paris');
@@ -132,6 +139,7 @@ describe('GPS4: GET /map?album&tag — filtered map', () => {
 
   it('does not show Clear button with no filter', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -148,6 +156,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
     db.query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522&radius=10');
@@ -158,6 +167,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
 
   it('passes lat, lon, radius as params to photo query', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -173,6 +183,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
     db.query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522');
@@ -182,6 +193,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
 
   it('ignores location filter when lat or lon is missing', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -195,6 +207,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
     db.query
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/map?lat=48.8566&lon=2.3522');
@@ -203,6 +216,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
 
   it('renders zone search UI with radius input', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
@@ -215,6 +229,7 @@ describe('GPS5: GET /map?lat&lon&radius — zone filter', () => {
 
   it('pre-fills coords as placeholder when location filter active', async () => {
     db.query
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
