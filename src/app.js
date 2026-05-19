@@ -2,7 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const path = require('path');
-const { requireAuth, requireAdmin } = require('./middleware');
+const { requireAuth, requireAdmin, errorHandler } = require('./middleware');
 
 if (!process.env.SESSION_SECRET) {
   console.warn('WARNING: SESSION_SECRET env var is not set — using insecure default. Set it before deploying.');
@@ -50,5 +50,7 @@ app.use('/timeline', require('./routes/timeline'));
 app.use('/map', require('./routes/map'));
 app.use('/api', require('./routes/api'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
+
+app.use(errorHandler);
 
 module.exports = app;

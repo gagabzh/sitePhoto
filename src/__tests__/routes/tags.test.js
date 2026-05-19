@@ -10,6 +10,7 @@ beforeEach(() => jest.resetAllMocks());
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
 const VIEWER_SESSION = { userId: 20, name: 'Bob',   role: 'viewer' };
+const ADMIN_SESSION  = { userId: 30, name: 'Carol', role: 'admin' };
 
 function makeApp(sessionData) {
   const app = express();
@@ -402,5 +403,518 @@ describe('GET /api/geocode', () => {
     await request(makeApp(EDITOR_SESSION)).get('/api/geocode?q=Lyon');
     const [, opts] = fetchSpy.mock.calls[0];
     expect(opts.headers['User-Agent']).toMatch(/sitephoto/);
+  });
+});
+
+// ── GET /tags/manage ──────────────────────────────────────────────────────────
+
+describe('GET /tags/manage', () => {
+  const STATS = { total: 3, people: 1, places: 1, years: 0, themes: 0 };
+
+  function mockManage(tags = []) {
+    // Promise.all order: mainSql, countSql, statsSql, unusedSql, dupesSql
+    db.query
+      .mockResolvedValueOnce({ rows: tags })
+      .mockResolvedValueOnce({ rows: [{ cnt: tags.length }] })
+      .mockResolvedValueOnce({ rows: [STATS] })
+      .mockResolvedValueOnce({ rows: [{ cnt: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ cnt: 0 }] });
+  }
+
+  it('returns 200 and renders the manage page for editor', async () => {
+    mockManage();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/manage');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('manage');
+    expect(res.text).toContain('TOTAL TAGS');
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).get('/tags/manage');
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('renders a tag row when tags exist', async () => {
+    mockManage([{
+      id: 1, name: 'paris', category: 'places', aliases: ['france'], description: null,
+      photo_count: 5, last_used: new Date().toISOString(),
+      contributor_count: 1, contributors: ['Alice'], cover_filename: 'cover.jpg',
+    }]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/manage');
+    expect(res.text).toContain('paris');
+    expect(res.text).toContain('cover.jpg');
+  });
+
+  it('exports CSV when export=csv is requested', async () => {
+    db.query.mockResolvedValueOnce({ rows: [
+      { id: 1, name: 'paris', category: 'places', aliases: ['france'], description: 'City', photo_count: 3 },
+    ]});
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/manage?export=csv');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/csv/);
+    expect(res.text).toContain('paris');
+    expect(res.text).toContain('places');
+    expect(res.text).toContain('france');
+  });
+
+  it('passes kind filter to query when kind param is set', async () => {
+    mockManage();
+    await request(makeApp(EDITOR_SESSION)).get('/tags/manage?kind=people');
+    expect(db.query.mock.calls[0][1]).toContain('people');
+  });
+
+  it('loads the edit tag via 6th query when edit param is set', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ cnt: 0 }] })
+      .mockResolvedValueOnce({ rows: [STATS] })
+      .mockResolvedValueOnce({ rows: [{ cnt: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ cnt: 0 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 7, name: 'rome', category: 'places', aliases: [], description: '' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/manage?edit=7');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('rome');
+  });
+});
+
+// ── GET /tags/recipes ─────────────────────────────────────────────────────────
+
+describe('GET /tags/recipes', () => {
+  it('returns 200 with my-recipes page for editor', async () => {
+    // Promise.all: recipes query, sharedWithMe query
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('my saved');
+  });
+
+  it('renders recipe cards when recipes exist', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{
+        id: 1, name: 'Summer memories', query_json: { sections: {} },
+        pinned: false, use_count: 3, last_used_at: null, created_at: new Date().toISOString(),
+      }]})
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes');
+    expect(res.text).toContain('Summer memories');
+  });
+
+  it('renders pinned section when pinned recipes exist', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{
+        id: 1, name: 'Pinned recipe', query_json: { sections: {} },
+        pinned: true, use_count: 1, last_used_at: null, created_at: new Date().toISOString(),
+      }]})
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes');
+    expect(res.text).toContain('pinned');
+    expect(res.text).toContain('Pinned recipe');
+  });
+
+  it('shows admin all-recipes view when scope=all and role=admin', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(ADMIN_SESSION)).get('/tags/recipes?scope=all');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('all');
+  });
+
+  it('non-admin falls through to my-recipes view even with scope=all', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes?scope=all');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('my saved');
+  });
+});
+
+// ── GET /tags/recipes/fork/:token ─────────────────────────────────────────────
+
+describe('GET /tags/recipes/fork/:token', () => {
+  it('redirects to /tags with the shared recipe params', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{
+      query_json: { sections: { people: { on: ['alice'], not: [] } } },
+    }]});
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes/fork/mytoken');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('/tags?');
+    expect(res.headers.location).toContain('_shared=mytoken');
+    expect(res.headers.location).toContain('people=alice');
+  });
+
+  it('redirects with _shared param even when recipe has empty sections', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ query_json: { sections: {} } }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes/fork/tok');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('_shared=tok');
+  });
+
+  it('returns 404 for invalid token', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/tags/recipes/fork/bad-token');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── GET /api/tags/:id/detail ──────────────────────────────────────────────────
+
+describe('GET /api/tags/:id/detail', () => {
+  it('returns tag detail for editor', async () => {
+    db.query.mockResolvedValueOnce({ rows: [
+      { id: 1, name: 'paris', category: 'places', aliases: ['france'], description: 'City of lights' },
+    ]});
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/tags/1/detail');
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('paris');
+    expect(res.body.aliases).toEqual(['france']);
+  });
+
+  it('returns 404 when tag not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/tags/999/detail');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for non-numeric id', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/tags/abc/detail');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).get('/api/tags/1/detail');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── POST /api/tags ────────────────────────────────────────────────────────────
+
+describe('POST /api/tags', () => {
+  it('creates tag and returns 201 with id', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 5 }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/tags').send({ name: 'Berlin', category: 'places' });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(5);
+  });
+
+  it('lowercases and trims the name before inserting', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 6 }] });
+    await request(makeApp(EDITOR_SESSION)).post('/api/tags').send({ name: '  Paris  ' });
+    expect(db.query).toHaveBeenCalledWith(expect.any(String), ['paris', null]);
+  });
+
+  it('returns 409 when name already exists (ON CONFLICT DO NOTHING)', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/tags').send({ name: 'paris' });
+    expect(res.status).toBe(409);
+  });
+
+  it('returns 400 when name is missing', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/tags').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('sets category to null for invalid category values', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 7 }] });
+    await request(makeApp(EDITOR_SESSION)).post('/api/tags').send({ name: 'test', category: 'invalid' });
+    expect(db.query).toHaveBeenCalledWith(expect.any(String), ['test', null]);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).post('/api/tags').send({ name: 'test' });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── POST /api/tags/merge ──────────────────────────────────────────────────────
+
+describe('POST /api/tags/merge', () => {
+  it('merges source tags into target and returns ok', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/tags/merge').send({ targetId: 1, sourceIds: [2, 3] });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 400 when sourceIds is empty', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/tags/merge').send({ targetId: 1, sourceIds: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('filters targetId out of sourceIds before merging', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/tags/merge').send({ targetId: 1, sourceIds: [1, 2] });
+    expect(res.status).toBe(200);
+    const [, params] = db.query.mock.calls[0];
+    expect(params[1]).not.toContain(1);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/api/tags/merge').send({ targetId: 1, sourceIds: [2] });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── PATCH /api/tags/:id ───────────────────────────────────────────────────────
+
+describe('PATCH /api/tags/:id', () => {
+  it('updates tag name and returns ok', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .patch('/api/tags/1').send({ name: 'London' });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('updates category, aliases, and description in a single query', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .patch('/api/tags/1').send({ category: 'places', aliases: ['gb', 'uk'], description: 'Capital' });
+    expect(res.status).toBe(200);
+    const updateSql = db.query.mock.calls[1][0];
+    expect(updateSql).toContain('category');
+    expect(updateSql).toContain('aliases');
+    expect(updateSql).toContain('description');
+  });
+
+  it('returns ok immediately and makes only one query when body has no known fields', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).patch('/api/tags/1').send({});
+    expect(res.status).toBe(200);
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 404 when tag does not exist', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).patch('/api/tags/999').send({ name: 'x' });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 for non-numeric id', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).patch('/api/tags/abc').send({ name: 'x' });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── DELETE /api/tags/:id ──────────────────────────────────────────────────────
+
+describe('DELETE /api/tags/:id', () => {
+  it('deletes tag and returns 204 for editor', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).delete('/api/tags/1');
+    expect(res.status).toBe(204);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).delete('/api/tags/1');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── PATCH /api/recipes/:id ────────────────────────────────────────────────────
+
+describe('PATCH /api/recipes/:id', () => {
+  it('pins own recipe and returns ok', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .patch('/api/recipes/1').send({ pinned: true });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(db.query.mock.calls[1][0]).toContain('pinned');
+  });
+
+  it('updates recipe name', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .patch('/api/recipes/1').send({ name: 'New name' });
+    expect(res.status).toBe(200);
+    expect(db.query.mock.calls[1][0]).toContain('name');
+  });
+
+  it('returns 403 when updating another user recipe', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .patch('/api/recipes/1').send({ name: 'hijack' });
+    expect(res.status).toBe(403);
+  });
+
+  it('admin can patch any recipe', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 99 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(ADMIN_SESSION))
+      .patch('/api/recipes/1').send({ pinned: false });
+    expect(res.status).toBe(200);
+  });
+
+  it('returns ok with one query when body has no updates', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).patch('/api/recipes/1').send({});
+    expect(res.status).toBe(200);
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 404 when recipe not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).patch('/api/recipes/999').send({ pinned: true });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── POST /api/recipes/:id/duplicate ──────────────────────────────────────────
+
+describe('POST /api/recipes/:id/duplicate', () => {
+  it('clones own recipe and returns 201 with new id', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ name: 'My Recipe', query_json: { sections: {} } }] })
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/1/duplicate');
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(42);
+    expect(db.query.mock.calls[1][1][1]).toContain('(copy)');
+  });
+
+  it('returns 404 when recipe not found or not owned', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/999/duplicate');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── GET /api/users/search ─────────────────────────────────────────────────────
+
+describe('GET /api/users/search', () => {
+  it('returns matching users excluding current user', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 5, name: 'Bob' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/users/search?q=bo');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ id: 5, name: 'Bob' }]);
+    expect(db.query).toHaveBeenCalledWith(expect.any(String), ['%bo%', 10]);
+  });
+
+  it('returns empty array for empty query without hitting db', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/api/users/search?q=');
+    expect(res.body).toEqual([]);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
+// ── POST /api/recipes/:id/share ───────────────────────────────────────────────
+
+describe('POST /api/recipes/:id/share', () => {
+  it('returns existing share token without generating a new one', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ share_token: 'existing-token' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/1/share');
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBe('existing-token');
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('generates and returns a new token when none exists', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ share_token: null }] })
+      .mockResolvedValueOnce({ rows: [{ share_token: 'new-uuid' }] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/1/share');
+    expect(res.body.token).toBe('new-uuid');
+  });
+
+  it('returns 404 when recipe not found or not owned', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/999/share');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── POST /api/recipes/fork/:token ─────────────────────────────────────────────
+
+describe('POST /api/recipes/fork/:token', () => {
+  it('copies shared recipe into own collection and returns 201', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Their Recipe', query_json: {}, user_id: 5 }] })
+      .mockResolvedValueOnce({ rows: [{ id: 99 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/fork/share-token');
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(99);
+  });
+
+  it('returns 404 for invalid token', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).post('/api/recipes/fork/bad-token');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── POST /api/recipes/:id/share-to ────────────────────────────────────────────
+
+describe('POST /api/recipes/:id/share-to', () => {
+  it('shares recipe to a specific user', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ name: 'My Recipe', query_json: {} }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/share-to').send({ userId: 5 });
+    expect(res.status).toBe(201);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('returns 400 when sharing with yourself', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ name: 'Recipe', query_json: {} }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/share-to').send({ userId: 10 }); // EDITOR_SESSION.userId
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when target user not found', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ name: 'Recipe', query_json: {} }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/share-to').send({ userId: 999 });
+    expect(res.status).toBe(404);
+  });
+
+  it('admin can broadcast to all users', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ name: 'Admin Recipe', query_json: {} }] })
+      .mockResolvedValueOnce({ rows: [{ id: 5 }, { id: 6 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/api/recipes/1/share-to').send({ everyone: true });
+    expect(res.status).toBe(201);
+    expect(res.body.count).toBe(2);
+  });
+
+  it('returns 403 when non-admin tries everyone broadcast', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ name: 'Recipe', query_json: {} }] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/share-to').send({ everyone: true });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 when recipe not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/share-to').send({ userId: 5 });
+    expect(res.status).toBe(404);
   });
 });

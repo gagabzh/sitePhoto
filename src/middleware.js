@@ -16,4 +16,19 @@ function requireEditor(req, res, next) {
   res.status(403).send('Access denied');
 }
 
-module.exports = { requireAuth, requireAdmin, requireEditor };
+// Catches errors forwarded via next(err) and synchronous throws in route
+// handlers. Express 4 async handlers that reject without try/catch bypass
+// this — they become unhandled rejections at the Node.js process level.
+// Express 5 wraps async handlers automatically so those reach here too.
+function errorHandler(err, req, res, next) {
+  console.error(err);
+  const status = typeof err.status === 'number'     ? err.status
+               : typeof err.statusCode === 'number' ? err.statusCode
+               : 500;
+  const msg = process.env.NODE_ENV === 'production'
+    ? 'Internal server error'
+    : err.message || 'Internal server error';
+  res.status(status).send(msg);
+}
+
+module.exports = { requireAuth, requireAdmin, requireEditor, errorHandler };
