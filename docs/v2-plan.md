@@ -59,34 +59,13 @@ Full tag filter builder replacing the single-tag page.
 
 ---
 
-## Phase 7 — Timeline date range (TL-4) ✅ DONE
+## Phase 7 — Timeline improvements (TL-4/5/6) ✅ DONE (PR #29, merged 2026-05-19)
 
-- `from` / `to` query params on `/timeline`, validated with `parseDate`
-- Filter bar: two `type="date"` inputs, styled to match existing selects
-- SQL: `taken_at::date >= $N` / `taken_at::date <= $N` appended when present
-- Clear link shown when any date filter is active; inputs prefilled on reload
-
----
-
-## Dependencies summary
-
-```
-Phase 1 (schema)
-  └── Phase 2 (UX)        ← independent, can start anytime
-  └── Phase 3 (batch)     ← needs album_id on photos
-  └── Phase 4 (travel)    ← needs travel tables
-  └── Phase 5 (tags)      ← independent
-  └── Phase 6 (map)       ← independent
-  └── Phase 7 (timeline)  ← independent
-```
-
-Recommended order: 1 → 2+5+6+7 (parallel) → 3 → 4
+- **TL-4**: `from` / `to` date inputs in filter bar; `parseDate` validates; SQL `taken_at::date >= / <=`
+- **TL-5**: "+X more" drills into that group's exact period; single-group result shows all photos (no cap)
+- **TL-6**: Group by Year / Month / Day selector on its own row; Filter and Apply are independent forms; Clear preserves active grouping
+- 51 unit tests passing
 
 ---
 
-## Open questions / risks
-
-- **GPX parser**: no native Node.js GPX support — evaluate `gpxparser` (npm) or parse XML manually
-- **Nominatim rate limit**: 1 request/second max; debounce the autocomplete input
-- **IMP-5 migration**: if the live DB has photos in multiple albums, the "first album wins" rule may lose data — confirm with user before running
-- **Travel access propagation**: when a viewer has travel access, all linked albums and photos must be visible; this adds a join path to every viewer-scoped query
+## Status: all V2 phases complete ✅
