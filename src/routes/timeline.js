@@ -173,11 +173,11 @@ router.get('/', async (req, res) => {
       </label>
       <label>From <input type="date" name="from" value="${fromFilter || ''}"></label>
       <label>To <input type="date" name="to" value="${toFilter || ''}"></label>
-      <label>Group by
-        <select name="group">${groupOptions}</select>
-      </label>
       <button class="btn btn-sm" type="submit">Filter</button>
       ${albumFilter || tagFilter || fromFilter || toFilter ? `<a class="btn btn-sm btn-secondary" href="/timeline${groupInterval !== 'month' ? '?group=' + groupInterval : ''}">Clear</a>` : ''}
+      <div class="tl-group-row">Group by
+        <select name="group" onchange="this.form.submit()">${groupOptions}</select>
+      </div>
     </form>`;
 
   // "When" label helpers
