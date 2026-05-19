@@ -325,6 +325,46 @@ router.patch('/recipes/:id', wrapAsync(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ── POST /api/recipes/:id/album — snapshot album from recipe ─────────────────
+
+router.post('/recipes/:id/album', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+
+  const name = String(req.body.name || '').trim().slice(0, 100);
+  if (!name) return res.status(400).json({ error: 'name required' });
+
+  const { rows } = await db.query(
+    'SELECT query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
+    [id, req.session.userId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+
+  const state = parseState(rows[0].query_json);
+  const isViewer = req.session.role === 'viewer';
+  const { where, vals } = buildWhere(state, isViewer, req.session.userId);
+
+  const { rows: photoRows } = await db.query(
+    `SELECT DISTINCT p.id FROM photos p ${where} ORDER BY p.id`,
+    vals
+  );
+
+  const { rows: [album] } = await db.query(
+    'INSERT INTO albums (user_id, title) VALUES ($1, $2) RETURNING id',
+    [req.session.userId, name]
+  );
+
+  if (photoRows.length) {
+    const placeholders = photoRows.map((_, i) => `($1, $${i + 2})`).join(',');
+    await db.query(
+      `INSERT INTO album_photos (album_id, photo_id) VALUES ${placeholders} ON CONFLICT DO NOTHING`,
+      [album.id, ...photoRows.map(r => r.id)]
+    );
+  }
+
+  res.status(201).json({ id: album.id, count: photoRows.length });
+});
+
 // ── POST /api/recipes/:id/duplicate — clone recipe ───────────────────────────
 
 router.post('/recipes/:id/duplicate', wrapAsync(async (req, res) => {

@@ -692,6 +692,15 @@ function page(title, body, session) {
     .ad-cell a { display: block; height: 100%; }
     .ad-cell img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.15s; }
     .ad-cell:hover img { opacity: 0.88; }
+    .ad-lb-btn {
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(0,0,0,0.45); color: #fff; border: none; border-radius: 4px;
+      font-size: 0.9rem; line-height: 1; padding: 3px 5px; cursor: pointer;
+      opacity: 0; transition: opacity 0.15s; pointer-events: none;
+    }
+    .ad-cell:hover .ad-lb-btn,
+    .photo-thumb:hover .ad-lb-btn { opacity: 1; pointer-events: auto; }
+    .photo-thumb { position: relative; }
 
     /* ── Lightbox ── */
     .lb-overlay {
@@ -965,6 +974,8 @@ function page(title, body, session) {
     .cb-recipe-cnt { font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; color: var(--ink-faint); flex: none; }
     .cb-recipe-del { font-size: 0.75rem; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 2px; display: none; }
     .cb-recipe-row:hover .cb-recipe-del { display: inline; color: var(--accent); }
+    .cb-recipe-album { font-size: 0.75rem; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 2px; display: none; }
+    .cb-recipe-row:hover .cb-recipe-album { display: inline; color: var(--accent); }
     .cb-recipe-add {
       font-family: 'Kalam', cursive; font-size: 0.78rem; color: var(--ink-faint);
       font-style: italic; margin-top: 6px; cursor: pointer; background: none; border: none;

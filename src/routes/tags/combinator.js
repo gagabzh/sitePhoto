@@ -36,6 +36,7 @@ router.get('/', wrapAsync(async (req, res) => {
   const recipesHtml = recipeRows.map(r =>
     `<div class="cb-recipe-row" data-id="${r.id}" data-query="${esc(JSON.stringify(r.query_json))}">` +
     `<span>★</span><span class="cb-recipe-n">${esc(r.name)}</span>` +
+    `<button class="cb-recipe-album" data-recipe-id="${r.id}" title="Create album" aria-label="Create album">📁</button>` +
     `<button class="cb-recipe-share" data-share-id="${r.id}" title="Share" aria-label="Share">⤴</button>` +
     `<button class="cb-recipe-del" aria-label="Delete">\xd7</button></div>`
   ).join('');
@@ -115,6 +116,17 @@ router.get('/', wrapAsync(async (req, res) => {
         <div class="cb-dialog-btns">
           <button class="btn btn-secondary btn-sm" id="cb-dialog-cancel">cancel</button>
           <button class="btn btn-sm" id="cb-dialog-save">save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cb-dialog-backdrop" id="cb-album-dialog">
+      <div class="cb-dialog">
+        <h3>create album from recipe</h3>
+        <input id="cb-album-name" type="text" placeholder="album name…" maxlength="100" autocomplete="off">
+        <div class="cb-dialog-btns">
+          <button class="btn btn-secondary btn-sm" id="cb-album-dialog-cancel">cancel</button>
+          <button class="btn btn-sm" id="cb-album-dialog-create">create</button>
         </div>
       </div>
     </div>
@@ -300,20 +312,50 @@ router.get('/', wrapAsync(async (req, res) => {
             if(!d.id) return;
             var row=document.createElement('div');
             row.className='cb-recipe-row';row.dataset.id=d.id;row.dataset.query=JSON.stringify(state);
-            row.innerHTML='★ <span class="cb-recipe-n">'+e(name)+'</span><button class="cb-recipe-del">\xd7</button>';
+            row.innerHTML='★ <span class="cb-recipe-n">'+e(name)+'</span>'
+              +'<button class="cb-recipe-album" data-recipe-id="'+d.id+'" title="Create album" aria-label="Create album">📁</button>'
+              +'<button class="cb-recipe-del">\xd7</button>';
             bindRow(row);
             document.getElementById('cb-open-save').insertAdjacentElement('beforebegin',row);
           });
       });
       document.addEventListener('keydown',function(e){
-        if(e.key==='Escape') closeDlg();
+        if(e.key==='Escape'){closeDlg();closeAlbumDlg();}
         if(e.key==='/'&&document.activeElement.tagName!=='INPUT'){e.preventDefault();var f=document.querySelector('.cb-search');if(f)f.focus();}
+      });
+
+      /* album dialog */
+      var _albumRecipeId = null;
+      function openAlbumDlg(recipeId){
+        _albumRecipeId = recipeId;
+        document.getElementById('cb-album-dialog').classList.add('open');
+        document.getElementById('cb-album-name').value='';
+        document.getElementById('cb-album-name').focus();
+      }
+      function closeAlbumDlg(){document.getElementById('cb-album-dialog').classList.remove('open');}
+      document.getElementById('cb-album-dialog-cancel').addEventListener('click',closeAlbumDlg);
+      document.getElementById('cb-album-dialog').addEventListener('click',function(e){if(e.target===this)closeAlbumDlg();});
+      document.getElementById('cb-album-dialog-create').addEventListener('click',function(){
+        var name=document.getElementById('cb-album-name').value.trim();
+        if(!name||!_albumRecipeId) return;
+        closeAlbumDlg();
+        fetch('/api/recipes/'+_albumRecipeId+'/album',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})})
+          .then(function(r){return r.json();})
+          .then(function(d){if(d.id) location.href='/albums/'+d.id;});
+      });
+      document.getElementById('cb-album-name').addEventListener('keydown',function(e){
+        if(e.key==='Enter') document.getElementById('cb-album-dialog-create').click();
       });
 
       function bindRow(row){
         row.addEventListener('click',function(e2){
           if(e2.target.classList.contains('cb-recipe-del')){
             fetch('/api/recipes/'+row.dataset.id,{method:'DELETE'}).then(function(r){if(r.status===204)row.remove();});
+            return;
+          }
+          if(e2.target.classList.contains('cb-recipe-album')){
+            e2.stopPropagation();
+            openAlbumDlg(row.dataset.id);
             return;
           }
           var q=JSON.parse(row.dataset.query);

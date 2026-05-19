@@ -363,6 +363,66 @@ describe('Saved recipes API — TG-7', () => {
   });
 });
 
+// ── RA-1: Create album from recipe ────────────────────────────────────────────
+
+describe('RA-1: POST /api/recipes/:id/album', () => {
+  it('creates an album with all matching photos and returns 201', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ query_json: { people: { on: ['alice'], not: [], logic: 'any' }, places: { on: [], not: [], logic: 'any' }, years: { on: [], not: [], logic: 'include' }, themes: { on: [], not: [], logic: 'any' }, other: { on: [], not: [], logic: 'any' } } }] }) // recipe lookup
+      .mockResolvedValueOnce({ rows: [{ id: 7 }, { id: 8 }] })  // matching photos
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })              // INSERT album
+      .mockResolvedValueOnce({ rows: [] });                       // INSERT album_photos
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/album')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ name: 'Alice photos' }));
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ id: 42, count: 2 });
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO albums'),
+      [10, 'Alice photos']
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO album_photos'),
+      [42, 7, 8]
+    );
+  });
+
+  it('creates an empty album when no photos match', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ query_json: {} }] })  // recipe
+      .mockResolvedValueOnce({ rows: [] })                    // no matching photos
+      .mockResolvedValueOnce({ rows: [{ id: 43 }] });         // INSERT album
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/album')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ name: 'Empty' }));
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ id: 43, count: 0 });
+  });
+
+  it('returns 400 when name is missing', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/album')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({}));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when recipe not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/999/album')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ name: 'X' }));
+    expect(res.status).toBe(404);
+  });
+});
+
 // ── GET /api/geocode — Nominatim proxy ────────────────────────────────────────
 
 describe('GET /api/geocode', () => {
