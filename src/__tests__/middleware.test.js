@@ -1,4 +1,4 @@
-const { requireAuth, requireAdmin } = require('../middleware');
+const { requireAuth, requireAdmin, errorHandler } = require('../middleware');
 
 describe('requireAuth', () => {
   const next = jest.fn();
@@ -62,5 +62,73 @@ describe('requireAdmin', () => {
     const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
     requireAdmin(req, res, next);
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+
+describe('errorHandler', () => {
+  let consoleSpy;
+  const next = jest.fn();
+
+  beforeEach(() => {
+    consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleSpy.mockRestore();
+  });
+
+  function makeRes() {
+    return { status: jest.fn().mockReturnThis(), send: jest.fn() };
+  }
+
+  it('logs the error', () => {
+    const err = new Error('boom');
+    errorHandler(err, {}, makeRes(), next);
+    expect(consoleSpy).toHaveBeenCalledWith(err);
+  });
+
+  it('returns 500 for a generic Error', () => {
+    const res = makeRes();
+    errorHandler(new Error('boom'), {}, res, next);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.send).toHaveBeenCalled();
+  });
+
+  it('uses err.status when present', () => {
+    const res = makeRes();
+    const err = Object.assign(new Error('gone'), { status: 410 });
+    errorHandler(err, {}, res, next);
+    expect(res.status).toHaveBeenCalledWith(410);
+  });
+
+  it('uses err.statusCode when err.status is absent', () => {
+    const res = makeRes();
+    const err = Object.assign(new Error('bad'), { statusCode: 422 });
+    errorHandler(err, {}, res, next);
+    expect(res.status).toHaveBeenCalledWith(422);
+  });
+
+  it('sends the error message in non-production', () => {
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    const res = makeRes();
+    errorHandler(new Error('db connection failed'), {}, res, next);
+    expect(res.send).toHaveBeenCalledWith('db connection failed');
+    process.env.NODE_ENV = saved;
+  });
+
+  it('sends a generic message in production', () => {
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const res = makeRes();
+    errorHandler(new Error('db connection failed'), {}, res, next);
+    expect(res.send).toHaveBeenCalledWith('Internal server error');
+    process.env.NODE_ENV = saved;
+  });
+
+  it('falls back to generic message when err has no message', () => {
+    const res = makeRes();
+    errorHandler({}, {}, res, next);
+    expect(res.send).toHaveBeenCalledWith('Internal server error');
   });
 });
