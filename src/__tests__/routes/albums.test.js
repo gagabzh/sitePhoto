@@ -285,7 +285,7 @@ describe('GET /albums/:id — album detail', () => {
       .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
-    expect(res.text).toContain('href="/photos/5/edit"');
+    expect(res.text).toContain('href="/photos/5/edit?from=/albums/1"');
     expect(res.text).toContain('class="ad-lb-btn"');
     expect(res.text).not.toMatch(/href="\/photos\/5"[^>]*data-lb-src/);
   });

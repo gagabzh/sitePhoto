@@ -17,6 +17,11 @@ function canModify(session, photo) {
   return session.role === 'admin' || photo.user_id === session.userId;
 }
 
+function parseFrom(raw) {
+  if (typeof raw !== 'string') return null;
+  return /^\/photos$|^\/albums\/\d+$/.test(raw) ? raw : null;
+}
+
 // US-P1: Photo list — Family Wall layout
 router.get('/', requireEditor, wrapAsync(async (req, res) => {
   const [photosResult, albumResult] = await Promise.all([
@@ -69,7 +74,7 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
   const heroHtml = `
     <div class="wall-hero">
       ${rows.slice(0, 4).map(p => `
-        <a href="/photos/${p.id}">
+        <a href="/photos/${p.id}?from=/photos">
           <img class="wall-hero-img" src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
         </a>`).join('')}
     </div>`;
@@ -84,7 +89,7 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
         return `
         <div class="wall-cell${owns ? ' photo-card-selectable' : ''}">
           ${owns ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
-          <a href="/photos/${p.id}"><img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}"></a>
+          <a href="/photos/${p.id}?from=/photos"><img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}"></a>
         </div>`;
       }).join('')}
     </div>`).join('');
@@ -254,6 +259,7 @@ router.post('/upload', requireEditor, (req, res, next) => {
 
 // View single photo (all authenticated users)
 router.get('/:id', wrapAsync(async (req, res) => {
+  const from = parseFrom(req.query.from);
   const { rows } = await db.query(`
     SELECT p.*, u.name AS uploader,
       COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
@@ -273,10 +279,10 @@ router.get('/:id', wrapAsync(async (req, res) => {
   res.send(page(photo.title, `
     <div style="max-width:820px;margin:0 auto">
       <div class="top-bar" style="margin-bottom:1rem">
-        <a href="/photos" style="color:#888;font-size:0.9rem;text-decoration:none">← Back to photos</a>
+        <a href="${from || '/photos'}" style="color:#888;font-size:0.9rem;text-decoration:none">← Back</a>
         ${canEdit ? `
           <div class="row">
-            <a class="btn btn-secondary" href="/photos/${photo.id}/edit">Edit</a>
+            <a class="btn btn-secondary" href="/photos/${photo.id}/edit${from ? '?from=' + encodeURIComponent(from) : ''}">Edit</a>
             <form class="inline" method="POST" action="/photos/${photo.id}/delete"
               onsubmit="return confirm('Delete this photo permanently?')">
               <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
@@ -317,6 +323,7 @@ router.get('/:id', wrapAsync(async (req, res) => {
 
 // US-P3: Edit form
 router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
+  const from = parseFrom(req.query.from);
   const { rows } = await db.query(`
     SELECT p.*,
       COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
@@ -334,7 +341,7 @@ router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
   res.send(page(`Edit — ${photo.title}`, `
     <div class="top-bar">
       <h1>Edit photo</h1>
-      <a class="btn btn-secondary" href="/photos/${photo.id}">← Back</a>
+      <a class="btn btn-secondary" href="${from || '/photos/' + photo.id}">← Back</a>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
       <img src="/uploads/${esc(photo.filename)}" alt="${esc(photo.title)}"
