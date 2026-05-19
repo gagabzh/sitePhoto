@@ -715,3 +715,132 @@
 | Filter by date range (TL-4) | ✅ | ✅ | ✅ |
 | "+X more" drill-in (TL-5) | ✅ | ✅ | ✅ |
 | Group by year/month/day (TL-6) | ✅ | ✅ | ✅ |
+
+---
+
+## Feature: Album UX (ALB)
+
+### Preconditions
+
+- At least one album exists with 2+ photos.
+- Logged in as an **editor** for ALB-1 and ALB-2 editor tests; as a **viewer** for viewer tests.
+
+---
+
+### ALB-1 — Click-to-edit thumbnail in album
+
+**Steps (editor):**
+1. Open an album detail page.
+2. Click a photo thumbnail (not the ⛶ icon).
+
+**Expected:**
+- You are taken to the photo **edit** page, not the lightbox.
+- The URL is `/photos/:id/edit?from=/albums/:albumId`.
+
+**Steps (editor — lightbox button):**
+1. On the same album page, hover a photo thumbnail until the **⛶** icon appears.
+2. Click the ⛶ icon.
+
+**Expected:**
+- The fullscreen lightbox opens for that photo.
+- You remain on the album page.
+
+**Steps (viewer):**
+1. Log in as a viewer with access to the album.
+2. Open the album detail page.
+3. Click a photo thumbnail.
+
+**Expected:**
+- The lightbox opens (no edit link, no ⛶ icon overlay).
+
+---
+
+### ALB-2 — Context-aware back button
+
+**From an album:**
+1. Open an album and click a photo thumbnail (as editor → goes to edit page).
+2. On the edit page, click **Back**.
+
+**Expected:** Returns to the album (`/albums/:id`), not `/photos`.
+
+**From an album to photo detail:**
+1. On the album, click a photo thumbnail (as viewer → lightbox), OR navigate directly to `/photos/:id?from=/albums/:albumId`.
+2. On the detail page, click **Back**.
+
+**Expected:** Returns to the album.
+
+**From the photos list:**
+1. On `/photos`, click a photo thumbnail.
+2. On the detail page, click **Back**.
+
+**Expected:** Returns to `/photos`.
+
+3. From the detail page, click **Edit**.
+4. On the edit page, click **Back**.
+
+**Expected:** Returns to `/photos` (the `from` value is forwarded).
+
+**Tampered `from` parameter:**
+1. Navigate to `/photos/:id?from=https://evil.example`.
+2. On the detail page, click **Back**.
+
+**Expected:** Falls back to `/photos` (invalid `from` is ignored).
+
+---
+
+### ALB access control
+
+| Action | Admin | Editor | Viewer |
+|---|---|---|---|
+| Click thumbnail → edit page | ✅ | ✅ | — |
+| ⛶ lightbox icon visible | ✅ | ✅ | — |
+| Click thumbnail → lightbox (viewer) | — | — | ✅ |
+| Back button returns to origin | ✅ | ✅ | ✅ |
+
+---
+
+## Feature: Recipe album (RA)
+
+### Preconditions
+
+- At least one saved recipe exists on the tag combinator page.
+- Logged in as an **editor** or **admin**.
+
+---
+
+### RA-1 — Create a snapshot album from a tag recipe
+
+**Steps:**
+1. Go to `/tags` (tag combinator).
+2. Load a saved recipe that matches at least 2 photos.
+3. Click the **📁** (folder) icon next to the recipe name.
+4. In the dialog, enter an album name and click **Create**.
+
+**Expected:**
+- You are redirected to the new album's detail page.
+- The album contains the photos that matched the recipe at the time of creation.
+- The album title matches what you typed.
+
+**Empty recipe (no matching photos):**
+1. Load a recipe that currently matches 0 photos.
+2. Click **📁**, enter a name, and click **Create**.
+
+**Expected:**
+- The album is created (redirected to its page).
+- The album is empty — no photos.
+- No error is shown.
+
+**Missing name:**
+1. Click **📁** on any recipe.
+2. Leave the name field blank and click **Create**.
+
+**Expected:** An error message appears; the album is NOT created.
+
+---
+
+### RA access control
+
+| Action | Admin | Editor | Viewer |
+|---|---|---|---|
+| 📁 icon visible on recipes | ✅ | ✅ | — |
+| Create album from recipe | ✅ | ✅ | — |
