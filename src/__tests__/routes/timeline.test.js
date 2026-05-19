@@ -237,3 +237,301 @@ describe('GET /timeline?tag=X — tag filter', () => {
     expect(res.text).toContain('July 2024');
   });
 });
+
+// ── TL-4: Date range filter ───────────────────────────────────────────────────
+
+describe('TL-4: date range filter', () => {
+  it('renders date inputs in the filter bar', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('name="from"');
+    expect(res.text).toContain('name="to"');
+    expect(res.text).toContain('type="date"');
+  });
+
+  it('applies from filter in SQL', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-01-01');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('taken_at::date >=');
+    expect(params).toContain('2024-01-01');
+  });
+
+  it('applies to filter in SQL', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?to=2024-12-31');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('taken_at::date <=');
+    expect(params).toContain('2024-12-31');
+  });
+
+  it('applies both from and to together', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('taken_at::date >=');
+    expect(sql).toContain('taken_at::date <=');
+    expect(params).toContain('2024-03-01');
+    expect(params).toContain('2024-03-31');
+  });
+
+  it('ignores invalid date format', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?from=not-a-date&to=2024-99-99');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).not.toContain('taken_at::date >=');
+    expect(sql).not.toContain('taken_at::date <=');
+    expect(params || []).not.toContain('not-a-date');
+  });
+
+  it('shows Clear link when from filter is active', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-01-01');
+    expect(res.text).toContain('Clear');
+    expect(res.text).toContain('href="/timeline"');
+  });
+
+  it('shows Clear link when to filter is active', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?to=2024-12-31');
+    expect(res.text).toContain('Clear');
+  });
+
+  it('Clear link preserves non-default group param', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?tag=paris&group=year');
+    expect(res.text).toContain('href="/timeline?group=year"');
+  });
+
+  it('Clear link goes to plain /timeline when grouping is default month', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?tag=paris');
+    expect(res.text).toContain('href="/timeline"');
+  });
+
+  it('prefills date inputs with active filter values', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    expect(res.text).toContain('value="2024-03-01"');
+    expect(res.text).toContain('value="2024-03-31"');
+  });
+
+  it('renders photos within the date range', async () => {
+    mockTimeline({
+      photos: [{ id: 1, filename: 'a.jpg', title: 'March Shot', uploader: 'Alice', display_date: '2024-03-15' }],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('March Shot');
+  });
+});
+
+// ── TL-5: "+X more" drills into that period ──────────────────────────────────
+
+function sixPhotos(month = '2024-03') {
+  return Array.from({ length: 6 }, (_, i) => ({
+    id: i + 1, filename: `${i}.jpg`, title: `Photo ${i}`, uploader: 'Alice',
+    display_date: `${month}-15`,
+  }));
+}
+
+// Returns 6 photos in `month` + 1 in a neighbouring month so there are 2 groups
+// and singleGroup=false, which makes the grid cap and "+X more" link active.
+function sixPhotosMultiGroup(month = '2024-03') {
+  const photos = sixPhotos(month);
+  const [y, m] = month.split('-');
+  const next = +m === 12 ? `${+y + 1}-01` : `${y}-${String(+m + 1).padStart(2, '0')}`;
+  photos.push({ id: 99, filename: 'other.jpg', title: 'Other', uploader: 'Alice', display_date: `${next}-01` });
+  return photos;
+}
+
+describe('TL-5: "+X more" drill-in link', () => {
+  it('shows +X more and links to that month with from/to', async () => {
+    // 6 photos in March 2024 + 1 in April → 2 groups → singleGroup=false → cap applies
+    mockTimeline({ photos: sixPhotosMultiGroup('2024-03') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('+1 more');
+    expect(res.text).toContain('from=2024-03-01');
+    expect(res.text).toContain('to=2024-03-31');
+  });
+
+  it('drill link preserves active album filter', async () => {
+    mockTimeline({ photos: sixPhotosMultiGroup('2024-03') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?album=7');
+    expect(res.text).toContain('album=7');
+    expect(res.text).toContain('from=2024-03-01');
+  });
+
+  it('drill link preserves active tag filter', async () => {
+    mockTimeline({ photos: sixPhotosMultiGroup('2024-03') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?tag=paris');
+    expect(res.text).toContain('tag=paris');
+    expect(res.text).toContain('from=2024-03-01');
+  });
+
+  it('does not show +X more when all photos fit in grid (≤5)', async () => {
+    mockTimeline({
+      photos: Array.from({ length: 5 }, (_, i) => ({
+        id: i + 1, filename: `${i}.jpg`, title: `P${i}`, uploader: 'Alice', display_date: '2024-03-15',
+      })),
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).not.toMatch(/\+\d+ more/);
+  });
+
+  it('shows correct extra count', async () => {
+    // 8 photos in March + 1 in April → 2 groups → k5, maxShown=5, extra=3 for March
+    const photos = Array.from({ length: 8 }, (_, i) => ({
+      id: i + 1, filename: `${i}.jpg`, title: `P${i}`, uploader: 'Alice', display_date: '2024-03-15',
+    }));
+    photos.push({ id: 99, filename: 'other.jpg', title: 'Other', uploader: 'Alice', display_date: '2024-04-01' });
+    mockTimeline({ photos });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('+3 more');
+  });
+
+  it('drill link for February uses correct last day (28 in non-leap year)', async () => {
+    mockTimeline({ photos: sixPhotosMultiGroup('2023-02') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('from=2023-02-01');
+    expect(res.text).toContain('to=2023-02-28');
+  });
+
+  it('drill link for February uses correct last day (29 in leap year)', async () => {
+    mockTimeline({ photos: sixPhotosMultiGroup('2024-02') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('from=2024-02-01');
+    expect(res.text).toContain('to=2024-02-29');
+  });
+
+  it('shows all photos when only one group is present (drill-in result)', async () => {
+    // 6 photos in March 2024; drill-in URL narrows to that month → single group → no cap
+    mockTimeline({ photos: sixPhotos('2024-03') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    expect(res.status).toBe(200);
+    // All 6 photo filenames should appear, not just the first 5
+    for (let i = 0; i < 6; i++) expect(res.text).toContain(`${i}.jpg`);
+    // No "+X more" link since all are shown
+    expect(res.text).not.toMatch(/\+\d+ more/);
+  });
+});
+
+// ── TL-6: Grouping interval ───────────────────────────────────────────────────
+
+describe('TL-6: grouping interval selector', () => {
+  it('renders group selector with year/month/day options', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('name="group"');
+    expect(res.text).toContain('value="year"');
+    expect(res.text).toContain('value="month"');
+    expect(res.text).toContain('value="day"');
+  });
+
+  it('defaults to month grouping', async () => {
+    mockTimeline({
+      photos: [
+        { id: 1, filename: 'a.jpg', title: 'A', uploader: 'Alice', display_date: '2024-03-01' },
+        { id: 2, filename: 'b.jpg', title: 'B', uploader: 'Alice', display_date: '2024-04-01' },
+      ],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('March 2024');
+    expect(res.text).toContain('April 2024');
+  });
+
+  it('month option is selected by default', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('value="month" selected');
+  });
+
+  it('?group=year merges same-year photos under one heading', async () => {
+    mockTimeline({
+      photos: [
+        { id: 1, filename: 'a.jpg', title: 'Jan', uploader: 'Alice', display_date: '2024-01-15' },
+        { id: 2, filename: 'b.jpg', title: 'Dec', uploader: 'Alice', display_date: '2024-12-15' },
+      ],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=year');
+    expect(res.text).toContain('>2024<');
+    expect(res.text).not.toContain('January 2024');
+    expect(res.text).not.toContain('December 2024');
+  });
+
+  it('?group=year keeps different years in separate groups', async () => {
+    mockTimeline({
+      photos: [
+        { id: 1, filename: 'a.jpg', title: 'A', uploader: 'Alice', display_date: '2023-06-01' },
+        { id: 2, filename: 'b.jpg', title: 'B', uploader: 'Alice', display_date: '2024-06-01' },
+      ],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=year');
+    expect(res.text).toContain('>2024<');
+    expect(res.text).toContain('>2023<');
+  });
+
+  it('?group=day splits photos from different days into separate groups', async () => {
+    mockTimeline({
+      photos: [
+        { id: 1, filename: 'a.jpg', title: 'Day1', uploader: 'Alice', display_date: '2024-03-01' },
+        { id: 2, filename: 'b.jpg', title: 'Day2', uploader: 'Alice', display_date: '2024-03-15' },
+      ],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=day');
+    expect(res.text).toContain('March 1, 2024');
+    expect(res.text).toContain('March 15, 2024');
+  });
+
+  it('?group=day merges same-day photos under one heading', async () => {
+    mockTimeline({
+      photos: [
+        { id: 1, filename: 'a.jpg', title: 'A', uploader: 'Alice', display_date: '2024-03-15' },
+        { id: 2, filename: 'b.jpg', title: 'B', uploader: 'Alice', display_date: '2024-03-15' },
+      ],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=day');
+    const matches = (res.text.match(/March 15, 2024/g) || []).length;
+    expect(matches).toBe(1);
+  });
+
+  it('invalid group param falls back to month', async () => {
+    mockTimeline({
+      photos: [
+        { id: 1, filename: 'a.jpg', title: 'P', uploader: 'Alice', display_date: '2024-03-15' },
+      ],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=foobar');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('March 2024');
+  });
+
+  it('year option is selected when ?group=year', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=year');
+    expect(res.text).toContain('value="year" selected');
+  });
+
+  it('day option is selected when ?group=day', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=day');
+    expect(res.text).toContain('value="day" selected');
+  });
+
+  it('drill link includes group param when grouping is not month', async () => {
+    // 6 photos in 2024 + 1 in 2023 → 2 year-groups → cap applies on 2024 group
+    const photos = sixPhotos('2024-03');
+    photos.push({ id: 99, filename: 'old.jpg', title: 'Old', uploader: 'Alice', display_date: '2023-06-01' });
+    mockTimeline({ photos });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?group=year');
+    expect(res.text).toContain('group=year');
+    expect(res.text).toContain('+1 more');
+  });
+
+  it('drill link omits group param when grouping is default month', async () => {
+    mockTimeline({ photos: sixPhotos('2024-03') });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    // group=month should not appear in the drill link (month is default)
+    expect(res.text).not.toContain('group=month');
+  });
+});

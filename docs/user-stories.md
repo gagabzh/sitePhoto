@@ -226,8 +226,14 @@ As a user, on the map page I can type a location name (e.g. "Paris"), pick it fr
 
 ## Feature: Timeline improvements (TL)
 
-**TL-4 — Filter by date range**
+**TL-4 — Filter by date range** ✓
 As a user, on the timeline page I can set a "from" date and/or a "to" date (each with an optional date picker) to show only photos taken within that period.
+
+**TL-5 — Drill into a group from "+X more"**
+As a user, when a timeline group shows "+X more" (because there are more photos than the grid displays), I can click that link to see all photos in that specific period — so I don't miss photos that were hidden by the grid limit.
+
+**TL-6 — Choose grouping interval**
+As a user, I can switch the timeline grouping between Year, Month (default), and Day using a selector in the filter bar — so I can get the level of detail that fits what I'm looking for.
 
 ---
 

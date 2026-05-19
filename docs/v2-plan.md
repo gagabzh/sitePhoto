@@ -1,52 +1,38 @@
 # V2 — Implementation Plan
 
-## Phase 1 — Schema changes (migration v2.sql)
+## Phase 1 — Schema changes (migration v2.sql) ✅ DONE
 
 These are breaking changes that everything else depends on.
 
-### IMP-5: one album per photo
-- Add `album_id INTEGER REFERENCES albums(id) ON DELETE SET NULL` to `photos`
-- Migrate existing `album_photos` rows → set `photo.album_id` (first album wins if a photo is in several)
-- Drop `album_photos` table
-- Update all routes that join on `album_photos` (albums, timeline, map, tags)
+### IMP-5: one album per photo ✅
+- `album_id` on `photos`, `album_photos` dropped, all routes updated
 
-### Travel tables
-- `travels (id, user_id, title, description, gpx_filename, created_at, updated_at)`
-- `travel_albums (travel_id, album_id)` — many-to-many
-- `travel_photos (travel_id, photo_id)` — standalone photos linked to a travel
-- `travel_access (travel_id, viewer_id)` — sharing
+### Travel tables ✅
+- `travels`, `travel_albums`, `travel_photos`, `travel_access` — all created in v2.sql
 
 ---
 
-## Phase 2 — UX improvements (no schema change)
+## Phase 2 — UX improvements ✅ DONE
 
-Safe to do independently of phase 1.
-
-- **IMP-1**: remove date taken input from upload form; keep it on the edit form
-- **IMP-3**: move back/cancel buttons to the top of every form and detail page
-- **IMP-4**: add "Select all" checkbox button to photo list and album detail pages
+- **IMP-1** ✅: date taken removed from upload form
+- **IMP-3** ✅: back/cancel buttons moved to top
+- **IMP-4** ✅: "Select all" checkbox on photo list and album detail pages
 
 ---
 
-## Phase 3 — Batch upload (IMP-2)
+## Phase 3 — Batch upload (IMP-2) ✅ DONE
 
-Depends on phase 1 (album_id on photos).
-
-- Album detail page: add a multi-file / folder picker (`<input multiple webkitdirectory>`)
-- Pre-upload form: optional shared tags field + shared GPS coordinates field (accepts decimal or DMS)
-- Server: loop over each file — extract EXIF individually, apply shared tags and GPS if provided, insert one row per photo with `album_id` set
-- Reuse existing `parseCoord`, `extractMetadata`, `optimizePhoto` helpers
+- Multi-file / folder picker on album detail page
+- Shared tags + GPS fields on pre-upload form
+- Server loops over each file, applies shared tags/GPS, inserts with `album_id`
 
 ---
 
-## Phase 4 — Travel feature (TR-1 to TR-5)
-
-Depends on phase 1 (travel tables).
+## Phase 4 — Travel feature (TR-1 to TR-5) ✅ DONE
 
 - CRUD routes under `/travels`
-- GPX upload: store file in `uploads/gpx/`, parse with a lightweight JS GPX parser to extract the polyline for Leaflet
-- Travel detail page: Leaflet map with GPX trace layer + photo pins; list of linked albums and photos with their descriptions
-- Share: `travel_access` table; access check propagates to linked albums and photos for viewer queries
+- GPX upload + Leaflet trace layer on travel detail page
+- `travel_access` sharing with viewer propagation
 
 ---
 
@@ -64,19 +50,21 @@ Full tag filter builder replacing the single-tag page.
 
 ---
 
-## Phase 6 — Map zone search (MAP-1)
+## Phase 6 — Map zone search (MAP-1) ✅ DONE (PR #22 + #25, merged 2026-05-18)
 
-- Geocoding: Nominatim API (OpenStreetMap, no API key) — type-ahead suggestions in the filter bar
-- Distance filter: Haversine formula in SQL (`2 * R * asin(...)`) or `earth_distance` extension
-- UI: location text input + radius slider or number input (km); updates the map on submit
+- Geocoding: Nominatim API — type-ahead location input in filter bar
+- Distance filter: Haversine formula in SQL
+- UI: location text input + radius number input (km); applies on submit
+- Map sidebar PLACES list: place-category tags replacing album filter pins
 
 ---
 
-## Phase 7 — Timeline date range (TL-4)
+## Phase 7 — Timeline date range (TL-4) ✅ DONE
 
-- Add `from` and `to` query params to `/timeline`
-- Filter bar: two date inputs with optional browser date picker
-- SQL: `AND taken_at >= $from AND taken_at <= $to` appended when present
+- `from` / `to` query params on `/timeline`, validated with `parseDate`
+- Filter bar: two `type="date"` inputs, styled to match existing selects
+- SQL: `taken_at::date >= $N` / `taken_at::date <= $N` appended when present
+- Clear link shown when any date filter is active; inputs prefilled on reload
 
 ---
 
