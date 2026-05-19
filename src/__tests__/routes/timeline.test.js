@@ -297,6 +297,18 @@ describe('TL-4: date range filter', () => {
     expect(res.text).toContain('Clear');
   });
 
+  it('Clear link preserves non-default group param', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?tag=paris&group=year');
+    expect(res.text).toContain('href="/timeline?group=year"');
+  });
+
+  it('Clear link goes to plain /timeline when grouping is default month', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?tag=paris');
+    expect(res.text).toContain('href="/timeline"');
+  });
+
   it('prefills date inputs with active filter values', async () => {
     mockTimeline();
     const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');

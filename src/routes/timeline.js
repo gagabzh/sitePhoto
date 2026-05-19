@@ -177,7 +177,7 @@ router.get('/', async (req, res) => {
         <select name="group">${groupOptions}</select>
       </label>
       <button class="btn btn-sm" type="submit">Filter</button>
-      ${albumFilter || tagFilter || fromFilter || toFilter ? '<a class="btn btn-sm btn-secondary" href="/timeline">Clear</a>' : ''}
+      ${albumFilter || tagFilter || fromFilter || toFilter ? `<a class="btn btn-sm btn-secondary" href="/timeline${groupInterval !== 'month' ? '?group=' + groupInterval : ''}">Clear</a>` : ''}
     </form>`;
 
   // "When" label helpers
