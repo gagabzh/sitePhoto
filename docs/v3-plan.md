@@ -105,17 +105,25 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - Do not lower the threshold — add tests or explicitly exclude files with a justification comment
 
 **TQ-2 — Global error handler in `app.js`** — *quality check ✅*
-- Async route handlers that throw (e.g. a DB connection drop) currently produce an unhandled rejection
-- Add an Express error-handling middleware as the last `app.use`: `(err, req, res, next) => res.status(500).send('Internal error')`
-- Log `err.stack` to `console.error` so errors are visible in production logs
+- ✅ `errorHandler` middleware added to `middleware.js` and registered in `app.js`
+- ✅ Production message redaction and `err.status`/`err.statusCode` chain implemented and tested
+
+**TQ-2b — Protect async route handlers** — *quality check ✅*
+- ✅ `wrapAsync` utility added to `middleware.js`; applied to all async route handlers across 10 route files
+- ✅ 3 new tests added to `middleware.test.js` (happy path, rejection forwarding, integration with `errorHandler`)
 
 ### TQ-P2 — This sprint
 
 **TQ-3 — Split `tags.js` (1,873 lines)** — *quality check ✅*
-- Extract DB queries into a `src/repositories/tags.js` module
-- Extract HTML rendering helpers into `src/views/tags.js` (or inline into a template helper)
-- The route file itself should only wire up the HTTP layer
-- Target: no single file exceeds ~400 lines
+- ✅ Monolith deleted and replaced with `src/routes/tags/index.js`, `combinator.js`, `manage.js`, `recipes.js`
+- ✅ `queries.js` data-access layer created for vocabulary and initial results fetching
+
+**TQ-3b — Finish the tags module split (≤400 lines target)** — *quality check ✅*
+- ✅ All raw `db.query` calls extracted from `manage.js` and `recipes.js` into `queries.js`
+- ✅ `manage.js` (722 → 44 lines) split into `manageViews.js` + `manageScript.js`
+- ✅ `recipes.js` (519 → 73 lines) split into `recipesViews.js`
+- ✅ `combinator.js` (473 → 400 lines) render helpers extracted to `combinatorViews.js`
+- ✅ 21 new tests for all extracted query functions
 
 **TQ-4 — Integer coercion on all ID inputs**
 - `POST /albums/:id/access/add` and `POST /albums/:id/access/remove` pass `req.body.viewer_id` to queries without `parseInt`
