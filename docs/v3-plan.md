@@ -92,6 +92,78 @@ Both features require Ollama running locally with a vision-capable model (e.g. `
 
 ---
 
+## Phase 5 — Technical Quality Backlog (TQ)
+
+Items identified during the initial codebase review (May 2026). Ordered by priority within each tier.
+
+### TQ-P1 — Fix before next PR merge
+
+**TQ-1 — Restore coverage threshold** — *quality check ✅*
+- Current global coverage is 74.62%, below the 90% statement/line threshold set in `package.json`
+- Primary offenders: `tags.js` (32.78%), `api.js` (64.96%), `components.js` (5.83%)
+- Add unit tests for all five functions in `components.js` directly (they are pure HTML-returning functions, easy to test)
+- Do not lower the threshold — add tests or explicitly exclude files with a justification comment
+
+**TQ-2 — Global error handler in `app.js`** — *quality check ✅*
+- Async route handlers that throw (e.g. a DB connection drop) currently produce an unhandled rejection
+- Add an Express error-handling middleware as the last `app.use`: `(err, req, res, next) => res.status(500).send('Internal error')`
+- Log `err.stack` to `console.error` so errors are visible in production logs
+
+### TQ-P2 — This sprint
+
+**TQ-3 — Split `tags.js` (1,873 lines)** — *quality check ✅*
+- Extract DB queries into a `src/repositories/tags.js` module
+- Extract HTML rendering helpers into `src/views/tags.js` (or inline into a template helper)
+- The route file itself should only wire up the HTTP layer
+- Target: no single file exceeds ~400 lines
+
+**TQ-4 — Integer coercion on all ID inputs**
+- `POST /albums/:id/access/add` and `POST /albums/:id/access/remove` pass `req.body.viewer_id` to queries without `parseInt`
+- Add a guard at the top of each handler: `const viewerId = parseInt(req.body.viewer_id); if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');`
+- Apply the same pattern to any other route accepting numeric IDs from the request body
+
+**TQ-5 — Standardise `resetAllMocks` across all test files**
+- Several test files use `jest.clearAllMocks()` — team convention is `jest.resetAllMocks()` to prevent `mockResolvedValueOnce` queue bleed
+- Do a global find-and-replace in `src/__tests__/`; confirm no test starts relying on mock state leaking between `it()` blocks
+
+### TQ-P3 — Backlog
+
+**TQ-6 — Remove `unsafe-inline` from CSP**
+- `app.js:18` sets `scriptSrc: ["'self'", "'unsafe-inline'", ...]`, which largely negates XSS protection
+- Move all inline `<script>` blocks to files served from `/public` (or use a nonce-based CSP)
+- This unblocks a strict CSP: `scriptSrc: ["'self'"]`
+
+**TQ-7 — Remove hardcoded credentials from `server.js`**
+- `SEED_EMAIL` defaults to a developer's personal email; `SEED_PASS` defaults to `changeme`
+- Require both via env vars (consistent with the `SESSION_SECRET` guard already present); fail fast with a clear error if missing in production (`NODE_ENV === 'production'`)
+
+**TQ-8 — Lazy loading on photo wall**
+- Replace the unbounded `SELECT *` in `GET /photos` with cursor-based pagination
+- Add `GET /api/photos?cursor=<last_id>&limit=24` returning `{ photos: [], nextCursor: null | id }`
+- Client-side: `IntersectionObserver` on a sentinel element at the bottom of the mosaic; on intersection, fetch next batch and append cells to the DOM
+- Initial page load keeps SSR (first 24 photos rendered server-side, no flash)
+- Ensure `ORDER BY p.created_at DESC, p.id DESC` for a stable cursor
+
+**TQ-9 — Bulk insert refactor in `setTags`**
+- `uploadHelpers.js:52-65` issues 2 queries per tag in a loop (N×2 round-trips)
+- Replace with: one `INSERT INTO tags (name) SELECT unnest($1::text[]) … RETURNING id`, then one `INSERT INTO photo_tags … SELECT unnest($1::int[]), unnest($2::int[])`
+- Critical for batch uploads (200 photos × 5 tags = 2,000 queries today)
+
+### TQ-Long-term
+
+**TQ-10 — Extract CSS from `layout.js` to a static file**
+- `layout.js` is 1,582 lines, the majority of which is a CSS string inside a template literal
+- Extract to `public/style.css`, serve via `express.static`; remove the `<style>` block from `page()`
+- Enables browser caching, CSS linting, syntax highlighting, and smaller HTML payloads
+
+**TQ-11 — Introduce a service/data-access layer**
+- Route handlers currently mix SQL, file I/O, authorization, and HTML rendering in a single function
+- Introduce `src/repositories/` (DB queries) and optionally `src/services/` (business logic) as separate modules
+- Start with the most tested routes (`photos.js`, `albums.js`) to keep the refactor safe
+- Target: route handlers contain only HTTP plumbing; business logic is independently unit-testable
+
+---
+
 ## Dependencies
 
 ```
