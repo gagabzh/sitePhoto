@@ -352,6 +352,22 @@ describe('GET /albums/:id — album detail', () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/999');
     expect(res.status).toBe(404);
   });
+
+  it('restGrid: photos 10+ render in overflow photo-grid below mosaic', async () => {
+    const photos = Array.from({ length: 12 }, (_, i) => ({
+      id: i + 1, filename: `p${i + 1}.jpg`, title: `Photo ${i + 1}`, user_id: 10,
+    }));
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: photos });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('class="photo-grid"');
+    // first 9 in mosaic, rest in overflow grid
+    expect(res.text).toContain('p10.jpg');
+    expect(res.text).toContain('p12.jpg');
+  });
 });
 
 // ── US-A3: Edit / Delete ─────────────────────────────────────────────────────

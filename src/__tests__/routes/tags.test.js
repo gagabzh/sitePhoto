@@ -390,11 +390,12 @@ describe('RA-1: POST /api/recipes/:id/album', () => {
     );
   });
 
-  it('creates an empty album when no photos match', async () => {
+  it('creates an empty album when recipe filters match no photos', async () => {
+    const filteredQuery = { people: { on: ['nobody'], not: [], logic: 'any' }, places: { on: [], not: [], logic: 'any' }, years: { on: [], not: [], logic: 'include' }, themes: { on: [], not: [], logic: 'any' }, other: { on: [], not: [], logic: 'any' } };
     db.query
-      .mockResolvedValueOnce({ rows: [{ query_json: {} }] })  // recipe
-      .mockResolvedValueOnce({ rows: [] })                    // no matching photos
-      .mockResolvedValueOnce({ rows: [{ id: 43 }] });         // INSERT album
+      .mockResolvedValueOnce({ rows: [{ query_json: filteredQuery }] })  // recipe
+      .mockResolvedValueOnce({ rows: [] })                               // no matching photos
+      .mockResolvedValueOnce({ rows: [{ id: 43 }] });                    // INSERT album
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/api/recipes/1/album')
@@ -403,6 +404,18 @@ describe('RA-1: POST /api/recipes/:id/album', () => {
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ id: 43, count: 0 });
+  });
+
+  it('returns 422 when recipe has no filters (guards full-table scan)', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ query_json: {} }] });  // empty recipe
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/recipes/1/album')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ name: 'All photos' }));
+
+    expect(res.status).toBe(422);
   });
 
   it('returns 400 when name is missing', async () => {

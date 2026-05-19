@@ -209,7 +209,8 @@ function renderCombinatorScript(SECTIONS, DEFAULT_LOGIC, state) {
         closeAlbumDlg();
         fetch('/api/recipes/'+_albumRecipeId+'/album',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})})
           .then(function(r){return r.json();})
-          .then(function(d){if(d.id) location.href='/albums/'+d.id;});
+          .then(function(d){if(d.id) location.href='/albums/'+d.id;})
+          .catch(function(){showToast('failed to create album');});
       });
       document.getElementById('cb-album-name').addEventListener('keydown',function(e){
         if(e.key==='Enter') document.getElementById('cb-album-dialog-create').click();

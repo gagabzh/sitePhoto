@@ -327,7 +327,7 @@ router.patch('/recipes/:id', wrapAsync(async (req, res) => {
 
 // ── POST /api/recipes/:id/album — snapshot album from recipe ─────────────────
 
-router.post('/recipes/:id/album', async (req, res) => {
+router.post('/recipes/:id/album', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
 
@@ -341,8 +341,12 @@ router.post('/recipes/:id/album', async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'not found' });
 
   const state = parseState(rows[0].query_json);
-  const isViewer = req.session.role === 'viewer';
-  const { where, vals } = buildWhere(state, isViewer, req.session.userId);
+  const hasFilters = SECTIONS.some(s =>
+    state.sections[s].on.length > 0 || state.sections[s].not.length > 0
+  );
+  if (!hasFilters) return res.status(422).json({ error: 'recipe has no filters' });
+
+  const { where, vals } = buildWhere(state, false, req.session.userId);
 
   const { rows: photoRows } = await db.query(
     `SELECT DISTINCT p.id FROM photos p ${where} ORDER BY p.id`,
@@ -363,7 +367,7 @@ router.post('/recipes/:id/album', async (req, res) => {
   }
 
   res.status(201).json({ id: album.id, count: photoRows.length });
-});
+}));
 
 // ── POST /api/recipes/:id/duplicate — clone recipe ───────────────────────────
 
