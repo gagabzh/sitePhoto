@@ -6,7 +6,7 @@ const { page, esc } = require('../layout');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
-const { bulkBar, bulkScript } = require('../components');
+const { selectionBar, selectionScript } = require('../components');
 const {
   UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields, deletePhotos,
 } = require('../uploadHelpers');
@@ -87,9 +87,11 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
       ${chunk.map(p => {
         const owns = canModify(req.session, p);
         return `
-        <div class="wall-cell${owns ? ' photo-card-selectable' : ''}">
-          ${owns ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
+        <div class="wall-cell${owns ? ' sel-tile' : ''}"${owns ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}?from=/photos"` : ''}>
           <a href="/photos/${p.id}?from=/photos"><img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}"></a>
+          ${owns ? `<button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
+          <div class="press-ring"></div>
+          <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
         </div>`;
       }).join('')}
     </div>`).join('');
@@ -121,11 +123,12 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
       <p class="wall-count">${rows.length} photo${rows.length !== 1 ? 's' : ''}</p>
     </div>
     ${heroHtml}
-    <form method="POST" action="/photos/bulk-tag">
+    <form method="POST" action="/photos/bulk-tag" data-sel-form>
       <div class="wall-cols">
         <div>
-          ${bulkBar({ showTag: true, deleteAction: '/photos/bulk-delete' })}
-          <div class="row" style="justify-content:flex-end;margin-bottom:0.75rem">
+          ${selectionBar({ showTag: true, tagAction: '/photos/bulk-tag', untagAction: '/photos/bulk-untag', deleteAction: '/photos/bulk-delete' })}
+          <div class="row" style="justify-content:flex-end;margin-bottom:0.75rem;gap:8px">
+            <button class="btn btn-secondary btn-sm" id="sel-select-btn" type="button">select</button>
             <a class="btn" href="/photos/upload">+ Upload</a>
           </div>
           ${mosaicHtml}
@@ -147,7 +150,7 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
         </aside>
       </div>
     </form>
-    ${bulkScript()}
+    ${selectionScript()}
   `, req.session));
 }));
 
@@ -176,6 +179,30 @@ router.post('/bulk-tag', requireEditor, wrapAsync(async (req, res) => {
     [allowedIds, tagRow.id]
   );
 
+  res.redirect('/photos');
+}));
+
+// Bulk untag selected photos
+router.post('/bulk-untag', requireEditor, wrapAsync(async (req, res) => {
+  const tag = (req.body.tag || '').trim().toLowerCase();
+  const raw = req.body.photo_ids;
+  if (!tag || !raw) return res.redirect('/photos');
+
+  const ids = [].concat(raw).map(Number).filter(n => n > 0);
+  if (!ids.length) return res.redirect('/photos');
+
+  const { rows: allowed } = req.session.role === 'admin'
+    ? await db.query('SELECT id FROM photos WHERE id = ANY($1::int[])', [ids])
+    : await db.query('SELECT id FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
+
+  if (!allowed.length) return res.redirect('/photos');
+
+  await db.query(
+    `DELETE FROM photo_tags
+     WHERE photo_id = ANY($1::int[])
+       AND tag_id = (SELECT id FROM tags WHERE name = $2)`,
+    [allowed.map(r => r.id), tag]
+  );
   res.redirect('/photos');
 }));
 
