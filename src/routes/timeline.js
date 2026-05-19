@@ -48,14 +48,13 @@ async function fetchPhotos(session, albumFilter, tagFilter, fromFilter, toFilter
   const conditions = [];
 
   if (isViewer) {
-    joins.push('JOIN album_access aa ON aa.album_id = p.album_id');
     params.push(session.userId);
-    conditions.push(`aa.viewer_id = $${params.length}`);
+    conditions.push(`EXISTS (SELECT 1 FROM album_photos ap JOIN album_access aa ON aa.album_id = ap.album_id WHERE ap.photo_id = p.id AND aa.viewer_id = $${params.length})`);
   }
 
   if (albumFilter) {
     params.push(albumFilter);
-    conditions.push(`p.album_id = $${params.length}`);
+    conditions.push(`EXISTS (SELECT 1 FROM album_photos WHERE photo_id = p.id AND album_id = $${params.length})`);
   }
 
   if (tagFilter) {
@@ -106,7 +105,8 @@ async function fetchFilterOptions(session) {
           `SELECT DISTINCT t.name FROM tags t
            JOIN photo_tags pt ON pt.tag_id = t.id
            JOIN photos p ON p.id = pt.photo_id
-           JOIN album_access aa ON aa.album_id = p.album_id
+           JOIN album_photos ap ON ap.photo_id = p.id
+           JOIN album_access aa ON aa.album_id = ap.album_id
            WHERE aa.viewer_id = $1 ORDER BY t.name`,
           [session.userId]
         )

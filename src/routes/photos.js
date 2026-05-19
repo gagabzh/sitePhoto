@@ -32,7 +32,8 @@ router.get('/', requireEditor, async (req, res) => {
     `),
     db.query(`
       SELECT a.id, a.title,
-        (SELECT p2.filename FROM photos p2 WHERE p2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
+        (SELECT p2.filename FROM photos p2 JOIN album_photos ap2 ON ap2.photo_id = p2.id
+         WHERE ap2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
       FROM albums a
       ORDER BY a.created_at DESC
       LIMIT 1

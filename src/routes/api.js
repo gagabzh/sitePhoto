@@ -17,7 +17,8 @@ router.get('/tags/index', async (req, res) => {
           FROM tags t
           JOIN photo_tags pt ON pt.tag_id = t.id
           JOIN photos p ON p.id = pt.photo_id
-          JOIN album_access aa ON aa.album_id = p.album_id
+          JOIN album_photos ap ON ap.photo_id = p.id
+          JOIN album_access aa ON aa.album_id = ap.album_id
           WHERE aa.viewer_id = $1 AND (t.category IS NULL OR t.category != 'years')
           GROUP BY t.name, t.category ORDER BY t.name
         `, [uid])
@@ -33,7 +34,8 @@ router.get('/tags/index', async (req, res) => {
       ? db.query(`
           SELECT EXTRACT(YEAR FROM p.taken_at)::int::text AS name, COUNT(DISTINCT p.id)::int AS count
           FROM photos p
-          JOIN album_access aa ON aa.album_id = p.album_id
+          JOIN album_photos ap ON ap.photo_id = p.id
+          JOIN album_access aa ON aa.album_id = ap.album_id
           WHERE p.taken_at IS NOT NULL AND aa.viewer_id = $1
           GROUP BY 1 ORDER BY 1 DESC
         `, [uid])
