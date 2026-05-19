@@ -19,7 +19,7 @@ function groupByMonth(rows) {
   return groups;
 }
 
-async function fetchPhotos(session, albumFilter, tagFilter) {
+async function fetchPhotos(session, albumFilter, tagFilter, fromFilter, toFilter) {
   const isViewer = session.role === 'viewer';
   const params = [];
   const joins = [];
@@ -44,6 +44,16 @@ async function fetchPhotos(session, albumFilter, tagFilter) {
   }
 
   conditions.push('p.taken_at IS NOT NULL');
+
+  if (fromFilter) {
+    params.push(fromFilter);
+    conditions.push(`p.taken_at::date >= $${params.length}::date`);
+  }
+
+  if (toFilter) {
+    params.push(toFilter);
+    conditions.push(`p.taken_at::date <= $${params.length}::date`);
+  }
   const where = 'WHERE ' + conditions.join(' AND ');
   const { rows } = await db.query(`
     SELECT DISTINCT p.id, p.filename, p.title, u.name AS uploader,
@@ -86,12 +96,19 @@ async function fetchFilterOptions(session) {
 
 // ── TL1-TL2: Timeline ────────────────────────────────────────────────────────
 
+function parseDate(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) return null;
+  return isNaN(Date.parse(s)) ? null : s;
+}
+
 router.get('/', async (req, res) => {
   const albumFilter = req.query.album || null;
   const tagFilter = req.query.tag || null;
+  const fromFilter = parseDate(req.query.from);
+  const toFilter   = parseDate(req.query.to);
 
   const [photos, { albums, tags }] = await Promise.all([
-    fetchPhotos(req.session, albumFilter, tagFilter),
+    fetchPhotos(req.session, albumFilter, tagFilter, fromFilter, toFilter),
     fetchFilterOptions(req.session),
   ]);
 
@@ -125,8 +142,10 @@ router.get('/', async (req, res) => {
           ${tagOptions}
         </select>
       </label>
+      <label>From <input type="date" name="from" value="${fromFilter || ''}"></label>
+      <label>To <input type="date" name="to" value="${toFilter || ''}"></label>
       <button class="btn btn-sm" type="submit">Filter</button>
-      ${albumFilter || tagFilter ? '<a class="btn btn-sm btn-secondary" href="/timeline">Clear</a>' : ''}
+      ${albumFilter || tagFilter || fromFilter || toFilter ? '<a class="btn btn-sm btn-secondary" href="/timeline">Clear</a>' : ''}
     </form>`;
 
   // "When" label helpers
@@ -153,6 +172,13 @@ router.get('/', async (req, res) => {
     return 'k4';
   }
 
+  const moreParams = new URLSearchParams();
+  if (albumFilter) moreParams.set('album', albumFilter);
+  if (tagFilter) moreParams.set('tag', tagFilter);
+  if (fromFilter) moreParams.set('from', fromFilter);
+  if (toFilter) moreParams.set('to', toFilter);
+  const moreHref = '/timeline' + (moreParams.toString() ? '?' + moreParams.toString() : '');
+
   function renderGrid(gp) {
     const n = gp.length;
     const v = gridVariant(n);
@@ -169,7 +195,7 @@ router.get('/', async (req, res) => {
 
     const moreCell = extra > 0 ? `
       <div class="tl-cell">
-        <a class="tl-more" href="/timeline${albumFilter ? '?album=' + albumFilter : tagFilter ? '?tag=' + encodeURIComponent(tagFilter) : ''}">+${extra} more</a>
+        <a class="tl-more" href="${moreHref}">+${extra} more</a>
       </div>` : '';
 
     return `<div class="tl-grid ${v}">${cells}${moreCell}</div>`;

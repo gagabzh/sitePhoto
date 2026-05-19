@@ -367,7 +367,7 @@ function page(title, body, session) {
       font-family: 'Kalam', cursive; font-size: 0.85rem; font-weight: 700;
       flex-direction: row; align-items: center; gap: 0.4rem; color: var(--ink);
     }
-    .tl-filter-bar select {
+    .tl-filter-bar select, .tl-filter-bar input[type="date"] {
       font-family: 'Kalam', cursive; font-size: 0.85rem;
       padding: 0.3rem 0.5rem; border: 1.5px solid var(--ink);
       background: var(--paper); color: var(--ink);

@@ -237,3 +237,79 @@ describe('GET /timeline?tag=X — tag filter', () => {
     expect(res.text).toContain('July 2024');
   });
 });
+
+// ── TL-4: Date range filter ───────────────────────────────────────────────────
+
+describe('TL-4: date range filter', () => {
+  it('renders date inputs in the filter bar', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline');
+    expect(res.text).toContain('name="from"');
+    expect(res.text).toContain('name="to"');
+    expect(res.text).toContain('type="date"');
+  });
+
+  it('applies from filter in SQL', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-01-01');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('taken_at::date >=');
+    expect(params).toContain('2024-01-01');
+  });
+
+  it('applies to filter in SQL', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?to=2024-12-31');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('taken_at::date <=');
+    expect(params).toContain('2024-12-31');
+  });
+
+  it('applies both from and to together', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('taken_at::date >=');
+    expect(sql).toContain('taken_at::date <=');
+    expect(params).toContain('2024-03-01');
+    expect(params).toContain('2024-03-31');
+  });
+
+  it('ignores invalid date format', async () => {
+    mockTimeline();
+    await request(makeApp(EDITOR_SESSION)).get('/timeline?from=not-a-date&to=2024-99-99');
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).not.toContain('taken_at::date >=');
+    expect(sql).not.toContain('taken_at::date <=');
+    expect(params || []).not.toContain('not-a-date');
+  });
+
+  it('shows Clear link when from filter is active', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-01-01');
+    expect(res.text).toContain('Clear');
+    expect(res.text).toContain('href="/timeline"');
+  });
+
+  it('shows Clear link when to filter is active', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?to=2024-12-31');
+    expect(res.text).toContain('Clear');
+  });
+
+  it('prefills date inputs with active filter values', async () => {
+    mockTimeline();
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    expect(res.text).toContain('value="2024-03-01"');
+    expect(res.text).toContain('value="2024-03-31"');
+  });
+
+  it('renders photos within the date range', async () => {
+    mockTimeline({
+      photos: [{ id: 1, filename: 'a.jpg', title: 'March Shot', uploader: 'Alice', display_date: '2024-03-15' }],
+    });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/timeline?from=2024-03-01&to=2024-03-31');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('March Shot');
+  });
+});
