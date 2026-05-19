@@ -251,18 +251,20 @@ router.get('/:id', wrapAsync(async (req, res) => {
   const mosaicCells = mosaic.map(p => `
     <div class="ad-cell${canEdit ? ' photo-card-selectable' : ''}">
       ${canEdit ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
-      <a href="/photos/${p.id}" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}">
+      <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}"`}>
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
       </a>
+      ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>` : ''}
     </div>`).join('');
 
   const restGrid = rest.length > 0
     ? `<div class="photo-grid" style="margin-top:1rem">${rest.map(p => `
         <div class="photo-card${canEdit ? ' photo-card-selectable' : ''}">
           <div class="photo-thumb">
-            <a href="/photos/${p.id}" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}">
+            <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}"`}>
               <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
             </a>
+            ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>` : ''}
             ${canEdit ? `<label class="photo-checkbox-label"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
           </div>
           <div class="photo-meta"><strong>${esc(p.title)}</strong></div>

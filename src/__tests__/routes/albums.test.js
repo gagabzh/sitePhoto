@@ -279,6 +279,29 @@ describe('GET /albums/:id — album detail', () => {
     expect(res.text).toContain('Sunset');
   });
 
+  it('ALB-1: editor thumbnail links to edit page, not lightbox', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.text).toContain('href="/photos/5/edit?from=/albums/1"');
+    expect(res.text).toContain('class="ad-lb-btn"');
+    expect(res.text).not.toMatch(/href="\/photos\/5"[^>]*data-lb-src/);
+  });
+
+  it('ALB-1: viewer thumbnail is a lightbox link (unchanged)', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })
+      .mockResolvedValueOnce({ rows: [{ 1: 1 }] });
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1');
+    expect(res.text).toContain('data-lb-src="/uploads/test.jpg"');
+    expect(res.text).not.toContain('href="/photos/5/edit"');
+    expect(res.text).not.toContain('class="ad-lb-btn"');
+  });
+
   it('returns 200 for viewer with access', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
@@ -328,6 +351,22 @@ describe('GET /albums/:id — album detail', () => {
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/999');
     expect(res.status).toBe(404);
+  });
+
+  it('restGrid: photos 10+ render in overflow photo-grid below mosaic', async () => {
+    const photos = Array.from({ length: 12 }, (_, i) => ({
+      id: i + 1, filename: `p${i + 1}.jpg`, title: `Photo ${i + 1}`, user_id: 10,
+    }));
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: photos });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('class="photo-grid"');
+    // first 9 in mosaic, rest in overflow grid
+    expect(res.text).toContain('p10.jpg');
+    expect(res.text).toContain('p12.jpg');
   });
 });
 

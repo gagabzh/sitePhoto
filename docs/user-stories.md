@@ -260,12 +260,17 @@ As an editor, on the photo edit page I can add the photo to additional albums or
 As an editor or admin browsing an album, clicking a photo thumbnail opens the photo edit page. A visible lightbox icon on the thumbnail opens the fullscreen viewer instead — so editing is one click away and the lightbox is still accessible.
 As a viewer, clicking a photo thumbnail opens the lightbox (unchanged), since viewers have no edit access.
 
+**ALB-2 — Context-aware back button on photo detail and edit pages**
+As a user, when I navigate to a photo's detail or edit page from an album, the "back" button returns me to that album — not a generic fallback. When I arrive from the photos list, the back button returns me to the photos list. So navigation always feels consistent with where I came from.
+
 ---
 
 ## Feature: Recipe album (RA)
 
 **RA-1 — Create a snapshot album from a tag recipe**
 As an editor, on the tag combinator page I can select a saved recipe and click "Create album from recipe". I give the album a name, and the app creates a new album containing all photos that currently match the recipe — so I can save a curated set without manually selecting each photo.
+
+> **Implementation note:** The 📁 button appears on every recipe row in the sidebar (not only when the recipe is loaded/active). Recipes with no filters are rejected by the API (422) rather than creating an empty album. These are intentional deviations from the original spec.
 
 ---
 
