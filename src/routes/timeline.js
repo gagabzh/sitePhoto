@@ -176,7 +176,7 @@ router.get('/', async (req, res) => {
       <button class="btn btn-sm" type="submit">Filter</button>
       ${albumFilter || tagFilter || fromFilter || toFilter ? `<a class="btn btn-sm btn-secondary" href="/timeline${groupInterval !== 'month' ? '?group=' + groupInterval : ''}">Clear</a>` : ''}
       <div class="tl-group-row">Group by
-        <select name="group" onchange="this.form.submit()">${groupOptions}</select>
+        <select name="group" onchange="const p=new URLSearchParams(location.search);p.set('group',this.value);location='/timeline?'+p">${groupOptions}</select>
       </div>
     </form>`;
 
