@@ -225,8 +225,22 @@ router.get('/', async (req, res) => {
   if (tagFilter) baseParams.set('tag', tagFilter);
   if (groupInterval !== 'month') baseParams.set('group', groupInterval);
 
+  const singleGroup = groups.length === 1;
+
   function renderGrid(gp, periodFrom, periodTo) {
     const n = gp.length;
+
+    // When the timeline shows exactly one group the user has drilled in — show all photos.
+    if (singleGroup) {
+      const cells = gp.map(p => `
+      <div class="tl-cell">
+        <a href="/photos/${p.id}">
+          <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
+        </a>
+      </div>`).join('');
+      return `<div class="tl-grid k5">${cells}</div>`;
+    }
+
     const v = gridVariant(n);
     const maxShown = { k1: 1, k2: 2, k3: 3, k4: 4, k5: 5 }[v];
     const shown = gp.slice(0, maxShown);
