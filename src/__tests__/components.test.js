@@ -1,4 +1,4 @@
-const { photoThumb, bulkBar, bulkScript, lbOverlay, lbScript } = require('../components');
+const { photoThumb, selectionBar, selectionScript, lbOverlay, lbScript } = require('../components');
 
 // ── photoThumb ────────────────────────────────────────────────────────────────
 
@@ -10,17 +10,21 @@ describe('photoThumb', () => {
     expect(html).toContain('alt="A Photo"');
   });
 
-  it('omits checkbox by default (owns=false)', () => {
+  it('renders as plain thumb (no selection chrome) when owns=false', () => {
     const html = photoThumb({ id: 1, filename: 'a.jpg', title: 'T' });
-    expect(html).not.toContain('checkbox');
-    expect(html).not.toContain('photo_ids');
+    expect(html).not.toContain('sel-tile');
+    expect(html).not.toContain('hovercheck');
+    expect(html).not.toContain('sel-cbox');
   });
 
-  it('includes checkbox with photo id when owns=true', () => {
+  it('renders sel-tile with selection chrome when owns=true', () => {
     const html = photoThumb({ id: 42, filename: 'a.jpg', title: 'T' }, { owns: true });
-    expect(html).toContain('type="checkbox"');
-    expect(html).toContain('name="photo_ids"');
-    expect(html).toContain('value="42"');
+    expect(html).toContain('sel-tile');
+    expect(html).toContain('data-photo-id="42"');
+    expect(html).toContain('data-href="/photos/42"');
+    expect(html).toContain('class="hovercheck"');
+    expect(html).toContain('class="press-ring"');
+    expect(html).toContain('class="sel-cbox"');
   });
 
   it('escapes HTML in title', () => {
@@ -33,71 +37,173 @@ describe('photoThumb', () => {
     const html = photoThumb({ id: 1, filename: 'a"b.jpg', title: 'T' });
     expect(html).toContain('&quot;');
   });
+
+  it('escapes title in sel-cbox aria-label when owns=true', () => {
+    const html = photoThumb({ id: 1, filename: 'f.jpg', title: '<b>bold</b>' }, { owns: true });
+    expect(html).not.toContain('aria-label="<b>bold</b>"');
+    expect(html).toContain('&lt;b&gt;');
+  });
 });
 
-// ── bulkBar ───────────────────────────────────────────────────────────────────
+// ── selectionBar ─────────────────────────────────────────────────────────────
 
-describe('bulkBar', () => {
-  it('renders select-all checkbox and bulk-actions container', () => {
-    const html = bulkBar();
-    expect(html).toContain('id="select-all"');
-    expect(html).toContain('id="bulk-actions"');
+describe('selectionBar', () => {
+  it('renders #sel-bar container', () => {
+    const html = selectionBar();
+    expect(html).toContain('id="sel-bar"');
+    expect(html).toContain('class="sel-bar"');
   });
 
-  it('renders with no optional sections by default', () => {
-    const html = bulkBar();
-    expect(html).not.toContain('Apply tag');
-    expect(html).not.toContain('Remove from album');
-    expect(html).not.toContain('Delete selected');
+  it('renders row 1 with master checkbox, count pill, all/none/invert, done', () => {
+    const html = selectionBar();
+    expect(html).toContain('id="sel-master"');
+    expect(html).toContain('id="sel-count"');
+    expect(html).toContain('id="sel-of-n"');
+    expect(html).toContain('id="sel-all"');
+    expect(html).toContain('id="sel-none"');
+    expect(html).toContain('id="sel-invert"');
+    expect(html).toContain('id="sel-done"');
   });
 
-  it('renders tag input and apply button when showTag is true', () => {
-    const html = bulkBar({ showTag: true });
-    expect(html).toContain('Apply tag');
-    expect(html).toContain('name="tag"');
-    expect(html).toContain('placeholder="e.g. Paris"');
+  it('renders keyboard hint with Shift and Esc', () => {
+    const html = selectionBar();
+    expect(html).toContain('sel-kbd-hint');
+    expect(html).toContain('Esc');
   });
 
-  it('renders remove button with correct formaction when removeAction is set', () => {
-    const html = bulkBar({ removeAction: '/albums/5/remove-photos' });
-    expect(html).toContain('Remove from album');
-    expect(html).toContain('formaction="/albums/5/remove-photos"');
+  it('renders row 2 with download button always present', () => {
+    const html = selectionBar();
+    expect(html).toContain('id="sel-download-btn"');
   });
 
-  it('renders delete button with correct formaction when deleteAction is set', () => {
-    const html = bulkBar({ deleteAction: '/photos/delete-many' });
-    expect(html).toContain('Delete selected');
-    expect(html).toContain('formaction="/photos/delete-many"');
+  it('does not render tag controls when showTag is false', () => {
+    const html = selectionBar();
+    expect(html).not.toContain('sel-tag-mode-add');
+    expect(html).not.toContain('sel-tag-input');
+    expect(html).not.toContain('sel-apply-btn');
+  });
+
+  it('renders tag controls when showTag is true', () => {
+    const html = selectionBar({ showTag: true, tagAction: '/photos/bulk-tag', untagAction: '/photos/bulk-untag' });
+    expect(html).toContain('id="sel-tag-mode-add"');
+    expect(html).toContain('id="sel-tag-mode-remove"');
+    expect(html).toContain('id="sel-tag-input"');
+    expect(html).toContain('id="sel-apply-btn"');
+    expect(html).toContain('sel-tag-datalist');
+  });
+
+  it('sets formaction and data-action attrs on apply button', () => {
+    const html = selectionBar({ showTag: true, tagAction: '/photos/bulk-tag', untagAction: '/photos/bulk-untag' });
+    expect(html).toContain('formaction="/photos/bulk-tag"');
+    expect(html).toContain('data-tag-action="/photos/bulk-tag"');
+    expect(html).toContain('data-untag-action="/photos/bulk-untag"');
+  });
+
+  it('renders remove-from-album button when removeAction is set', () => {
+    const html = selectionBar({ removeAction: '/albums/5/photos/bulk-remove' });
+    expect(html).toContain('id="sel-remove-btn"');
+    expect(html).toContain('formaction="/albums/5/photos/bulk-remove"');
+  });
+
+  it('does not render remove button when removeAction is absent', () => {
+    const html = selectionBar();
+    expect(html).not.toContain('sel-remove-btn');
+  });
+
+  it('renders delete button with count span when deleteAction is set', () => {
+    const html = selectionBar({ deleteAction: '/photos/bulk-delete' });
+    expect(html).toContain('id="sel-delete-btn"');
+    expect(html).toContain('formaction="/photos/bulk-delete"');
+    expect(html).toContain('id="sel-delete-count"');
+  });
+
+  it('does not render delete button when deleteAction is absent', () => {
+    const html = selectionBar();
+    expect(html).not.toContain('sel-delete-btn');
   });
 
   it('escapes HTML in action URLs', () => {
-    const html = bulkBar({ removeAction: '/path?a=1&b=2' });
+    const html = selectionBar({ removeAction: '/path?a=1&b=2' });
     expect(html).toContain('&amp;');
     expect(html).not.toContain('?a=1&b=2"');
   });
 
-  it('renders all three optional sections together', () => {
-    const html = bulkBar({ showTag: true, removeAction: '/remove', deleteAction: '/delete' });
-    expect(html).toContain('Apply tag');
-    expect(html).toContain('Remove from album');
-    expect(html).toContain('Delete selected');
+  it('renders master checkbox with aria attributes', () => {
+    const html = selectionBar();
+    expect(html).toContain('role="checkbox"');
+    expect(html).toContain('aria-checked="false"');
+    expect(html).toContain('tabindex="0"');
   });
 });
 
-// ── bulkScript ────────────────────────────────────────────────────────────────
+// ── selectionScript ───────────────────────────────────────────────────────────
 
-describe('bulkScript', () => {
+describe('selectionScript', () => {
   it('returns a script tag string', () => {
-    const s = bulkScript();
+    const s = selectionScript();
     expect(s).toContain('<script>');
     expect(s).toContain('</script>');
   });
 
-  it('references the expected DOM element ids', () => {
-    const s = bulkScript();
-    expect(s).toContain('bulk-actions');
-    expect(s).toContain('select-all');
+  it('references all key DOM element IDs', () => {
+    const s = selectionScript();
+    expect(s).toContain('sel-bar');
+    expect(s).toContain('sel-select-btn');
+    expect(s).toContain('sel-done');
+    expect(s).toContain('sel-master');
+    expect(s).toContain('sel-count');
+    expect(s).toContain('sel-all');
+    expect(s).toContain('sel-none');
+    expect(s).toContain('sel-invert');
+    expect(s).toContain('sel-delete-btn');
+    expect(s).toContain('sel-download-btn');
+  });
+
+  it('queries sel-tile elements', () => {
+    const s = selectionScript();
+    expect(s).toContain('.sel-tile');
+    expect(s).toContain('photoId');  // dataset.photoId reads the data-photo-id attribute
+  });
+
+  it('implements long-press with LONG_MS=450', () => {
+    const s = selectionScript();
+    expect(s).toContain('LONG_MS=450');
+    expect(s).toContain('pointerdown');
+    expect(s).toContain('pointerup');
+  });
+
+  it('handles keyboard shortcuts (Esc, Ctrl+A)', () => {
+    const s = selectionScript();
+    expect(s).toContain('Escape');
+    expect(s).toContain("'a'");
+    expect(s).toContain('metaKey');
+    expect(s).toContain('ctrlKey');
+  });
+
+  it('injects hidden photo_ids before form submit', () => {
+    const s = selectionScript();
+    expect(s).toContain('data-sel-form');
     expect(s).toContain('photo_ids');
+    expect(s).toContain('sel-hidden');
+  });
+
+  it('handles shift+click range selection', () => {
+    const s = selectionScript();
+    expect(s).toContain('shiftKey');
+    expect(s).toContain('rangeSelectTo');
+  });
+
+  it('includes coachmark with localStorage persistence', () => {
+    const s = selectionScript();
+    expect(s).toContain('sel-coachmark');
+    expect(s).toContain('sel-coached');
+    expect(s).toContain('localStorage');
+  });
+
+  it('fetches tag autocomplete from /api/tags/index', () => {
+    const s = selectionScript();
+    expect(s).toContain('/api/tags/index');
+    expect(s).toContain('sel-tag-datalist');
   });
 });
 

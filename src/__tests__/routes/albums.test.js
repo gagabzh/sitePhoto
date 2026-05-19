@@ -2,10 +2,8 @@ jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../components', () => ({
-  photoThumb: jest.fn((p, { owns } = {}) =>
-    `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
-  bulkBar: jest.fn(() => '<div class="bulk-bar-mock"></div>'),
-  bulkScript: jest.fn(() => '<script>/* bulk-script-mock */</script>'),
+  selectionBar: jest.fn(() => '<div class="sel-bar-mock" id="sel-bar"></div>'),
+  selectionScript: jest.fn(() => '<script>/* sel-script-mock */</script>'),
   lbOverlay: jest.fn(() => '<div id="lb" class="lb-overlay-mock"></div>'),
   lbScript: jest.fn(() => '<script>/* lb-script-mock */</script>'),
 }));
@@ -665,33 +663,34 @@ describe('POST /albums/:id/photos/upload', () => {
   });
 });
 
-// ── Album detail: bulk UX ─────────────────────────────────────────────────────
+// ── Album detail: selection UX ────────────────────────────────────────────────
 
-describe('GET /albums/:id — photo grid bulk UX', () => {
-  it('shows checkboxes and bulk bar for editor who owns the album', async () => {
-    const { bulkBar } = require('../../components');
+describe('GET /albums/:id — photo grid selection UX', () => {
+  it('shows selection bar and sel-tile for editor who owns the album', async () => {
+    const { selectionBar } = require('../../components');
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
       .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
 
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
-    expect(res.text).toContain('<input type="checkbox" name="photo_ids"');
-    expect(res.text).toContain('bulk-bar-mock');
-    expect(bulkBar).toHaveBeenCalledWith(expect.objectContaining({
+    expect(res.text).toContain('sel-bar-mock');
+    expect(res.text).toContain('data-photo-id');
+    expect(res.text).toContain('id="sel-select-btn"');
+    expect(selectionBar).toHaveBeenCalledWith(expect.objectContaining({
       removeAction: '/albums/1/photos/bulk-remove',
       deleteAction:  '/albums/1/photos/bulk-delete',
     }));
   });
 
-  it('hides checkboxes and bulk bar for viewer', async () => {
+  it('hides selection bar for viewer', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
       .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })
       .mockResolvedValueOnce({ rows: [{ 1: 1 }] });
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1');
-    expect(res.text).not.toContain('<input type="checkbox"');
-    expect(res.text).not.toContain('bulk-bar-mock');
+    expect(res.text).not.toContain('sel-bar-mock');
+    expect(res.text).not.toContain('data-photo-id');
   });
 });
 

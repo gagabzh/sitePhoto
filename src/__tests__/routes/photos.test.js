@@ -2,10 +2,8 @@ jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../components', () => ({
-  photoThumb: jest.fn((p, { owns } = {}) =>
-    `<div class="photo-thumb-mock" data-id="${p.id}">${owns ? '<input type="checkbox" name="photo_ids" value="' + p.id + '">' : ''}</div>`),
-  bulkBar: jest.fn(() => '<div id="bulk-bar" class="bulk-bar-mock"><input type="text" name="tag"><button type="submit">Apply tag</button><button type="submit" formaction="/photos/bulk-delete">Delete selected</button></div>'),
-  bulkScript: jest.fn(() => '<script>/* bulk-script-mock */</script>'),
+  selectionBar: jest.fn(() => '<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>'),
+  selectionScript: jest.fn(() => '<script>/* sel-script-mock */</script>'),
 }));
 jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
@@ -403,31 +401,26 @@ describe('POST /photos/bulk-tag — apply tag to multiple photos', () => {
   });
 });
 
-describe('GET /photos — photo list shows checkboxes', () => {
-  it('shows checkboxes on photos the editor owns', async () => {
+describe('GET /photos — photo list selection mode', () => {
+  it('shows sel-tile and sel-select-btn for editor-owned photos', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
-    expect(res.text).toContain('<input type="checkbox"');
+    expect(res.text).toContain('sel-tile');
+    expect(res.text).toContain('id="sel-select-btn"');
     expect(res.text).toContain('action="/photos/bulk-tag"');
-  });
-
-  it('shows Delete selected button in bulk bar', async () => {
-    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
-    const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
     expect(res.text).toContain('formaction="/photos/bulk-delete"');
-    expect(res.text).toContain('Delete selected');
   });
 
-  it('does not show checkbox on photos owned by others', async () => {
+  it('does not show sel-tile on photos owned by others', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
-    expect(res.text).not.toContain('<input type="checkbox"');
+    expect(res.text).not.toContain('data-photo-id');
   });
 
-  it('admin sees checkboxes on all photos', async () => {
+  it('admin sees sel-tile on all photos', async () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
-    expect(res.text).toContain('<input type="checkbox"');
+    expect(res.text).toContain('sel-tile');
   });
 });
 
@@ -498,6 +491,53 @@ describe('POST /photos/bulk-delete — delete multiple photos', () => {
     const res = await request(makeApp(VIEWER_SESSION))
       .post('/photos/bulk-delete')
       .send('photo_ids=1');
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
+// ── Bulk untag ────────────────────────────────────────────────────────────────
+
+describe('POST /photos/bulk-untag — remove tag from multiple photos', () => {
+  it('removes the tag from owned photos and redirects', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })  // ownership check
+      .mockResolvedValueOnce({ rows: [] });                        // DELETE
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-untag')
+      .send('tag=paris&photo_ids=1&photo_ids=2');
+
+    expect(res.status).toBe(302);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM photo_tags'),
+      expect.arrayContaining([[1, 2], 'paris'])
+    );
+  });
+
+  it('redirects without DB write when no tag provided', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-untag')
+      .send('photo_ids=1');
+
+    expect(res.status).toBe(302);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('redirects without DB write when no photo_ids provided', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/bulk-untag')
+      .send('tag=paris');
+
+    expect(res.status).toBe(302);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/photos/bulk-untag')
+      .send('tag=paris&photo_ids=1');
 
     expect(res.status).toBe(403);
     expect(db.query).not.toHaveBeenCalled();

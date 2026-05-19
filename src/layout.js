@@ -274,19 +274,140 @@ function page(title, body, session) {
     .album-meta small { font-family: 'JetBrains Mono', monospace; color: var(--ink-faint); font-size: 0.72rem; }
 
     /* ── Bulk action bar ── */
-    .bulk-bar {
-      display: flex; align-items: center; gap: 0.75rem;
-      margin-bottom: 1.25rem; background: var(--paper-2);
-      padding: 0.65rem 1rem; border: 1.5px solid var(--ink);
+    /* ── Selection mode toolbar ── */
+    .sel-bar { border: 1.5px solid var(--ink); margin-bottom: 12px; display: none; }
+    .sel-bar.sel-open { display: block; animation: sel-in 220ms cubic-bezier(.2,.7,.3,1) forwards; }
+    .sel-bar.sel-closing { animation: sel-out 180ms cubic-bezier(.2,.7,.3,1) forwards; }
+    @keyframes sel-in  { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes sel-out { from { opacity:1; transform:translateY(0); }    to { opacity:0; transform:translateY(-8px); } }
+    @media (prefers-reduced-motion: reduce) { .sel-bar.sel-open, .sel-bar.sel-closing { animation: none; } }
+
+    .sel-r1 {
+      display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+      background: var(--paper); border-bottom: 1.5px dashed var(--ink-ghost);
+    }
+    .sel-r2 {
+      display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+      background: var(--paper-2); flex-wrap: wrap;
     }
 
-    /* ── Photo thumb with checkbox ── */
+    /* Master checkbox */
+    .sel-master {
+      width: 24px; height: 24px; border: 1.5px solid var(--ink); background: var(--paper);
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; flex: none; font-family: 'JetBrains Mono', monospace; font-size: 14px;
+    }
+    .sel-master.sel-all  { background: var(--ink); color: var(--paper); }
+    .sel-master.sel-some { background: var(--ink); color: var(--paper); position: relative; }
+    .sel-master.sel-some::before {
+      content: ""; position: absolute; left: 4px; right: 4px; top: 10px; height: 3px; background: var(--paper);
+    }
+
+    /* Count pill */
+    .sel-count-pill {
+      display: inline-flex; align-items: baseline; gap: 4px;
+      font-family: 'Kalam', cursive; font-size: 13px; color: var(--ink-soft);
+    }
+    .sel-n  { font-size: 26px; font-weight: 700; color: var(--accent); line-height: 1; }
+    .sel-of { font-size: 11px; color: var(--ink-faint); }
+
+    /* Segmented controls */
+    .sel-seg { display: flex; border: 1.5px solid var(--ink); }
+    .sel-seg button {
+      background: var(--paper); border: none; cursor: pointer;
+      font-family: 'Kalam', cursive; font-size: 12px; font-weight: 700;
+      padding: 4px 10px 5px; border-right: 1.5px solid var(--ink); color: var(--ink);
+    }
+    .sel-seg button:last-child { border-right: none; }
+    .sel-seg button:hover { background: var(--paper-2); }
+    .sel-seg button.sel-active { background: var(--ink); color: var(--paper); }
+
+    /* Keyboard hint */
+    .sel-kbd-hint {
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.5px;
+      color: var(--ink-faint); display: flex; align-items: center; gap: 4px;
+    }
+    .sel-kbd-hint kbd {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px;
+      background: var(--paper-2); color: var(--ink-soft);
+      border: 1px solid var(--ink-ghost); padding: 1px 4px; border-radius: 2px;
+    }
+    @media (max-width: 768px) { .sel-kbd-hint { display: none; } }
+
+    /* Tag input + vsep */
+    .sel-tag-input {
+      width: 180px; padding: 4px 8px 5px;
+      font-family: 'Kalam', cursive; font-size: 13px;
+      border: 1.5px solid var(--ink); background: var(--paper); color: var(--ink); outline: none;
+    }
+    .sel-tag-input::placeholder { color: var(--ink-ghost); font-style: italic; }
+    .sel-tag-input:focus { box-shadow: 2px 2px 0 var(--ink); }
+    .sel-vsep { width: 1.5px; align-self: stretch; background: var(--ink-ghost); margin: 0 2px; }
+
+    /* ── Selectable tile chrome ── */
+    .sel-tile { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .sel-tile:not(.sel-selecting):hover { transform: translateY(-1px); transition: transform 100ms linear; }
+
+    /* Hover-check affordance (desktop) */
+    .sel-tile .hovercheck {
+      position: absolute; top: 7px; left: 7px; width: 24px; height: 24px;
+      background: rgba(246,243,236,0.55); border: 1.5px dashed rgba(246,243,236,0.9);
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(246,243,236,0.9); font-size: 15px; font-weight: 700;
+      opacity: 0; cursor: pointer; transition: opacity 120ms, background 120ms, border-color 120ms;
+      z-index: 2; padding: 0; line-height: 1;
+    }
+    .sel-tile:hover .hovercheck { opacity: 1; }
+    .sel-tile .hovercheck:hover {
+      background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 1px 1px 0 var(--ink);
+    }
+    .sel-selecting .hovercheck { display: none; }
+
+    /* Long-press ring */
+    .sel-tile .press-ring {
+      position: absolute; inset: 0;
+      background: radial-gradient(circle, rgba(255,255,255,0) 0%, rgba(0,0,0,0.45) 100%);
+      opacity: 0; pointer-events: none; z-index: 1;
+    }
+    .sel-tile.sel-pressing .press-ring { opacity: 1; transition: opacity 450ms linear; }
+    .sel-tile .press-ring::after {
+      content: ""; position: absolute; inset: 38%;
+      border: 2px solid white; border-top-color: transparent; border-radius: 50%;
+      animation: sel-spin 900ms linear infinite; opacity: 0;
+    }
+    .sel-tile.sel-pressing .press-ring::after { opacity: 1; }
+    @keyframes sel-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .sel-tile .press-ring, .sel-tile .press-ring::after { display: none; } }
+
+    /* Per-tile checkbox */
+    .sel-tile .sel-cbox {
+      display: none; position: absolute; top: 7px; left: 7px; width: 24px; height: 24px;
+      background: rgba(246,243,236,0.92); border: 1.5px solid var(--ink); box-shadow: 1px 1px 0 var(--ink);
+      align-items: center; justify-content: center; z-index: 2;
+      font-size: 13px; font-family: 'JetBrains Mono', monospace; color: var(--ink);
+    }
+    .sel-selecting .sel-cbox { display: flex; }
+    .sel-tile.sel-on .sel-cbox { background: var(--ink); color: var(--paper); }
+    .sel-tile.sel-on { box-shadow: inset 0 0 0 3px var(--accent); transition: box-shadow 100ms linear; }
+
+    /* First-visit coachmark */
+    .sel-coachmark {
+      position: absolute; bottom: -8px; left: 50%; transform: translate(-50%, 100%);
+      font-family: 'Kalam', cursive; font-size: 13px;
+      background: var(--ink); color: var(--paper); padding: 4px 10px 5px;
+      border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 var(--accent);
+      white-space: nowrap; z-index: 10;
+    }
+    .sel-coachmark::before {
+      content: ""; position: absolute; top: -6px; left: 50%;
+      transform: translateX(-50%) rotate(45deg); width: 9px; height: 9px;
+      background: var(--ink); border-left: 1.5px solid var(--ink); border-top: 1.5px solid var(--ink);
+    }
+
+    /* ── Photo thumb (display-only, no selection chrome) ── */
     .photo-thumb { position: relative; }
     .photo-thumb a { display: block; }
     .photo-thumb img { display: block; width: 100%; height: 180px; object-fit: cover; }
-    .photo-checkbox-label { position: absolute; top: 0.5rem; left: 0.5rem; z-index: 1; cursor: pointer; }
-    .photo-checkbox-label input[type="checkbox"] { display: block; width: 1.1rem; height: 1.1rem; accent-color: var(--ink); cursor: pointer; }
-    .photo-card-selectable:has(input:checked) img { outline: 3px solid var(--ink); }
 
     /* ── Tags ── */
     .tags { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem; }
@@ -551,13 +672,8 @@ function page(title, body, session) {
     .wall-cell:nth-child(9) { grid-area: i; }
     .wall-cell a { display: block; height: 100%; }
     .wall-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .wall-checkbox {
-      position: absolute; top: 0.4rem; left: 0.4rem; z-index: 1; cursor: pointer;
-    }
-    .wall-checkbox input[type="checkbox"] {
-      display: block; width: 1.1rem; height: 1.1rem; accent-color: var(--ink); cursor: pointer;
-    }
-    .photo-card-selectable:has(input:checked) img { outline: 3px solid var(--ink); }
+    /* wall tile: overflow hidden so the selected ring stays inside */
+    .wall-cell.sel-tile { overflow: hidden; }
 
     /* sidebar */
     .wall-side { display: flex; flex-direction: column; gap: 1.25rem; }
@@ -1252,8 +1368,8 @@ function page(title, body, session) {
       /* ── Misc ── */
       .form-col { max-width: 100%; }
       .card { padding: 1.25rem; }
-      .bulk-bar { flex-wrap: wrap; }
-      #bulk-actions { flex-direction: column !important; align-items: flex-start !important; gap: 0.5rem !important; }
+      .sel-r1 { flex-wrap: wrap; }
+      .sel-tag-input { width: 140px; }
       .filter-bar { gap: 0.5rem; }
     }
 

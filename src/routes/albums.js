@@ -6,7 +6,7 @@ const { page, esc } = require('../layout');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
-const { photoThumb, bulkBar, bulkScript, lbOverlay, lbScript } = require('../components');
+const { selectionBar, selectionScript, lbOverlay, lbScript } = require('../components');
 const {
   UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags,
   singleUploadFields, batchUploadFields, deletePhotos,
@@ -249,23 +249,27 @@ router.get('/:id', wrapAsync(async (req, res) => {
   const rest = photos.slice(9);
 
   const mosaicCells = mosaic.map(p => `
-    <div class="ad-cell${canEdit ? ' photo-card-selectable' : ''}">
-      ${canEdit ? `<label class="wall-checkbox"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
+    <div class="ad-cell${canEdit ? ' sel-tile' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
       <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}"`}>
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
       </a>
-      ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>` : ''}
+      ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>
+      <button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
+      <div class="press-ring"></div>
+      <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
     </div>`).join('');
 
   const restGrid = rest.length > 0
     ? `<div class="photo-grid" style="margin-top:1rem">${rest.map(p => `
-        <div class="photo-card${canEdit ? ' photo-card-selectable' : ''}">
+        <div class="photo-card${canEdit ? ' sel-tile' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
           <div class="photo-thumb">
             <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}"`}>
               <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
             </a>
-            ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>` : ''}
-            ${canEdit ? `<label class="photo-checkbox-label"><input type="checkbox" name="photo_ids" value="${p.id}"></label>` : ''}
+            ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>
+            <button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
+            <div class="press-ring"></div>
+            <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
           </div>
           <div class="photo-meta"><strong>${esc(p.title)}</strong></div>
         </div>`).join('')}
@@ -273,15 +277,15 @@ router.get('/:id', wrapAsync(async (req, res) => {
 
   const photoSection = photos.length === 0
     ? `<p class="tl-empty">No photos yet.${canEdit ? ` <a href="/albums/${album.id}/photos/add">Add some.</a>` : ''}</p>`
-    : `<form method="POST" action="/albums/${album.id}/photos/bulk-remove">
-        ${canEdit ? bulkBar({
+    : `<form method="POST" action="/albums/${album.id}/photos/bulk-remove" data-sel-form>
+        ${canEdit ? selectionBar({
           removeAction: `/albums/${album.id}/photos/bulk-remove`,
           deleteAction:  `/albums/${album.id}/photos/bulk-delete`,
         }) : ''}
         <div class="ad-mosaic">${mosaicCells}</div>
         ${restGrid}
       </form>
-      ${canEdit ? bulkScript() : ''}
+      ${canEdit ? selectionScript() : ''}
       ${lbOverlay()}
       ${lbScript()}`;
 
@@ -300,6 +304,7 @@ router.get('/:id', wrapAsync(async (req, res) => {
         <div class="ad-actions">
           <a class="btn btn-secondary" href="/albums">← Back</a>
           ${canEdit ? `
+            <button class="btn btn-secondary btn-sm" id="sel-select-btn" type="button">select</button>
             <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload</a>
             <a class="btn" href="/albums/${album.id}/photos/batch">↑ Batch</a>
             <a class="btn btn-secondary" href="/albums/${album.id}/photos/add">+ Add photos</a>
