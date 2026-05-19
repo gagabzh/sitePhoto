@@ -337,7 +337,7 @@ function renderCombinatorScript(SECTIONS, DEFAULT_LOGIC, state) {
               var pinned=allRows.filter(function(r){return r.dataset.state!=='off';});
               var unpinned=allRows.filter(function(r){return r.dataset.state==='off';});
               unpinned.sort(function(a,b){return (parseInt(b.dataset.count,10)||0)-(parseInt(a.dataset.count,10)||0);});
-              pinned.forEach(function(r){list.insertBefore(r,list.firstChild);});
+              pinned.slice().reverse().forEach(function(r){list.insertBefore(r,list.firstChild);});
               if(pinned.length>0&&unpinned.length>0){
                 var newSep=document.createElement('hr');newSep.className='cb-pinned-sep';
                 list.insertBefore(newSep,unpinned[0]);

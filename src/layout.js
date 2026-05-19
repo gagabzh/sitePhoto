@@ -50,7 +50,6 @@ function page(title, body, session) {
     :root {
       --paper:      #f6f3ec;
       --paper-2:    #ece7da;
-      --paper-3:    #e1dccc;
       --ink:        #1a1814;
       --ink-soft:   #4a463e;
       --ink-faint:  #8a8377;
