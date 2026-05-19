@@ -159,6 +159,7 @@ router.get('/', async (req, res) => {
 
   const filterBar = `
     <form class="tl-filter-bar" method="GET" action="/timeline">
+      ${groupInterval !== 'month' ? `<input type="hidden" name="group" value="${groupInterval}">` : ''}
       <label>Album
         <select name="album">
           <option value="">All</option>
@@ -175,10 +176,15 @@ router.get('/', async (req, res) => {
       <label>To <input type="date" name="to" value="${toFilter || ''}"></label>
       <button class="btn btn-sm" type="submit">Filter</button>
       ${albumFilter || tagFilter || fromFilter || toFilter ? `<a class="btn btn-sm btn-secondary" href="/timeline${groupInterval !== 'month' ? '?group=' + groupInterval : ''}">Clear</a>` : ''}
-      <div class="tl-group-row">Group by
-        <select name="group">${groupOptions}</select>
-        <button class="btn btn-sm" type="submit">Apply</button>
-      </div>
+    </form>
+    <form class="tl-group-row" method="GET" action="/timeline">
+      ${albumFilter ? `<input type="hidden" name="album" value="${esc(String(albumFilter))}">` : ''}
+      ${tagFilter ? `<input type="hidden" name="tag" value="${esc(tagFilter)}">` : ''}
+      ${fromFilter ? `<input type="hidden" name="from" value="${fromFilter}">` : ''}
+      ${toFilter ? `<input type="hidden" name="to" value="${toFilter}">` : ''}
+      Group by
+      <select name="group">${groupOptions}</select>
+      <button class="btn btn-sm" type="submit">Apply</button>
     </form>`;
 
   // "When" label helpers

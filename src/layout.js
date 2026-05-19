@@ -368,11 +368,11 @@ function page(title, body, session) {
       flex-direction: row; align-items: center; gap: 0.4rem; color: var(--ink);
     }
     .tl-group-row {
-      flex-basis: 100%; display: flex; align-items: center; gap: 0.4rem;
+      display: flex; align-items: center; gap: 0.4rem;
       border-top: 1px dashed var(--ink-faint); padding-top: 0.5rem; margin-top: 0.1rem;
       font-family: 'Kalam', cursive; font-size: 0.85rem; font-weight: 700; color: var(--ink);
     }
-    .tl-filter-bar select, .tl-filter-bar input[type="date"] {
+    .tl-filter-bar select, .tl-filter-bar input[type="date"], .tl-group-row select {
       font-family: 'Kalam', cursive; font-size: 0.85rem;
       padding: 0.3rem 0.5rem; border: 1.5px solid var(--ink);
       background: var(--paper); color: var(--ink);
