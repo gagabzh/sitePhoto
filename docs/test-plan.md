@@ -647,6 +647,64 @@
 
 ---
 
+### TL-4 — Filter by date range
+
+**Steps:**
+1. On the Timeline page, enter `2024-01-01` in the **From** field and `2024-06-30` in the **To** field.
+2. Click **Filter**.
+
+**Expected:**
+- Only photos taken between 1 Jan 2024 and 30 Jun 2024 are shown.
+- The From and To inputs are prefilled with the submitted values.
+- A **Clear** link appears; clicking it restores the full unfiltered timeline.
+
+3. Enter a garbage value directly in the URL (`?from=not-a-date`).
+
+**Expected:**
+- The page loads normally. The invalid value is silently ignored (no crash, no SQL error).
+
+---
+
+### TL-5 — "+X more" drills into that period
+
+**Preconditions:** a month (or year or day, depending on active grouping) has more photos than the grid can display (> 5 for the default k5 grid).
+
+**Steps:**
+1. On the Timeline page, find a group that shows a **+X more** link.
+2. Click **+X more**.
+
+**Expected:**
+- The page reloads with `from` and `to` query params scoped to that period (e.g. `from=2024-03-01&to=2024-03-31` for March 2024 in month grouping).
+- All photos in that period are now visible — the "+X more" link is gone (or reduced).
+- Any previously active album or tag filter is preserved in the URL.
+
+---
+
+### TL-6 — Grouping interval selector
+
+**Steps:**
+1. On the Timeline page, open the **Group by** selector and choose **Year**.
+2. Click **Filter**.
+
+**Expected:**
+- Photos from different months within the same year are merged into a single year group.
+- The group heading shows only the year (e.g. `2024`).
+- The **Group by** selector shows **Year** as the active option.
+
+3. Switch to **Day** and click **Filter**.
+
+**Expected:**
+- Each day that has at least one photo appears as its own group.
+- The group heading shows the full date (e.g. `March 15, 2024`).
+- Two photos uploaded the same day appear under a single heading.
+
+4. Switch back to **Month** and click **Filter**.
+
+**Expected:**
+- Standard month grouping is restored (e.g. `March 2024`).
+
+---
+
 ### Timeline access control
 
 | Action | Admin | Editor | Viewer |
@@ -654,3 +712,6 @@
 | View `/timeline` | ✅ all photos | ✅ all photos | ✅ shared-album photos only |
 | Filter by album | ✅ | ✅ | ✅ accessible albums only |
 | Filter by tag | ✅ | ✅ | ✅ accessible tags only |
+| Filter by date range (TL-4) | ✅ | ✅ | ✅ |
+| "+X more" drill-in (TL-5) | ✅ | ✅ | ✅ |
+| Group by year/month/day (TL-6) | ✅ | ✅ | ✅ |

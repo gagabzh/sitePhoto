@@ -2,15 +2,37 @@ const router = require('express').Router();
 const db = require('../db');
 const { page, esc } = require('../layout');
 
-function groupByMonth(rows) {
+function groupByInterval(rows, interval) {
   const groups = [];
   const index = new Map();
   for (const p of rows) {
     const d = new Date(p.display_date);
-    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const y = d.getUTCFullYear();
+    const mo = d.getUTCMonth();
+    const mm = String(mo + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+
+    let key, label, periodFrom, periodTo;
+    if (interval === 'year') {
+      key = String(y);
+      label = key;
+      periodFrom = `${y}-01-01`;
+      periodTo = `${y}-12-31`;
+    } else if (interval === 'day') {
+      key = `${y}-${mm}-${dd}`;
+      label = d.toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+      periodFrom = key;
+      periodTo = key;
+    } else {
+      key = `${y}-${mm}`;
+      label = d.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const lastDay = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+      periodFrom = `${y}-${mm}-01`;
+      periodTo = `${y}-${mm}-${String(lastDay).padStart(2, '0')}`;
+    }
+
     if (!index.has(key)) {
-      const label = d.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-      const group = { key, label, photos: [] };
+      const group = { key, label, periodFrom, periodTo, photos: [] };
       index.set(key, group);
       groups.push(group);
     }
@@ -101,18 +123,21 @@ function parseDate(s) {
   return isNaN(Date.parse(s)) ? null : s;
 }
 
+const VALID_INTERVALS = new Set(['year', 'month', 'day']);
+
 router.get('/', async (req, res) => {
   const albumFilter = req.query.album || null;
   const tagFilter = req.query.tag || null;
   const fromFilter = parseDate(req.query.from);
   const toFilter   = parseDate(req.query.to);
+  const groupInterval = VALID_INTERVALS.has(req.query.group) ? req.query.group : 'month';
 
   const [photos, { albums, tags }] = await Promise.all([
     fetchPhotos(req.session, albumFilter, tagFilter, fromFilter, toFilter),
     fetchFilterOptions(req.session),
   ]);
 
-  const groups = groupByMonth(photos);
+  const groups = groupByInterval(photos, groupInterval);
 
   // Stats derived from fetched photos — no extra DB query
   const totalPhotos = photos.length;
@@ -126,6 +151,10 @@ router.get('/', async (req, res) => {
   ).join('');
   const tagOptions = tags.map(t =>
     `<option value="${esc(t.name)}" ${tagFilter === t.name ? 'selected' : ''}>${esc(t.name)}</option>`
+  ).join('');
+
+  const groupOptions = ['month', 'year', 'day'].map(v =>
+    `<option value="${v}" ${groupInterval === v ? 'selected' : ''}>${v.charAt(0).toUpperCase() + v.slice(1)}</option>`
   ).join('');
 
   const filterBar = `
@@ -144,6 +173,9 @@ router.get('/', async (req, res) => {
       </label>
       <label>From <input type="date" name="from" value="${fromFilter || ''}"></label>
       <label>To <input type="date" name="to" value="${toFilter || ''}"></label>
+      <label>Group by
+        <select name="group">${groupOptions}</select>
+      </label>
       <button class="btn btn-sm" type="submit">Filter</button>
       ${albumFilter || tagFilter || fromFilter || toFilter ? '<a class="btn btn-sm btn-secondary" href="/timeline">Clear</a>' : ''}
     </form>`;
@@ -155,6 +187,21 @@ router.get('/', async (req, res) => {
   const prevKey = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, '0')}`;
 
   function whenLabel(key) {
+    if (groupInterval === 'year') {
+      const thisYear = today.getUTCFullYear();
+      if (key === String(thisYear)) return 'this yr.';
+      if (key === String(thisYear - 1)) return 'last yr.';
+      return key;
+    }
+    if (groupInterval === 'day') {
+      const [y, m, d] = key.split('-');
+      const dt = new Date(Date.UTC(+y, +m - 1, +d));
+      const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      const diffDays = Math.round((todayUtc - dt) / 86400000);
+      if (diffDays === 0) return 'today';
+      if (diffDays === 1) return 'yest.';
+      return dt.toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' }).toLowerCase();
+    }
     if (key === nowKey) return 'now';
     if (key === prevKey) return 'last mo.';
     const [y, m] = key.split('-');
@@ -172,14 +219,13 @@ router.get('/', async (req, res) => {
     return 'k4';
   }
 
-  const moreParams = new URLSearchParams();
-  if (albumFilter) moreParams.set('album', albumFilter);
-  if (tagFilter) moreParams.set('tag', tagFilter);
-  if (fromFilter) moreParams.set('from', fromFilter);
-  if (toFilter) moreParams.set('to', toFilter);
-  const moreHref = '/timeline' + (moreParams.toString() ? '?' + moreParams.toString() : '');
+  // Base params shared by all drill-in links (no from/to — those are per-group)
+  const baseParams = new URLSearchParams();
+  if (albumFilter) baseParams.set('album', albumFilter);
+  if (tagFilter) baseParams.set('tag', tagFilter);
+  if (groupInterval !== 'month') baseParams.set('group', groupInterval);
 
-  function renderGrid(gp) {
+  function renderGrid(gp, periodFrom, periodTo) {
     const n = gp.length;
     const v = gridVariant(n);
     const maxShown = { k1: 1, k2: 2, k3: 3, k4: 4, k5: 5 }[v];
@@ -193,17 +239,23 @@ router.get('/', async (req, res) => {
         </a>
       </div>`).join('');
 
-    const moreCell = extra > 0 ? `
+    let moreCell = '';
+    if (extra > 0) {
+      const drillParams = new URLSearchParams(baseParams);
+      drillParams.set('from', periodFrom);
+      drillParams.set('to', periodTo);
+      moreCell = `
       <div class="tl-cell">
-        <a class="tl-more" href="${moreHref}">+${extra} more</a>
-      </div>` : '';
+        <a class="tl-more" href="/timeline?${drillParams}">+${extra} more</a>
+      </div>`;
+    }
 
     return `<div class="tl-grid ${v}">${cells}${moreCell}</div>`;
   }
 
   const content = groups.length === 0
     ? '<p class="tl-empty">No photos found.</p>'
-    : `<div class="tl-timeline">${groups.map(({ key, label, photos: gp }) => {
+    : `<div class="tl-timeline">${groups.map(({ key, label, periodFrom, periodTo, photos: gp }) => {
         const uploaders = [...new Set(gp.map(p => p.uploader))].join(' · ');
         return `
           <div class="tl-entry">
@@ -214,7 +266,7 @@ router.get('/', async (req, res) => {
             <div>
               <h3>${esc(label)}</h3>
               <p class="tl-meta">${gp.length} photo${gp.length !== 1 ? 's' : ''} · <em>${esc(uploaders)}</em></p>
-              ${renderGrid(gp)}
+              ${renderGrid(gp, periodFrom, periodTo)}
             </div>
           </div>`;
       }).join('')}
