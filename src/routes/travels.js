@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const path   = require('path');
 const fs     = require('fs');
+const fsp    = fs.promises;
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db   = require('../db');
@@ -11,12 +12,15 @@ const { requireEditor, wrapAsync } = require('../middleware');
 const { parseGpx } = require('../gpxParse');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+// GPX files stored outside the static-served UPLOAD_DIR so they require auth to download
+const GPX_DIR = process.env.GPX_DIR || path.join(process.cwd(), 'gpx');
+fs.mkdirSync(GPX_DIR, { recursive: true });
 
 // ── Multer for GPX uploads ────────────────────────────────────────────────
 
 const gpxUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+    destination: (req, file, cb) => cb(null, GPX_DIR),
     filename:    (req, file, cb) => cb(null, uuidv4() + '.gpx'),
   }),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -28,6 +32,19 @@ const gpxUpload = multer({
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+// Escape </script> to prevent breaking out of inline <script> blocks (fix #3)
+function safeJson(v) {
+  return JSON.stringify(v).replace(/<\/script>/gi, '<\\/script>');
+}
+
+async function fileExists(p) {
+  try { await fsp.access(p); return true; } catch { return false; }
+}
+
+async function safeUnlink(p) {
+  try { await fsp.unlink(p); } catch (_) {}
+}
 
 function makeSlug(title) {
   return (title || 'travel')
@@ -113,7 +130,8 @@ async function fetchLinkedAlbums(travelId) {
 
 async function fetchLinkedPhotos(travelId) {
   const { rows } = await db.query(`
-    SELECT p.id, p.title, p.filename, p.taken_at, p.latitude::float AS latitude, p.longitude::float AS longitude
+    SELECT p.id, p.title, p.filename, p.taken_at,
+      p.latitude::float AS latitude, p.longitude::float AS longitude
     FROM photos p
     JOIN travel_photos tp ON tp.photo_id = p.id
     WHERE tp.travel_id = $1
@@ -140,7 +158,6 @@ async function fetchAllViewers() {
   return rows;
 }
 
-// date range derived from linked photos
 async function fetchDateRange(travelId) {
   const { rows } = await db.query(`
     SELECT MIN(p.taken_at) AS date_start, MAX(p.taken_at) AS date_end
@@ -151,15 +168,16 @@ async function fetchDateRange(travelId) {
   return rows[0] || {};
 }
 
-// ── Mini-map HTML (Leaflet, reusable) ────────────────────────────────────
+// ── Mini-map HTML (Leaflet) ───────────────────────────────────────────────
 
 function miniMapHtml(mapId, geojson, photoPins, opts = {}) {
   const height   = opts.height   || 200;
   const zoom     = opts.zoom     || 2;
   const cssClass = opts.cssClass || '';
 
-  const geojsonJs  = geojson   ? JSON.stringify(geojson)   : 'null';
-  const pinsJs     = photoPins ? JSON.stringify(photoPins) : '[]';
+  // safeJson prevents </script> injection from GPX track names or photo titles
+  const geojsonJs = geojson    ? safeJson(geojson)    : 'null';
+  const pinsJs    = photoPins  ? safeJson(photoPins)  : '[]';
 
   return `
     <div id="${mapId}" style="height:${height}px;width:100%" class="${cssClass}"></div>
@@ -304,9 +322,7 @@ function linkedPhotosFormHtml(photos) {
 
 function indexView(travels, session) {
   const isEditor = session.role !== 'viewer';
-  const cards = travels.length
-    ? travels.map(t => travelCard(t, session)).join('')
-    : '';
+  const cards = travels.map(t => travelCard(t, session)).join('');
 
   const body = `
     <div class="tv-page-h">
@@ -344,12 +360,11 @@ function createFormView(session) {
         <div class="tv-form-main">
           <div class="tv-field">
             <label for="tv-title">Title</label>
-            <p class="tv-help">A short name — ideally place and year. Appears everywhere this travel is mentioned.</p>
+            <p class="tv-help">A short name — ideally place and year.</p>
             <input id="tv-title" type="text" name="title" required class="tv-dirty-watch" placeholder="e.g. Patagonia 2024">
           </div>
           <div class="tv-field">
             <label for="tv-desc">Description</label>
-            <p class="tv-help">A paragraph or two — what happened, who was there, why it mattered.</p>
             <textarea id="tv-desc" name="description" rows="5" class="tv-dirty-watch" placeholder="Write something..."></textarea>
           </div>
           <div class="tv-field">
@@ -387,14 +402,13 @@ function createFormView(session) {
 function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelViewers, session) {
   const slug = esc(travel.slug);
   const viewerIds = new Set(travelViewers.map(v => v.id));
-  const isEdit = true;
 
   const gpxSection = travel.gpx_filename
     ? gpxFilledHtml(travel)
     : `<div class="tv-gpx-zone" id="gpx-zone">
         <div class="tv-gpx-drop" id="gpx-drop">
           <div class="tv-gpx-big">drop a .gpx file here</div>
-          <div class="tv-gpx-small">or <label style="cursor:pointer;text-decoration:underline">browse<input type="file" name="gpx" accept=".gpx" id="gpx-input" style="display:none" onchange="document.getElementById('gpx-upload-form').submit()"></label> · .gpx only · max 10 MB</div>
+          <div class="tv-gpx-small">or <label style="cursor:pointer;text-decoration:underline">browse<input type="file" name="gpx" accept=".gpx" id="gpx-input" style="display:none"></label> · .gpx only · max 10 MB</div>
         </div>
       </div>`;
 
@@ -460,13 +474,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
       </div>
     </form>
 
-    <!-- GPX remove form (separate POST) -->
     <form id="gpx-remove-form" method="POST" action="/travels/${slug}/gpx/remove" style="display:none"></form>
-
-    <!-- GPX upload form (separate POST for non-JS fallback) -->
-    <form id="gpx-upload-form" method="POST" action="/travels/${slug}/gpx" enctype="multipart/form-data" style="display:none">
-      <input type="file" name="gpx" id="gpx-hidden-input" accept=".gpx">
-    </form>
 
     <!-- Share modal -->
     <div class="tv-bd" id="share-modal">
@@ -491,7 +499,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
       </div>
     </div>
 
-    <!-- Link albums modal -->
+    <!-- Link content modal -->
     <div class="tv-bd" id="link-modal">
       <div class="tv-modal wide" role="dialog" aria-modal="true">
         <div class="tv-modal-h">
@@ -526,7 +534,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         <div class="tv-modal-b tv-del-body">
           <p>This cannot be undone.</p>
           <div class="tv-del-warn">
-            The travel page and GPS trace are deleted. Linked albums and photos <strong>stay</strong> — they go back to existing on their own. Viewers lose travel-level access; albums shared independently elsewhere are untouched.
+            The travel page and GPS trace are deleted. Linked albums and photos <strong>stay</strong>. Viewers lose travel-level access; albums shared independently elsewhere are untouched.
           </div>
           <label class="tv-del-confirm">
             Type the travel title to confirm:
@@ -545,10 +553,9 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
     <div id="tv-toast" class="tv-toast"></div>
 
     <script>(function(){
-      var SLUG = '${slug}';
-      var TRAVEL_TITLE = ${JSON.stringify(travel.title)};
+      var SLUG = ${safeJson(travel.slug)};
+      var TRAVEL_TITLE = ${safeJson(travel.title)};
 
-      // ── Dirty tracking ──
       var dirty = false;
       document.querySelectorAll('.tv-dirty-watch').forEach(function(el){
         el.addEventListener('input', function(){ if(!dirty){ dirty=true; document.getElementById('dirty-pill').classList.add('show'); } });
@@ -556,14 +563,12 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
       window.addEventListener('beforeunload', function(e){ if(dirty){ e.preventDefault(); e.returnValue=''; } });
       document.getElementById('tv-form').addEventListener('submit', function(){ dirty=false; });
 
-      // ── Toast ──
       function toast(msg) {
         var t = document.getElementById('tv-toast');
         t.textContent = msg; t.classList.add('show');
         setTimeout(function(){ t.classList.remove('show'); }, 2800);
       }
 
-      // ── Modal helpers ──
       function openModal(id){ document.getElementById(id).classList.add('open'); }
       function closeModal(id){ document.getElementById(id).classList.remove('open'); }
       document.querySelectorAll('[data-close]').forEach(function(btn){
@@ -574,13 +579,11 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
       });
       document.addEventListener('keydown', function(e){ if(e.key==='Escape') document.querySelectorAll('.tv-bd.open').forEach(function(bd){ closeModal(bd.id); }); });
 
-      // ── GPX remove ──
       var removeBtn = document.getElementById('gpx-remove-btn');
       if(removeBtn) removeBtn.addEventListener('click', function(){
         if(confirm('Remove GPX file?')){ document.getElementById('gpx-remove-form').submit(); }
       });
 
-      // ── GPX drag-drop on zone ──
       var zone = document.getElementById('gpx-zone');
       if(zone){
         zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('drag-over'); });
@@ -588,8 +591,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         zone.addEventListener('drop', function(e){
           e.preventDefault(); zone.classList.remove('drag-over');
           var file = e.dataTransfer.files[0];
-          if(!file) return;
-          uploadGpx(file);
+          if(file) uploadGpx(file);
         });
       }
       var gpxInput = document.getElementById('gpx-input');
@@ -605,7 +607,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
           }).catch(function(){ toast('Upload failed'); });
       }
 
-      // ── Share modal ──
       var shareBtn = document.getElementById('share-btn');
       if(shareBtn) shareBtn.addEventListener('click', function(){ openModal('share-modal'); });
       document.querySelectorAll('#share-list .tv-share-row').forEach(function(row){
@@ -626,10 +627,12 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         }).catch(function(){ toast('Error saving'); });
       });
 
-      // ── Link content modal ──
       var lpMode = 'album';
       var lpData = { albums: [], photos: [] };
-      var lpSelected = { albums: new Set(${JSON.stringify(linkedAlbums.map(a=>a.id))}), photos: new Set(${JSON.stringify(linkedPhotos.map(p=>p.id))}) };
+      var lpSelected = {
+        albums: new Set(${safeJson(linkedAlbums.map(a => a.id))}),
+        photos: new Set(${safeJson(linkedPhotos.map(p => p.id))})
+      };
 
       function openLinkModal(mode) {
         lpMode = mode || 'album';
@@ -637,7 +640,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         setLpTab(lpMode);
         if(!lpData.albums.length && !lpData.photos.length) loadLinkable();
       }
-
       function setLpTab(tab) {
         lpMode = tab;
         document.querySelectorAll('.tv-lp-tab').forEach(function(t){ t.classList.toggle('on', t.dataset.panel === 'lp-'+tab+'s'); });
@@ -645,13 +647,11 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         document.getElementById('lp-photos').style.display = tab==='photo' ? '' : 'none';
         renderLpGrid(tab);
       }
-
       document.querySelectorAll('.tv-lp-tab').forEach(function(t){
         t.addEventListener('click', function(){
           setLpTab(t.dataset.panel === 'lp-albums' ? 'album' : 'photo');
         });
       });
-
       function loadLinkable() {
         fetch('/travels/'+SLUG+'/api/linkable')
           .then(function(r){ return r.json(); })
@@ -662,7 +662,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
             renderLpGrid('photo');
           }).catch(function(){});
       }
-
       function renderLpGrid(type) {
         var el = document.getElementById('lp-'+type+'s');
         if(!el) return;
@@ -682,7 +681,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
             +'<div class="tv-lp-tick">'+(on?' ✓':' ')+'</div>'
             +'</div>';
         }).join('') || '<div style="padding:0.75rem;font-family:\'Kalam\',cursive;font-size:0.85rem;color:var(--ink-faint)">Nothing to link.</div>';
-
         el.querySelectorAll('.tv-lp-cell').forEach(function(cell){
           cell.addEventListener('click', function(){
             var id = parseInt(cell.dataset.id);
@@ -696,22 +694,16 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         });
         updateLpStatus();
       }
-
       function updateLpStatus() {
         var total = lpSelected.albums.size + lpSelected.photos.size;
         var el = document.getElementById('lp-status');
         if(el) el.textContent = total + ' item' + (total!==1?'s':'') + ' selected';
       }
-
-      document.getElementById('lp-search').addEventListener('input', function(){
-        renderLpGrid(lpMode);
-      });
-
+      document.getElementById('lp-search').addEventListener('input', function(){ renderLpGrid(lpMode); });
       var linkAlbumsBtn = document.getElementById('link-albums-btn');
       if(linkAlbumsBtn) linkAlbumsBtn.addEventListener('click', function(){ openLinkModal('album'); });
       var linkPhotosBtn = document.getElementById('link-photos-btn');
       if(linkPhotosBtn) linkPhotosBtn.addEventListener('click', function(){ openLinkModal('photo'); });
-
       var lpSaveBtn = document.getElementById('lp-save-btn');
       if(lpSaveBtn) lpSaveBtn.addEventListener('click', function(){
         fetch('/travels/'+SLUG+'/api/links', {
@@ -723,7 +715,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         }).catch(function(){ toast('Error saving links'); });
       });
 
-      // ── Unlink buttons ──
       document.querySelectorAll('[data-unlink]').forEach(function(btn){
         btn.addEventListener('click', function(){
           var type = btn.dataset.unlink;
@@ -732,20 +723,13 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
           else lpSelected.photos.delete(id);
           var item = btn.closest('.tv-linked-item');
           if(item) item.remove();
-          saveLinksSilent();
+          fetch('/travels/'+SLUG+'/api/links', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ albumIds: Array.from(lpSelected.albums), photoIds: Array.from(lpSelected.photos) })
+          }).then(function(r){ return r.json(); }).then(function(d){ if(d.ok) toast('Links saved'); }).catch(function(){});
         });
       });
 
-      function saveLinksSilent() {
-        fetch('/travels/'+SLUG+'/api/links', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ albumIds: Array.from(lpSelected.albums), photoIds: Array.from(lpSelected.photos) })
-        }).then(function(r){ return r.json(); }).then(function(d){
-          if(d.ok) toast('Links saved');
-        }).catch(function(){});
-      }
-
-      // ── Delete modal ──
       var deleteBtn = document.getElementById('delete-btn');
       if(deleteBtn) deleteBtn.addEventListener('click', function(){ openModal('delete-modal'); });
       var delInput = document.getElementById('del-confirm-input');
@@ -756,7 +740,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         });
       }
 
-      // ── HTML escape for JS templates ──
       function escHtml(s) {
         return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       }
@@ -768,7 +751,6 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
 
 function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, session, dateRange) {
   const slug = esc(travel.slug);
-  const isJournal = false;
   const canEdit = canModify(session, travel);
 
   const photoPins = linkedPhotos
@@ -793,7 +775,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
       </div>
     </a>`).join('');
 
-  const mosaicCells = linkedPhotos.map((p, i) => `
+  const mosaicCells = linkedPhotos.map(p => `
     <div class="tv-mcell">
       <a href="/photos/${p.id}">
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title || '')}" loading="lazy">
@@ -804,9 +786,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
   if (travel.gpx_distance_km) stats.push(`<div class="tv-stat"><b>${travel.gpx_distance_km}</b><div>km</div></div>`);
   if (travel.gpx_duration_min) stats.push(`<div class="tv-stat"><b>${fmtDuration(travel.gpx_duration_min)}</b><div>moving</div></div>`);
   if (dateRange.date_start && dateRange.date_end) {
-    const start = new Date(dateRange.date_start);
-    const end   = new Date(dateRange.date_end);
-    const days  = Math.round((end - start) / 86400000) + 1;
+    const days = Math.round((new Date(dateRange.date_end) - new Date(dateRange.date_start)) / 86400000) + 1;
     if (days > 0) stats.push(`<div class="tv-stat"><b>${days}</b><div>days</div></div>`);
   }
 
@@ -838,9 +818,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
       </div>
     </div>
 
-    <div class="tv-map-wrap">
-      ${mapHtml}
-    </div>
+    <div class="tv-map-wrap">${mapHtml}</div>
 
     <div class="tv-body">
       <div class="tv-desc">
@@ -862,9 +840,6 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
                 <span class="tv-av">${esc(v.name[0].toUpperCase())}</span>
                 ${esc(v.name)}
               </div>`).join('')}
-            <p style="font-family:'Kalam',cursive;font-size:0.75rem;color:var(--ink-faint);margin:0.4rem 0 0">
-              They can see this travel and all linked albums automatically.
-            </p>
           </div>` : ''}
       </div>
     </div>
@@ -888,9 +863,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
 
 function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, session, dateRange) {
   const slug = esc(travel.slug);
-  const canEdit = canModify(session, travel);
 
-  // Group photos by date
   const byDate = {};
   linkedPhotos.forEach(p => {
     const d = p.taken_at ? p.taken_at.substring(0, 10) : 'unknown';
@@ -907,14 +880,9 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
     height: 200, zoomControl: false
   });
 
-  const dateStr = dateRange.date_start
-    ? `${fmtDate(dateRange.date_start)} → ${fmtDate(dateRange.date_end || dateRange.date_start)}`
-    : '';
-
   const stats = [];
   if (travel.gpx_distance_km) stats.push(`<b>${travel.gpx_distance_km}</b> km`);
   if (travel.gpx_duration_min) stats.push(`<b>${fmtDuration(travel.gpx_duration_min)}</b> moving`);
-  if (dateStr) stats.push(dateStr);
 
   const gridClass = n => n >= 4 ? 'k4' : n === 3 ? 'k3' : n === 2 ? 'k2' : 'k1';
 
@@ -929,7 +897,6 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
           <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title || '')}" loading="lazy">
         </a>
       </div>`).join('');
-
     return `
       <div class="tv-stop">
         <div class="tv-stop-when">
@@ -972,15 +939,13 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
 
 // ── Routes ────────────────────────────────────────────────────────────────
 
-// Index
 router.get('/', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
-
   const { rows } = isViewer
     ? await db.query(`
         SELECT t.*, u.name AS creator_name,
-          COUNT(DISTINCT ta.album_id)::int  AS album_count,
-          COUNT(DISTINCT tp.photo_id)::int  AS photo_count
+          COUNT(DISTINCT ta.album_id)::int AS album_count,
+          COUNT(DISTINCT tp.photo_id)::int AS photo_count
         FROM travels t
         JOIN users u ON u.id = t.user_id
         JOIN travel_access tac ON tac.travel_id = t.id AND tac.viewer_id = $1
@@ -991,8 +956,8 @@ router.get('/', wrapAsync(async (req, res) => {
       `, [req.session.userId])
     : await db.query(`
         SELECT t.*, u.name AS creator_name,
-          COUNT(DISTINCT ta.album_id)::int  AS album_count,
-          COUNT(DISTINCT tp.photo_id)::int  AS photo_count
+          COUNT(DISTINCT ta.album_id)::int AS album_count,
+          COUNT(DISTINCT tp.photo_id)::int AS photo_count
         FROM travels t
         JOIN users u ON u.id = t.user_id
         LEFT JOIN travel_albums ta ON ta.travel_id = t.id
@@ -1004,55 +969,54 @@ router.get('/', wrapAsync(async (req, res) => {
   res.send(indexView(rows, req.session));
 }));
 
-// New travel form
 router.get('/new', requireEditor, (req, res) => {
   res.send(createFormView(req.session));
 });
 
-// Create travel
 router.post('/', requireEditor, gpxUpload.single('gpx'), wrapAsync(async (req, res) => {
   const { title, description } = req.body;
   if (!title || !title.trim()) return res.redirect('/travels/new');
 
-  const slug = await uniqueSlug(makeSlug(title.trim()));
+  const baseSlug = makeSlug(title.trim());
   let gpxFilename = null;
-  let gpxStats = {};
+  let gpxGeojson = null, gpxDistanceKm = null, gpxDurationMin = null, gpxTrackpoints = null;
 
   if (req.file) {
     gpxFilename = req.file.filename;
     try {
-      const xml = fs.readFileSync(req.file.path, 'utf8');
+      const xml = await fsp.readFile(req.file.path, 'utf8');
       const parsed = parseGpx(xml);
-      gpxStats = {
-        gpx_geojson:      parsed.geojson,
-        gpx_distance_km:  parsed.distanceKm,
-        gpx_duration_min: parsed.durationMin,
-        gpx_trackpoints:  parsed.trackpoints,
-      };
+      gpxGeojson = parsed.geojson ? JSON.stringify(parsed.geojson) : null;
+      gpxDistanceKm = parsed.distanceKm;
+      gpxDurationMin = parsed.durationMin;
+      gpxTrackpoints = parsed.trackpoints;
     } catch (_) { /* invalid GPX — keep file, skip stats */ }
   }
 
-  const { rows } = await db.query(`
-    INSERT INTO travels (user_id, title, description, slug, gpx_filename, gpx_geojson, gpx_distance_km, gpx_duration_min, gpx_trackpoints)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    RETURNING id, slug
-  `, [
-    req.session.userId, title.trim(), description || null, slug, gpxFilename,
-    gpxStats.gpx_geojson ? JSON.stringify(gpxStats.gpx_geojson) : null,
-    gpxStats.gpx_distance_km || null,
-    gpxStats.gpx_duration_min || null,
-    gpxStats.gpx_trackpoints || null,
-  ]);
-
-  res.redirect(`/travels/${rows[0].slug}/edit`);
+  // Slug collision handled by catching the unique constraint (fix #6)
+  let slug = await uniqueSlug(baseSlug);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const { rows } = await db.query(`
+        INSERT INTO travels (user_id, title, description, slug, gpx_filename, gpx_geojson, gpx_distance_km, gpx_duration_min, gpx_trackpoints)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        RETURNING slug
+      `, [req.session.userId, title.trim(), description || null, slug,
+          gpxFilename, gpxGeojson, gpxDistanceKm, gpxDurationMin, gpxTrackpoints]);
+      return res.redirect(`/travels/${rows[0].slug}/edit`);
+    } catch (err) {
+      if (err.code === '23505') { slug = baseSlug + '-' + (attempt + 2); }
+      else throw err;
+    }
+  }
+  throw new Error('Could not generate a unique slug after 5 attempts');
 }));
 
-// Detail page
 router.get('/:slug', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
   const travel = await fetchTravel(req.params.slug, isViewer ? req.session.userId : null);
-  if (!travel) return res.status(404).send(page('Not found', '<main><p>Travel not found.</p></main>', req.session));
-  if (!canView(req.session, travel)) return res.status(403).send(page('Access denied', '<main><p>You do not have access to this travel.</p></main>', req.session));
+  if (!travel) return res.status(404).send(page('Not found', '<p>Travel not found.</p>', req.session));
+  if (!canView(req.session, travel)) return res.status(403).send(page('Access denied', '<p>You do not have access to this travel.</p>', req.session));
 
   const [linkedAlbums, linkedPhotos, travelViewers, dateRange] = await Promise.all([
     fetchLinkedAlbums(travel.id),
@@ -1067,7 +1031,6 @@ router.get('/:slug', wrapAsync(async (req, res) => {
   res.send(detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, req.session, dateRange));
 }));
 
-// Edit form
 router.get('/:slug/edit', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).send('Not found');
@@ -1083,7 +1046,6 @@ router.get('/:slug/edit', requireEditor, wrapAsync(async (req, res) => {
   res.send(editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelViewers, req.session));
 }));
 
-// Save edits
 router.post('/:slug/edit', requireEditor, gpxUpload.single('gpx'), wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).send('Not found');
@@ -1093,28 +1055,21 @@ router.post('/:slug/edit', requireEditor, gpxUpload.single('gpx'), wrapAsync(asy
   if (!title || !title.trim()) return res.redirect(`/travels/${req.params.slug}/edit`);
 
   const newSlug = await uniqueSlug(makeSlug(title.trim()), travel.id);
-
-  let gpxFilename = travel.gpx_filename;
-  let gpxCols = '';
   const params = [title.trim(), description || null, newSlug, travel.id];
+  let gpxCols = '';
 
   if (req.file) {
-    // delete old GPX
-    if (travel.gpx_filename) {
-      const old = path.join(UPLOAD_DIR, travel.gpx_filename);
-      if (fs.existsSync(old)) fs.unlinkSync(old);
-    }
-    gpxFilename = req.file.filename;
+    await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
     try {
-      const xml = fs.readFileSync(req.file.path, 'utf8');
+      const xml = await fsp.readFile(req.file.path, 'utf8');
       const parsed = parseGpx(xml);
       gpxCols = ', gpx_filename=$5, gpx_geojson=$6, gpx_distance_km=$7, gpx_duration_min=$8, gpx_trackpoints=$9';
-      params.push(gpxFilename,
+      params.push(req.file.filename,
         parsed.geojson ? JSON.stringify(parsed.geojson) : null,
         parsed.distanceKm, parsed.durationMin, parsed.trackpoints);
     } catch (_) {
       gpxCols = ', gpx_filename=$5';
-      params.push(gpxFilename);
+      params.push(req.file.filename);
     }
   }
 
@@ -1126,46 +1081,46 @@ router.post('/:slug/edit', requireEditor, gpxUpload.single('gpx'), wrapAsync(asy
   res.redirect(`/travels/${newSlug}/edit`);
 }));
 
-// GPX upload (AJAX)
+// GPX upload (AJAX JSON response)
 router.post('/:slug/gpx', requireEditor, gpxUpload.single('gpx'), wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).json({ error: 'Not found' });
   if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-  // delete old GPX
-  if (travel.gpx_filename) {
-    const old = path.join(UPLOAD_DIR, travel.gpx_filename);
-    if (fs.existsSync(old)) fs.unlinkSync(old);
-  }
+  await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
 
   let geojson = null, distanceKm = null, durationMin = null, trackpoints = null;
   try {
-    const xml = fs.readFileSync(req.file.path, 'utf8');
+    const xml = await fsp.readFile(req.file.path, 'utf8');
     const parsed = parseGpx(xml);
-    geojson = parsed.geojson; distanceKm = parsed.distanceKm;
-    durationMin = parsed.durationMin; trackpoints = parsed.trackpoints;
+    geojson = parsed.geojson ? JSON.stringify(parsed.geojson) : null;
+    distanceKm = parsed.distanceKm; durationMin = parsed.durationMin; trackpoints = parsed.trackpoints;
   } catch (_) { /* invalid GPX */ }
 
   await db.query(
     `UPDATE travels SET gpx_filename=$1, gpx_geojson=$2, gpx_distance_km=$3, gpx_duration_min=$4, gpx_trackpoints=$5, updated_at=NOW() WHERE id=$6`,
-    [req.file.filename, geojson ? JSON.stringify(geojson) : null, distanceKm, durationMin, trackpoints, travel.id]
+    [req.file.filename, geojson, distanceKm, durationMin, trackpoints, travel.id]
   );
 
   res.json({ ok: true });
 }));
 
-// GPX remove
+// Authenticated GPX file download (fix #7 — not served via static)
+router.get('/:slug/gpx/file', wrapAsync(async (req, res) => {
+  const isViewer = req.session.role === 'viewer';
+  const travel = await fetchTravel(req.params.slug, isViewer ? req.session.userId : null);
+  if (!travel || !canView(req.session, travel)) return res.status(403).send('Access denied');
+  if (!travel.gpx_filename) return res.status(404).send('No GPX file');
+  res.download(path.join(GPX_DIR, travel.gpx_filename), travel.slug + '.gpx');
+}));
+
 router.post('/:slug/gpx/remove', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).send('Not found');
   if (!canModify(req.session, travel)) return res.status(403).send('Access denied');
 
-  if (travel.gpx_filename) {
-    const old = path.join(UPLOAD_DIR, travel.gpx_filename);
-    if (fs.existsSync(old)) fs.unlinkSync(old);
-  }
-
+  await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
   await db.query(
     `UPDATE travels SET gpx_filename=NULL, gpx_geojson=NULL, gpx_distance_km=NULL, gpx_duration_min=NULL, gpx_trackpoints=NULL, updated_at=NOW() WHERE id=$1`,
     [travel.id]
@@ -1174,36 +1129,30 @@ router.post('/:slug/gpx/remove', requireEditor, wrapAsync(async (req, res) => {
   res.redirect(`/travels/${travel.slug}/edit`);
 }));
 
-// Delete
 router.post('/:slug/delete', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).send('Not found');
   if (!canModify(req.session, travel)) return res.status(403).send('Access denied');
 
-  if (travel.gpx_filename) {
-    const gpxPath = path.join(UPLOAD_DIR, travel.gpx_filename);
-    if (fs.existsSync(gpxPath)) fs.unlinkSync(gpxPath);
-  }
-
+  await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
   await db.query('DELETE FROM travels WHERE id=$1', [travel.id]);
   res.redirect('/travels');
 }));
 
-// ── JSON APIs for modals ─────────────────────────────────────────────────
+// ── JSON APIs ─────────────────────────────────────────────────────────────
 
-// GET linkable albums and photos (not yet linked)
 router.get('/:slug/api/linkable', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).json({ error: 'Not found' });
   if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
 
+  // fetchLinkedAlbums and fetchLinkedPhotos run in parallel
   const [albums, photos] = await Promise.all([
     db.query(`
       SELECT a.id, a.title,
         COUNT(DISTINCT ap.photo_id)::int AS photo_count,
         (SELECT p2.filename FROM photos p2 JOIN album_photos ap2 ON ap2.photo_id=p2.id WHERE ap2.album_id=a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
-      FROM albums a
-      LEFT JOIN album_photos ap ON ap.album_id = a.id
+      FROM albums a LEFT JOIN album_photos ap ON ap.album_id = a.id
       GROUP BY a.id ORDER BY a.created_at DESC
     `),
     db.query(`
@@ -1215,7 +1164,7 @@ router.get('/:slug/api/linkable', requireEditor, wrapAsync(async (req, res) => {
   res.json({ albums: albums.rows, photos: photos.rows });
 }));
 
-// POST save links (full replace)
+// Full replace of linked albums + photos (fix #1: dedicated client for transaction)
 router.post('/:slug/api/links', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).json({ error: 'Not found' });
@@ -1224,45 +1173,58 @@ router.post('/:slug/api/links', requireEditor, wrapAsync(async (req, res) => {
   const { albumIds = [], photoIds = [] } = req.body;
   const tId = travel.id;
 
-  await db.query('BEGIN');
+  const client = await db.connect();
   try {
-    await db.query('DELETE FROM travel_albums WHERE travel_id=$1', [tId]);
-    await db.query('DELETE FROM travel_photos WHERE travel_id=$1', [tId]);
-
+    await client.query('BEGIN');
+    await client.query('DELETE FROM travel_albums WHERE travel_id=$1', [tId]);
+    await client.query('DELETE FROM travel_photos WHERE travel_id=$1', [tId]);
     for (const id of albumIds) {
-      await db.query('INSERT INTO travel_albums (travel_id, album_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
+      await client.query('INSERT INTO travel_albums (travel_id, album_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
     }
     for (const id of photoIds) {
-      await db.query('INSERT INTO travel_photos (travel_id, photo_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
+      await client.query('INSERT INTO travel_photos (travel_id, photo_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
     }
-    await db.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
 
   res.json({ ok: true });
 }));
 
-// POST update viewers
+// Replace viewer access — validates IDs are actual viewer-role users (fix #4)
+// Uses dedicated client for transaction (fix #1)
 router.post('/:slug/api/share', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).json({ error: 'Not found' });
   if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
 
-  const { viewerIds = [] } = req.body;
+  const rawIds = (req.body.viewerIds || []).map(Number).filter(Number.isFinite);
+
+  // Only allow IDs that belong to viewer-role accounts
+  const { rows: validViewers } = await db.query(
+    `SELECT id FROM users WHERE role = 'viewer' AND id = ANY($1::int[])`,
+    [rawIds]
+  );
+  const safeIds = validViewers.map(r => r.id);
   const tId = travel.id;
 
-  await db.query('BEGIN');
+  const client = await db.connect();
   try {
-    await db.query('DELETE FROM travel_access WHERE travel_id=$1', [tId]);
-    for (const id of viewerIds) {
-      await db.query('INSERT INTO travel_access (travel_id, viewer_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
+    await client.query('BEGIN');
+    await client.query('DELETE FROM travel_access WHERE travel_id=$1', [tId]);
+    for (const id of safeIds) {
+      await client.query('INSERT INTO travel_access (travel_id, viewer_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
     }
-    await db.query('COMMIT');
+    await client.query('COMMIT');
   } catch (err) {
-    await db.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
 
   res.json({ ok: true });
