@@ -3,7 +3,10 @@ jest.mock('exifr', () => ({ parse: jest.fn(), gps: jest.fn() }));
 const exifr = require('exifr');
 const { extractMetadata } = require('../extractMetadata');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.resetAllMocks();
+  exifr.gps.mockResolvedValue(null);
+});
 
 describe('extractMetadata', () => {
   it('returns takenAt, exposureTime, focalLength, and GPS from EXIF', async () => {

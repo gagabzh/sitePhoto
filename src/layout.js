@@ -42,6 +42,7 @@ function page(title, body, session) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${session && session.csrf ? `<meta name="csrf-token" content="${esc(session.csrf)}">` : ''}
   <title>${esc(title)} — sitephoto</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1985,6 +1986,7 @@ function page(title, body, session) {
     }
     document.querySelectorAll('.loc-search-wrap').forEach(initLocationSearch);
   })();</script>
+<script>(function(){var t=document.querySelector('meta[name="csrf-token"]');if(!t||!t.content)return;var c=t.content;document.querySelectorAll('form[method="POST"],form[method="post"]').forEach(function(f){if(!f.querySelector('[name="_csrf"]')){var i=document.createElement('input');i.type='hidden';i.name='_csrf';i.value=c;f.appendChild(i);}});var o=window.fetch;window.fetch=function(u,p){if(p&&p.method&&!/^(GET|HEAD)$/i.test(p.method)){p=Object.assign({},p);p.headers=Object.assign({'X-CSRF-Token':c},p.headers||{});}return o.call(this,u,p);};}());</script>
 </body>
 </html>`;
 }

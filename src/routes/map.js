@@ -174,11 +174,11 @@ router.get('/', wrapAsync(async (req, res) => {
          </div>
          <div id="strip-photos" class="map-strip-photos"></div>
        </div>
-       <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
-       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
-       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-       <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+       <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+       <link rel="stylesheet" href="/vendor/leaflet.markercluster/MarkerCluster.css">
+       <link rel="stylesheet" href="/vendor/leaflet.markercluster/MarkerCluster.Default.css">
+       <script src="/vendor/leaflet/leaflet.js"></script>
+       <script src="/vendor/leaflet.markercluster/leaflet.markercluster.js"></script>
        <script>
          (function(){
            var photos = ${photosJson};

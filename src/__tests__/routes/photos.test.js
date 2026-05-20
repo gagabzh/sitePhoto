@@ -24,8 +24,23 @@ const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const fs = require('fs');
+const { upload } = require('../../uploadHelpers');
+const { optimizePhoto } = require('../../imageOptimizer');
+const { extractMetadata } = require('../../extractMetadata');
+const { selectionBar, selectionScript } = require('../../components');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.resetAllMocks();
+  upload.single.mockReturnValue((req, res, cb) => {
+    req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
+    cb();
+  });
+  optimizePhoto.mockResolvedValue(4000);
+  extractMetadata.mockResolvedValue({});
+  fs.promises.unlink.mockResolvedValue();
+  selectionBar.mockReturnValue('<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>');
+  selectionScript.mockReturnValue('<script>/* sel-script-mock */</script>');
+});
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
 const ADMIN_SESSION  = { userId: 1,  name: 'Admin', role: 'admin' };

@@ -4,7 +4,7 @@ const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => jest.resetAllMocks());
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
 const ADMIN_SESSION  = { userId: 1,  name: 'Admin', role: 'admin' };

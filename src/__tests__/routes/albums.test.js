@@ -32,8 +32,30 @@ jest.mock('multer', () => {
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
+const fs = require('fs');
+const { upload } = require('../../uploadHelpers');
+const { optimizePhoto } = require('../../imageOptimizer');
+const { extractMetadata } = require('../../extractMetadata');
+const { selectionBar, selectionScript, lbOverlay, lbScript } = require('../../components');
 
-beforeEach(() => jest.clearAllMocks());
+const SINGLE_FILE = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
+const MULTI_FILES = [
+  { filename: 'uuid-1.jpg', originalname: 'beach.jpg', mimetype: 'image/jpeg', size: 5000 },
+  { filename: 'uuid-2.jpg', originalname: 'sunset.png', mimetype: 'image/png', size: 3000 },
+];
+
+beforeEach(() => {
+  jest.resetAllMocks();
+  upload.single.mockReturnValue((req, res, cb) => { req.file = SINGLE_FILE; cb(); });
+  upload.array.mockReturnValue((req, res, cb) => { req.files = MULTI_FILES; cb(); });
+  optimizePhoto.mockResolvedValue(4000);
+  extractMetadata.mockResolvedValue({});
+  fs.promises.unlink.mockResolvedValue();
+  selectionBar.mockReturnValue('<div class="sel-bar-mock" id="sel-bar"></div>');
+  selectionScript.mockReturnValue('<script>/* sel-script-mock */</script>');
+  lbOverlay.mockReturnValue('<div id="lb" class="lb-overlay-mock"></div>');
+  lbScript.mockReturnValue('<script>/* lb-script-mock */</script>');
+});
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
 const ADMIN_SESSION  = { userId: 1,  name: 'Admin', role: 'admin' };
@@ -493,10 +515,17 @@ describe('AC1: POST /albums/:id/access/add — grant access', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO album_access'),
-      ['1', '20']
+      ['1', 20]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1/access');
+  });
+
+  it('returns 400 for non-integer viewer_id', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/access/add')
+      .send('viewer_id=abc');
+    expect(res.status).toBe(400);
   });
 
   it('returns 403 for non-owner editor', async () => {
@@ -527,10 +556,17 @@ describe('AC2: POST /albums/:id/access/remove — revoke access', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM album_access'),
-      ['1', '20']
+      ['1', 20]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1/access');
+  });
+
+  it('returns 400 for non-integer viewer_id', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/access/remove')
+      .send('viewer_id=abc');
+    expect(res.status).toBe(400);
   });
 
   it('returns 403 for viewer', async () => {
@@ -572,9 +608,16 @@ describe('US-A2: POST /albums/:id/photos/add', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO album_photos'),
-      ['1', '5']
+      ['1', 5]
     );
     expect(res.status).toBe(302);
+  });
+
+  it('returns 400 for non-integer photo_id', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/add')
+      .send('photo_id=abc');
+    expect(res.status).toBe(400);
   });
 
   it('returns 403 for viewer', async () => {
@@ -595,9 +638,16 @@ describe('US-A2: POST /albums/:id/photos/remove', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM album_photos'),
-      ['1', '5']
+      ['1', 5]
     );
     expect(res.status).toBe(302);
+  });
+
+  it('returns 400 for non-integer photo_id', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/1/photos/remove')
+      .send('photo_id=abc');
+    expect(res.status).toBe(400);
   });
 
   it('returns 403 for viewer', async () => {

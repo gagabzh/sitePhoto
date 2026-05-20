@@ -176,8 +176,8 @@ function miniMapHtml(mapId, geojson, photoPins, opts = {}) {
 
   return `
     <div id="${mapId}" style="height:${height}px;width:100%" class="${cssClass}"></div>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+    <script src="/vendor/leaflet/leaflet.js"></script>
     <script>(function(){
       var m = L.map('${mapId}', { center:[20,0], zoom:${zoom}, zoomControl:${opts.zoomControl !== false} });
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
@@ -657,7 +657,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
             lpData.photos = d.photos || [];
             renderLpGrid('album');
             renderLpGrid('photo');
-          }).catch(function(){});
+          }).catch(function(){ toast('Could not load content — try again'); });
       }
       function renderLpGrid(type) {
         var el = document.getElementById('lp-'+type+'s');
@@ -677,7 +677,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
             +'<div class="tv-lp-meta">'+escHtml(i.title||i.filename||'')+'<span class="tv-lp-n">'+sub+'</span></div>'
             +'<div class="tv-lp-tick">'+(on?' ✓':' ')+'</div>'
             +'</div>';
-        }).join('') || '<div style="padding:0.75rem;font-family:\'Kalam\',cursive;font-size:0.85rem;color:var(--ink-faint)">Nothing to link.</div>';
+        }).join('') || '<div style="padding:0.75rem;font-family:Kalam,cursive;font-size:0.85rem;color:var(--ink-faint)">Nothing to link.</div>';
         el.querySelectorAll('.tv-lp-cell').forEach(function(cell){
           cell.addEventListener('click', function(){
             var id = parseInt(cell.dataset.id);
@@ -696,7 +696,8 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         var el = document.getElementById('lp-status');
         if(el) el.textContent = total + ' item' + (total!==1?'s':'') + ' selected';
       }
-      document.getElementById('lp-search').addEventListener('input', function(){ renderLpGrid(lpMode); });
+      var lpSearchEl = document.getElementById('lp-search');
+      if(lpSearchEl) lpSearchEl.addEventListener('input', function(){ renderLpGrid(lpMode); });
       var linkAlbumsBtn = document.getElementById('link-albums-btn');
       if(linkAlbumsBtn) linkAlbumsBtn.addEventListener('click', function(){ openLinkModal('album'); });
       var linkPhotosBtn = document.getElementById('link-photos-btn');
@@ -759,7 +760,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
   });
 
   const albumCards = linkedAlbums.map(a => `
-    <a href="/albums/${a.id}" class="tv-acard">
+    <a href="/albums/${a.id}?from=/travels/${slug}" class="tv-acard">
       <div class="tv-acard-cover">
         ${a.cover_filename
           ? `<img src="/uploads/${esc(a.cover_filename)}" alt="${esc(a.title)}">`
@@ -774,7 +775,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
 
   const mosaicCells = linkedPhotos.map(p => `
     <div class="tv-mcell">
-      <a href="/photos/${p.id}">
+      <a href="/photos/${p.id}?from=/travels/${slug}">
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title || '')}" loading="lazy">
       </a>
     </div>`).join('');
@@ -863,7 +864,7 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
 
   const byDate = {};
   linkedPhotos.forEach(p => {
-    const d = p.taken_at ? p.taken_at.substring(0, 10) : 'unknown';
+    const d = p.taken_at ? new Date(p.taken_at).toISOString().substring(0, 10) : 'unknown';
     if (!byDate[d]) byDate[d] = [];
     byDate[d].push(p);
   });
@@ -890,7 +891,7 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
     const yrStr  = dt ? dt.getFullYear() : '';
     const cells  = photos.slice(0, 4).map(p => `
       <div class="tv-stop-cell">
-        <a href="/photos/${p.id}">
+        <a href="/photos/${p.id}?from=/travels/${slug}">
           <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title || '')}" loading="lazy">
         </a>
       </div>`).join('');

@@ -15,7 +15,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function parseFrom(raw) {
   if (typeof raw !== 'string') return null;
-  return /^\/photos$|^\/albums\/\d+$/.test(raw) ? raw : null;
+  return /^\/photos$|^\/albums\/\d+$|^\/travels\/[a-z0-9-]+$/.test(raw) ? raw : null;
 }
 
 // US-P1: Photo list — Family Wall layout
@@ -322,8 +322,8 @@ router.get('/:id', wrapAsync(async (req, res) => {
           ${photo.tags.length ? `<div class="tags">${photo.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
           ${photo.latitude != null && photo.longitude != null ? `
           <div id="photo-map" style="height:220px;border-radius:8px;margin-top:0.75rem"></div>
-          <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-          <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+          <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+          <script src="/vendor/leaflet/leaflet.js"></script>
           <script>
             (function(){
               var m = L.map('photo-map').setView([${photo.latitude},${photo.longitude}],13);

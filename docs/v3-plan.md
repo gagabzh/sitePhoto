@@ -96,7 +96,7 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 
 ### TQ-P1 — Fix before next PR merge
 
-**TQ-1 — Restore coverage threshold** — *quality check ✅*
+**TQ-1 — Restore coverage threshold** ✅
 - Current global coverage is 74.62%, below the 90% statement/line threshold set in `package.json`
 - Primary offenders: `tags.js` (32.78%), `api.js` (64.96%), `components.js` (5.83%)
 - Add unit tests for all five functions in `components.js` directly (they are pure HTML-returning functions, easy to test)
@@ -123,12 +123,12 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - ✅ `combinator.js` (473 → 140 lines) render helpers → `combinatorViews.js`; inline script → `combinatorScript.js`
 - ✅ 21 new tests for all extracted query functions
 
-**TQ-4 — Integer coercion on all ID inputs**
+**TQ-4 — Integer coercion on all ID inputs** ✅
 - `POST /albums/:id/access/add` and `POST /albums/:id/access/remove` pass `req.body.viewer_id` to queries without `parseInt`
 - Add a guard at the top of each handler: `const viewerId = parseInt(req.body.viewer_id); if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');`
 - Apply the same pattern to any other route accepting numeric IDs from the request body
 
-**TQ-5 — Standardise `resetAllMocks` across all test files**
+**TQ-5 — Standardise `resetAllMocks` across all test files** ✅
 - Several test files use `jest.clearAllMocks()` — team convention is `jest.resetAllMocks()` to prevent `mockResolvedValueOnce` queue bleed
 - Do a global find-and-replace in `src/__tests__/`; confirm no test starts relying on mock state leaking between `it()` blocks
 
@@ -155,6 +155,31 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - Replace with: one `INSERT INTO tags (name) SELECT unnest($1::text[]) … RETURNING id`, then one `INSERT INTO photo_tags … SELECT unnest($1::int[]), unnest($2::int[])`
 - Critical for batch uploads (200 photos × 5 tags = 2,000 queries today)
 
+**TQ-12 — Extract views from all route handlers (follow tags pattern)**
+- `photos.js`, `albums.js`, `travels.js`, `map.js`, `timeline.js` mix SQL, auth logic, and HTML rendering in single handler functions
+- Extract inline HTML into `*Views.js` and inline scripts into `*Script.js` modules, mirroring the split done for `tags/` in TQ-3b
+- Target: route handlers contain only HTTP plumbing; view functions are independently testable
+
+**TQ-13 — Move `canModify` to shared module**
+- `canModify(session, entity)` is currently defined in `middleware.js` and only used in route handlers; it is a domain concept, not HTTP middleware
+- Move to a shared `src/permissions.js` (or `src/auth.js`) module; re-export from `middleware.js` for backwards compatibility during migration
+- Rationale: clearer layering — authorization logic belongs with business rules, not Express plumbing
+
+**TQ-14 — Extract `filterOwnedPhotoIds` helper**
+- Several route handlers (albums, photos) repeat the pattern of filtering a list of photo IDs down to those owned by the current user
+- Extract to a shared helper function; cover with unit tests
+- Reduces duplication and makes ownership checks easier to audit
+
+**TQ-15 — Replace `setTags` loop with bulk UNNEST**
+- `uploadHelpers.js:52-65` issues 2 queries per tag in a loop (N×2 round-trips)
+- Replace with: one `INSERT INTO tags (name) SELECT unnest($1::text[]) … RETURNING id`, then one `INSERT INTO photo_tags … SELECT unnest($1::int[]), unnest($2::int[])`
+- Critical for batch uploads (200 photos × 5 tags = 2,000 queries today); this is TQ-9 renamed with updated context
+
+**TQ-16 — Move SQL queries to `queries.js` modules**
+- Raw `db.query` calls are scattered throughout route handlers in `photos.js`, `albums.js`, `travels.js`, etc.
+- Extract all DB access into per-route `queries.js` files (as done for `tags/queries.js` in TQ-3b)
+- Enables unit testing of DB logic without HTTP overhead; prerequisite for TQ-11
+
 ### TQ-Long-term
 
 **TQ-10 — Extract CSS from `layout.js` to a static file**
@@ -167,6 +192,20 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - Introduce `src/repositories/` (DB queries) and optionally `src/services/` (business logic) as separate modules
 - Start with the most tested routes (`photos.js`, `albums.js`) to keep the refactor safe
 - Target: route handlers contain only HTTP plumbing; business logic is independently unit-testable
+
+**TQ-17 — Log (don't swallow) file deletion errors**
+- `safeUnlink` and fire-and-forget `.catch(() => {})` calls silently discard unlink errors; orphaned files go unnoticed
+- Replace empty catch blocks with `console.warn` at minimum; consider a structured log entry with the file path and error code
+- Related to TR-8 in the travel page backlog
+
+**TQ-18 — Unify UI language (pick EN or FR)**
+- Mixed English/French labels exist in the UI (form labels, button text, error messages)
+- Decide on one language and do a pass to make all user-facing strings consistent
+
+**TQ-19 — Split `layout.js`**
+- `layout.js` is ~2,000 lines: CSS string, nav HTML, page shell, location-search script, CSRF script, and `esc()` utility all in one file
+- Split into: `src/layout/page.js` (shell + nav), `public/style.css` (extracted CSS — see TQ-10), `src/layout/esc.js` (utility)
+- Supersedes TQ-10; doing both together avoids a second large refactor
 
 ---
 

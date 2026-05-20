@@ -7,7 +7,7 @@ const db = require('../../db');
 const bcrypt = require('bcryptjs');
 const { requireAdmin } = require('../../middleware');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => jest.resetAllMocks());
 
 const ADMIN_SESSION = { userId: 1, name: 'Admin', role: 'admin' };
 const EDITOR_SESSION = { userId: 2, name: 'Editor', role: 'editor' };
@@ -78,6 +78,24 @@ describe('US-2: Create user', () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users/new?error=1');
   });
+
+  it('POST /admin/users returns 400 for invalid role', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users')
+      .send('name=Bob&email=bob%40test.com&password=password1&role=superadmin');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('POST /admin/users returns 400 for password shorter than 8 chars', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users')
+      .send('name=Bob&email=bob%40test.com&password=short&role=viewer');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
+  });
 });
 
 describe('US-3: Edit user', () => {
@@ -118,6 +136,15 @@ describe('US-3: Edit user', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users/2/edit?error=1');
+  });
+
+  it('POST /admin/users/:id returns 400 for invalid role', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users/2')
+      .send('name=Alice&email=alice%40test.com&role=god');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
 
@@ -196,5 +223,15 @@ describe('US-5: Admin reset user password', () => {
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users/2/password?done=1');
+  });
+
+  it('POST /admin/users/:id/password returns 400 for password shorter than 8 chars', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users/2/password')
+      .send('password=short');
+
+    expect(res.status).toBe(400);
+    expect(bcrypt.hash).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
