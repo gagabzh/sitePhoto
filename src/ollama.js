@@ -1,13 +1,14 @@
 const http = require('http');
 
 const TIMEOUT_MS = 120_000;
-const HOST = process.env.OLLAMA_HOST || '127.0.0.1';
-const PORT = parseInt(process.env.OLLAMA_PORT || '11434', 10);
+const HOST  = process.env.OLLAMA_HOST  || '127.0.0.1';
+const PORT  = parseInt(process.env.OLLAMA_PORT  || '11434', 10);
+const MODEL = process.env.OLLAMA_MODEL || 'llava';
 
 // Sends a generate request to the local Ollama instance.
 // `images` is an optional array of base64-encoded image strings (for vision models).
 // Rejects with a descriptive Error when Ollama is unreachable or times out.
-async function generate({ model = 'llava', prompt, images = [] }) {
+async function generate({ model = MODEL, prompt, images = [] }) {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify({ model, prompt, images, stream: false });
     const req = http.request(
