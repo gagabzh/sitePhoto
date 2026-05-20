@@ -139,7 +139,7 @@ Two AI features are available under **Admin → AI Tools**:
 
 ### Installing Ollama
 
-Ollama runs on the **host machine**, outside Docker. The app calls it at `http://127.0.0.1:11434`.
+Ollama runs on the **host machine**, outside Docker.
 
 ```bash
 # 1. Install Ollama
@@ -149,25 +149,45 @@ curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llava          # ~4 GB, best quality, requires a GPU
 # or a lighter alternative:
 ollama pull moondream      # ~1.7 GB, works on CPU (slower)
-
-# 3. Verify Ollama is running
-curl http://localhost:11434/api/tags
 ```
 
-### Connecting Ollama to the Docker container
+### Allow Docker to reach Ollama
 
-The app container must be able to reach the host's Ollama. Add the following to the `app` service in `docker-compose.yml` (or to your `.env`):
+By default Ollama binds only to `127.0.0.1`, which Docker containers cannot reach.
+You must configure it to listen on all interfaces **before** starting it:
+
+```bash
+# If Ollama runs as a systemd service (default on Linux):
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+sudo tee /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0"
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+
+# Verify it's reachable from the Docker bridge IP:
+curl http://172.17.0.1:11434/api/tags
+```
+
+> **Quick test (no systemd change):** stop the service and run manually:
+> ```bash
+> sudo systemctl stop ollama
+> OLLAMA_HOST=0.0.0.0 ollama serve
+> ```
+
+### Connecting the Docker container
+
+`docker-compose.yml` already includes the required settings (no change needed):
 
 ```yaml
-# docker-compose.yml — app service
+# app service — already present in docker-compose.yml
 extra_hosts:
   - "host-gateway:host-gateway"
 environment:
   OLLAMA_HOST: host-gateway
-  OLLAMA_PORT: 11434        # default, can be omitted
+  OLLAMA_PORT: 11434
 ```
-
-On Linux the host is also reachable at `172.17.0.1` (default docker0 bridge IP) if you prefer to set `OLLAMA_HOST=172.17.0.1` in `.env` without touching `docker-compose.yml`.
 
 If Ollama is not running, duplicate detection still works (pHash only) and people identification returns a graceful error — the app never crashes.
 
