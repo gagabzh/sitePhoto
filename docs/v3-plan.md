@@ -155,6 +155,31 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - Replace with: one `INSERT INTO tags (name) SELECT unnest($1::text[]) … RETURNING id`, then one `INSERT INTO photo_tags … SELECT unnest($1::int[]), unnest($2::int[])`
 - Critical for batch uploads (200 photos × 5 tags = 2,000 queries today)
 
+**TQ-12 — Extract views from all route handlers (follow tags pattern)**
+- `photos.js`, `albums.js`, `travels.js`, `map.js`, `timeline.js` mix SQL, auth logic, and HTML rendering in single handler functions
+- Extract inline HTML into `*Views.js` and inline scripts into `*Script.js` modules, mirroring the split done for `tags/` in TQ-3b
+- Target: route handlers contain only HTTP plumbing; view functions are independently testable
+
+**TQ-13 — Move `canModify` to shared module**
+- `canModify(session, entity)` is currently defined in `middleware.js` and only used in route handlers; it is a domain concept, not HTTP middleware
+- Move to a shared `src/permissions.js` (or `src/auth.js`) module; re-export from `middleware.js` for backwards compatibility during migration
+- Rationale: clearer layering — authorization logic belongs with business rules, not Express plumbing
+
+**TQ-14 — Extract `filterOwnedPhotoIds` helper**
+- Several route handlers (albums, photos) repeat the pattern of filtering a list of photo IDs down to those owned by the current user
+- Extract to a shared helper function; cover with unit tests
+- Reduces duplication and makes ownership checks easier to audit
+
+**TQ-15 — Replace `setTags` loop with bulk UNNEST**
+- `uploadHelpers.js:52-65` issues 2 queries per tag in a loop (N×2 round-trips)
+- Replace with: one `INSERT INTO tags (name) SELECT unnest($1::text[]) … RETURNING id`, then one `INSERT INTO photo_tags … SELECT unnest($1::int[]), unnest($2::int[])`
+- Critical for batch uploads (200 photos × 5 tags = 2,000 queries today); this is TQ-9 renamed with updated context
+
+**TQ-16 — Move SQL queries to `queries.js` modules**
+- Raw `db.query` calls are scattered throughout route handlers in `photos.js`, `albums.js`, `travels.js`, etc.
+- Extract all DB access into per-route `queries.js` files (as done for `tags/queries.js` in TQ-3b)
+- Enables unit testing of DB logic without HTTP overhead; prerequisite for TQ-11
+
 ### TQ-Long-term
 
 **TQ-10 — Extract CSS from `layout.js` to a static file**
