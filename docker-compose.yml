@@ -25,6 +25,10 @@ services:
       SEED_EMAIL: ${SEED_EMAIL:-saev.bzh@pm.me}
       SEED_PASS: ${SEED_PASS:-changeme}
       UPLOAD_DIR: /app/uploads
+      OLLAMA_HOST: ${OLLAMA_HOST:-host-gateway}
+      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
+    extra_hosts:
+      - "host-gateway:host-gateway"
     volumes:
       - ./uploads:/app/uploads
     depends_on:

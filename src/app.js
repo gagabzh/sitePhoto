@@ -56,7 +56,9 @@ app.use('/timeline', require('./routes/timeline'));
 app.use('/map', require('./routes/map'));
 app.use('/travels', require('./routes/travels'));
 app.use('/api', require('./routes/api'));
+app.use('/admin/ai', requireAdmin, require('./routes/admin-ai'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
+app.use('/api/ai', require('./routes/ai'));
 
 app.use(errorHandler);
 
