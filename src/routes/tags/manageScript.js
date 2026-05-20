@@ -133,6 +133,7 @@ function renderManageScript(editTag) {
             if(d.error){showToast('AI error: '+d.error);return;}
             var descEl=document.getElementById('tm-dr-desc');
             if(descEl&&d.description){descEl.value=d.description;showToast('description generated ✓');}
+            else{showToast('AI returned empty — try a clearer photo');console.log('[describe-person] raw Ollama response:',d.rawResponse);}
           }).catch(function(){aiGenBtn.textContent='Generate description';aiGenBtn.disabled=false;showToast('network error');});
       });
     }

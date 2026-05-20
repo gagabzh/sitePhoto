@@ -169,7 +169,7 @@ router.post('/describe-person', requireEditor, wrapAsync(async (req, res) => {
   }
 
   const description = (ollamaResponse.response || '').trim().replace(/^["']|["']$/g, '').slice(0, 500);
-  res.json({ description });
+  res.json({ description, rawResponse: ollamaResponse.response });
 }));
 
 module.exports = router;
