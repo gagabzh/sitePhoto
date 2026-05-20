@@ -159,7 +159,7 @@ router.post('/describe-person', requireEditor, wrapAsync(async (req, res) => {
   }
   if (!images.length) return res.status(500).json({ error: 'could not read photo files' });
 
-  const prompt = `Look at the photo${images.length > 1 ? 's' : ''}. Describe the physical appearance of the main person in 10-20 words: hair color and style, approximate age, and one or two distinctive features. Be concise and factual. Do not include the person's name. Example: "young woman with curly red hair, glasses, around 30". Output only the description.`;
+  const prompt = `Describe the physical appearance of the main person in the photo${images.length > 1 ? 's' : ''}: hair color and style, approximate age, and one or two distinctive features.`;
 
   let ollamaResponse;
   try {
