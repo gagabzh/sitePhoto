@@ -96,7 +96,7 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 
 ### TQ-P1 — Fix before next PR merge
 
-**TQ-1 — Restore coverage threshold** — *quality check ✅*
+**TQ-1 — Restore coverage threshold** ✅
 - Current global coverage is 74.62%, below the 90% statement/line threshold set in `package.json`
 - Primary offenders: `tags.js` (32.78%), `api.js` (64.96%), `components.js` (5.83%)
 - Add unit tests for all five functions in `components.js` directly (they are pure HTML-returning functions, easy to test)
@@ -123,12 +123,12 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - ✅ `combinator.js` (473 → 140 lines) render helpers → `combinatorViews.js`; inline script → `combinatorScript.js`
 - ✅ 21 new tests for all extracted query functions
 
-**TQ-4 — Integer coercion on all ID inputs**
+**TQ-4 — Integer coercion on all ID inputs** ✅
 - `POST /albums/:id/access/add` and `POST /albums/:id/access/remove` pass `req.body.viewer_id` to queries without `parseInt`
 - Add a guard at the top of each handler: `const viewerId = parseInt(req.body.viewer_id); if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');`
 - Apply the same pattern to any other route accepting numeric IDs from the request body
 
-**TQ-5 — Standardise `resetAllMocks` across all test files**
+**TQ-5 — Standardise `resetAllMocks` across all test files** ✅
 - Several test files use `jest.clearAllMocks()` — team convention is `jest.resetAllMocks()` to prevent `mockResolvedValueOnce` queue bleed
 - Do a global find-and-replace in `src/__tests__/`; confirm no test starts relying on mock state leaking between `it()` blocks
 
