@@ -16,7 +16,7 @@ function page(title, body, session) {
         <a href="/albums">Albums</a>
         <a href="/tags">Tags</a>
         <a href="/timeline">Timeline</a>
-        <a href="/travels">Travels</a>
+        ${session.role !== 'viewer' ? '<a href="/travels">Travels</a>' : ''}
         <a href="/map">Map</a>
         <div class="nav-avatar-wrap">
           <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>

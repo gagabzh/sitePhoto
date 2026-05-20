@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 const { page, esc } = require('../layout');
-const { requireEditor, wrapAsync } = require('../middleware');
+const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { selectionBar, selectionScript } = require('../components');
@@ -12,10 +12,6 @@ const {
 } = require('../uploadHelpers');
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-function canModify(session, photo) {
-  return session.role === 'admin' || photo.user_id === session.userId;
-}
 
 function parseFrom(raw) {
   if (typeof raw !== 'string') return null;

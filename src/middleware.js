@@ -16,6 +16,10 @@ function requireEditor(req, res, next) {
   res.status(403).send('Access denied');
 }
 
+function canModify(session, entity) {
+  return session.role === 'admin' || entity.user_id === session.userId;
+}
+
 // Catches errors forwarded via next(err) and synchronous throws in route
 // handlers. Express 4 async handlers that reject without try/catch bypass
 // this — they become unhandled rejections at the Node.js process level.
@@ -33,4 +37,4 @@ function errorHandler(err, req, res, next) {
 
 const wrapAsync = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-module.exports = { requireAuth, requireAdmin, requireEditor, errorHandler, wrapAsync };
+module.exports = { requireAuth, requireAdmin, requireEditor, canModify, errorHandler, wrapAsync };

@@ -110,6 +110,14 @@ describe('GET /travels', () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain('no travels yet');
   });
+
+  it('nav shows Travels link for editor but not viewer', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    const editorRes = await request(makeApp(EDITOR_SESSION)).get('/travels');
+    const viewerRes = await request(makeApp(VIEWER_SESSION)).get('/travels');
+    expect(editorRes.text).toContain('href="/travels"');
+    expect(viewerRes.text).not.toContain('href="/travels"');
+  });
 });
 
 // ── GET /travels/new ─────────────────────────────────────────────────────────
@@ -541,7 +549,11 @@ describe('GET /travels/:slug/api/linkable', () => {
 
 describe('POST /travels/:slug/api/links', () => {
   it('replaces links in a transaction and returns { ok: true }', async () => {
-    db.query.mockResolvedValueOnce({ rows: [FAKE_TRAVEL] });  // fetchTravel
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_TRAVEL] })        // fetchTravel
+      // Promise.all ownership checks: albums query, photos query
+      .mockResolvedValueOnce({ rows: [{ id: 3 }, { id: 4 }] })  // owned albums
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] });             // owned photos
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/travels/patagonia-2024/api/links')
@@ -551,7 +563,13 @@ describe('POST /travels/:slug/api/links', () => {
     expect(res.status).toBe(200);
     expect(JSON.parse(res.text)).toMatchObject({ ok: true });
 
-    // Transaction sequence
+    // Ownership queries restrict to current user's content
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM albums WHERE id = ANY'),
+      [[3, 4], EDITOR_SESSION.userId]
+    );
+
+    // Transaction uses bulk UNNEST, not per-row inserts
     expect(db.connect).toHaveBeenCalled();
     expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
     expect(mockClient.query).toHaveBeenCalledWith(
@@ -559,19 +577,41 @@ describe('POST /travels/:slug/api/links', () => {
       [FAKE_TRAVEL.id]
     );
     expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM travel_photos'),
-      [FAKE_TRAVEL.id]
+      expect.stringContaining('INSERT INTO travel_albums'),
+      [FAKE_TRAVEL.id, [3, 4]]
     );
     expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringContaining('INSERT INTO travel_albums'),
-      [FAKE_TRAVEL.id, 3]
+      expect.stringContaining('INSERT INTO travel_photos'),
+      [FAKE_TRAVEL.id, [7]]
     );
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     expect(mockClient.release).toHaveBeenCalled();
   });
 
+  it('strips IDs not owned by the current user', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_TRAVEL] })    // fetchTravel
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })      // only album 3 is owned (4 is not)
+      .mockResolvedValueOnce({ rows: [] });               // no owned photos
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/travels/patagonia-2024/api/links')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ albumIds: [3, 4], photoIds: [99] }));
+
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO travel_albums'),
+      [FAKE_TRAVEL.id, [3]]  // only 3, not 4
+    );
+    expect(mockClient.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO travel_photos'),
+      expect.any(Array)
+    );
+  });
+
   it('rolls back and throws on client.query error', async () => {
     db.query.mockResolvedValueOnce({ rows: [FAKE_TRAVEL] });
+    // No ownership queries for empty arrays
     mockClient.query
       .mockResolvedValueOnce({})  // BEGIN
       .mockRejectedValueOnce(new Error('db error'));
@@ -624,14 +664,14 @@ describe('POST /travels/:slug/api/share', () => {
       expect.stringContaining("role = 'viewer'"),
       expect.any(Array)
     );
-    // Only viewer 20 inserted, not 99
+    // Only viewer 20 inserted (bulk UNNEST), not 99
     expect(mockClient.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO travel_access'),
-      [FAKE_TRAVEL.id, 20]
+      [FAKE_TRAVEL.id, [20]]
     );
     expect(mockClient.query).not.toHaveBeenCalledWith(
       expect.any(String),
-      [FAKE_TRAVEL.id, 99]
+      [FAKE_TRAVEL.id, [99]]
     );
     expect(mockClient.release).toHaveBeenCalled();
   });

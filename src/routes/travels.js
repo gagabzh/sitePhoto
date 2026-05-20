@@ -8,11 +8,10 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db   = require('../db');
 const { page, esc } = require('../layout');
-const { requireEditor, wrapAsync } = require('../middleware');
+const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { parseGpx } = require('../gpxParse');
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-// GPX files stored outside the static-served UPLOAD_DIR so they require auth to download
+// GPX files stored outside the static-served uploads/ dir so they require auth to download
 const GPX_DIR = process.env.GPX_DIR || path.join(process.cwd(), 'gpx');
 fs.mkdirSync(GPX_DIR, { recursive: true });
 
@@ -67,10 +66,6 @@ async function uniqueSlug(base, excludeId = null) {
     if (!rows.length) return attempt;
     attempt = base + '-' + i++;
   }
-}
-
-function canModify(session, travel) {
-  return session.role === 'admin' || travel.user_id === session.userId;
 }
 
 function canView(session, travel) {
@@ -629,6 +624,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
 
       var lpMode = 'album';
       var lpData = { albums: [], photos: [] };
+      var lpLoaded = false;
       var lpSelected = {
         albums: new Set(${safeJson(linkedAlbums.map(a => a.id))}),
         photos: new Set(${safeJson(linkedPhotos.map(p => p.id))})
@@ -638,7 +634,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         lpMode = mode || 'album';
         openModal('link-modal');
         setLpTab(lpMode);
-        if(!lpData.albums.length && !lpData.photos.length) loadLinkable();
+        if(!lpLoaded) loadLinkable();
       }
       function setLpTab(tab) {
         lpMode = tab;
@@ -656,6 +652,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         fetch('/travels/'+SLUG+'/api/linkable')
           .then(function(r){ return r.json(); })
           .then(function(d){
+            lpLoaded = true;
             lpData.albums = d.albums || [];
             lpData.photos = d.photos || [];
             renderLpGrid('album');
@@ -1164,7 +1161,8 @@ router.get('/:slug/api/linkable', requireEditor, wrapAsync(async (req, res) => {
   res.json({ albums: albums.rows, photos: photos.rows });
 }));
 
-// Full replace of linked albums + photos (fix #1: dedicated client for transaction)
+// Full replace of linked albums + photos
+// Only albums/photos owned by the current user (or admin) can be linked
 router.post('/:slug/api/links', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
   if (!travel) return res.status(404).json({ error: 'Not found' });
@@ -1173,16 +1171,42 @@ router.post('/:slug/api/links', requireEditor, wrapAsync(async (req, res) => {
   const { albumIds = [], photoIds = [] } = req.body;
   const tId = travel.id;
 
+  // Validate ownership — editors can only link their own content; admins bypass
+  const isAdmin = req.session.role === 'admin';
+  const ownerId = req.session.userId;
+  const [albumRes, photoRes] = await Promise.all([
+    albumIds.length
+      ? db.query(
+          `SELECT id FROM albums WHERE id = ANY($1::int[])${isAdmin ? '' : ' AND user_id=$2'}`,
+          isAdmin ? [albumIds] : [albumIds, ownerId]
+        )
+      : { rows: [] },
+    photoIds.length
+      ? db.query(
+          `SELECT id FROM photos WHERE id = ANY($1::int[])${isAdmin ? '' : ' AND user_id=$2'}`,
+          isAdmin ? [photoIds] : [photoIds, ownerId]
+        )
+      : { rows: [] },
+  ]);
+  const safeAlbumIds = albumRes.rows.map(r => r.id);
+  const safePhotoIds = photoRes.rows.map(r => r.id);
+
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM travel_albums WHERE travel_id=$1', [tId]);
     await client.query('DELETE FROM travel_photos WHERE travel_id=$1', [tId]);
-    for (const id of albumIds) {
-      await client.query('INSERT INTO travel_albums (travel_id, album_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
+    if (safeAlbumIds.length) {
+      await client.query(
+        'INSERT INTO travel_albums (travel_id, album_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+        [tId, safeAlbumIds]
+      );
     }
-    for (const id of photoIds) {
-      await client.query('INSERT INTO travel_photos (travel_id, photo_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
+    if (safePhotoIds.length) {
+      await client.query(
+        'INSERT INTO travel_photos (travel_id, photo_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+        [tId, safePhotoIds]
+      );
     }
     await client.query('COMMIT');
   } catch (err) {
@@ -1216,8 +1240,11 @@ router.post('/:slug/api/share', requireEditor, wrapAsync(async (req, res) => {
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM travel_access WHERE travel_id=$1', [tId]);
-    for (const id of safeIds) {
-      await client.query('INSERT INTO travel_access (travel_id, viewer_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [tId, id]);
+    if (safeIds.length) {
+      await client.query(
+        'INSERT INTO travel_access (travel_id, viewer_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+        [tId, safeIds]
+      );
     }
     await client.query('COMMIT');
   } catch (err) {
