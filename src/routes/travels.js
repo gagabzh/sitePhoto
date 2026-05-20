@@ -677,7 +677,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
             +'<div class="tv-lp-meta">'+escHtml(i.title||i.filename||'')+'<span class="tv-lp-n">'+sub+'</span></div>'
             +'<div class="tv-lp-tick">'+(on?' ✓':' ')+'</div>'
             +'</div>';
-        }).join('') || '<div style="padding:0.75rem;font-family:\'Kalam\',cursive;font-size:0.85rem;color:var(--ink-faint)">Nothing to link.</div>';
+        }).join('') || '<div style="padding:0.75rem;font-family:Kalam,cursive;font-size:0.85rem;color:var(--ink-faint)">Nothing to link.</div>';
         el.querySelectorAll('.tv-lp-cell').forEach(function(cell){
           cell.addEventListener('click', function(){
             var id = parseInt(cell.dataset.id);
