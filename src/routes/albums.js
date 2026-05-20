@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { page, esc } = require('../layout');
-const { requireEditor, wrapAsync } = require('../middleware');
+const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const { selectionBar, selectionScript, lbOverlay, lbScript } = require('../components');
@@ -12,9 +12,6 @@ const {
   singleUploadFields, batchUploadFields, deletePhotos,
 } = require('../uploadHelpers');
 
-function canModify(session, album) {
-  return session.role === 'admin' || album.user_id === session.userId;
-}
 
 const TRASH = `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
 
