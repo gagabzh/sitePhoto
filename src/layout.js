@@ -27,7 +27,8 @@ function page(title, body, session) {
             <span class="nav-menu-section">ADMIN</span>
             <a href="/admin/users" role="menuitem">Users</a>
             <a href="/tags/manage" role="menuitem">Manage Tags</a>
-            <a href="/tags/recipes?scope=all" role="menuitem">All Recipes</a>` : ''}
+            <a href="/tags/recipes?scope=all" role="menuitem">All Recipes</a>
+            <a href="/admin/ai" role="menuitem">AI Tools</a>` : ''}
             <hr class="nav-menu-sep">
             <form method="POST" action="/logout">
               <button class="nav-menu-logout" type="submit">Logout</button>

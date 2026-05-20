@@ -338,6 +338,43 @@ router.get('/:id', wrapAsync(async (req, res) => {
             ${photo.focal_length ? `<dt>Focale</dt><dd>${esc(String(photo.focal_length))} mm</dd>` : ''}
           </dl>` : ''}
           ${photo.nextcloud_url ? `<div style="margin-top:1rem"><a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a></div>` : ''}
+          ${canEdit ? `
+          <div id="ai-people" style="margin-top:1.25rem">
+            <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem">Identify people</button>
+            <div id="ai-people-chips" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem"></div>
+          </div>
+          <script>
+            (function(){
+              var btn = document.getElementById('ai-people-btn');
+              var chips = document.getElementById('ai-people-chips');
+              var PHOTO_ID = ${photo.id};
+              btn.addEventListener('click', function(){
+                btn.disabled = true; btn.textContent = 'Identifying…';
+                chips.innerHTML = '';
+                fetch('/api/ai/identify-people', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID})})
+                  .then(function(r){ return r.json(); })
+                  .then(function(d){
+                    btn.disabled = false; btn.textContent = 'Identify people';
+                    if (d.error && !d.suggestions) { chips.innerHTML = '<span style="color:var(--danger);font-size:0.85rem">' + d.error + '</span>'; return; }
+                    if (!d.suggestions.length) { chips.innerHTML = '<span style="color:var(--ink-faint);font-size:0.85rem">No known people identified.</span>'; return; }
+                    d.suggestions.forEach(function(s){
+                      var chip = document.createElement('span');
+                      chip.style.cssText = 'display:inline-flex;align-items:center;gap:0.35rem;background:var(--paper-2);border-radius:999px;padding:0.25rem 0.75rem;font-size:0.85rem';
+                      chip.innerHTML = '<span>' + s.name + '?</span>'
+                        + '<button title="Add tag" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:1rem;line-height:1;padding:0">✓</button>'
+                        + '<button title="Dismiss" style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:1rem;line-height:1;padding:0">✗</button>';
+                      chip.querySelectorAll('button')[0].addEventListener('click', function(){
+                        fetch('/api/ai/confirm-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID, tagId:s.tagId})})
+                          .then(function(){ chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>'; });
+                      });
+                      chip.querySelectorAll('button')[1].addEventListener('click', function(){ chip.remove(); });
+                      chips.appendChild(chip);
+                    });
+                  })
+                  .catch(function(){ btn.disabled=false; btn.textContent='Identify people'; chips.innerHTML='<span style="color:var(--danger);font-size:0.85rem">Could not reach AI service.</span>'; });
+              });
+            })();
+          </script>` : ''}
         </div>
       </div>
     </div>
