@@ -96,7 +96,10 @@ router.get('/new', (req, res) => {
 });
 
 router.post('/', wrapAsync(async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const VALID_ROLES = ['admin', 'editor', 'viewer'];
+  const { name, email, password } = req.body;
+  const role = VALID_ROLES.includes(req.body.role) ? req.body.role : null;
+  if (!role) return res.status(400).send('Invalid role');
   try {
     const hash = await bcrypt.hash(password, 10);
     await db.query(
@@ -139,7 +142,10 @@ router.get('/:id/edit', wrapAsync(async (req, res) => {
 }));
 
 router.post('/:id', wrapAsync(async (req, res) => {
-  const { name, email, role } = req.body;
+  const VALID_ROLES = ['admin', 'editor', 'viewer'];
+  const { name, email } = req.body;
+  const role = VALID_ROLES.includes(req.body.role) ? req.body.role : null;
+  if (!role) return res.status(400).send('Invalid role');
   try {
     await db.query(
       'UPDATE users SET name = $1, email = $2, role = $3 WHERE id = $4',

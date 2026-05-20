@@ -1,3 +1,21 @@
+const crypto = require('crypto');
+
+function csrfMiddleware(req, res, next) {
+  if (!req.session.csrf) {
+    req.session.csrf = crypto.randomBytes(24).toString('base64url');
+  }
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    const ct = req.headers['content-type'] || '';
+    if (!ct.startsWith('multipart/')) {
+      const token = req.headers['x-csrf-token'] || (req.body && req.body._csrf);
+      if (!token || token !== req.session.csrf) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+    }
+  }
+  next();
+}
+
 function requireAuth(req, res, next) {
   if (req.session.userId) return next();
   if (req.method === 'GET' && !/\.(ico|png|jpg|svg|css|js|woff2?)(\?|$)/i.test(req.path)) {
@@ -37,4 +55,4 @@ function errorHandler(err, req, res, next) {
 
 const wrapAsync = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-module.exports = { requireAuth, requireAdmin, requireEditor, canModify, errorHandler, wrapAsync };
+module.exports = { csrfMiddleware, requireAuth, requireAdmin, requireEditor, canModify, errorHandler, wrapAsync };

@@ -2,7 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const path = require('path');
-const { requireAuth, requireAdmin, errorHandler } = require('./middleware');
+const { requireAuth, requireAdmin, csrfMiddleware, errorHandler } = require('./middleware');
 
 if (!process.env.SESSION_SECRET) {
   console.warn('WARNING: SESSION_SECRET env var is not set — using insecure default. Set it before deploying.');
@@ -42,6 +42,7 @@ app.use('/uploads', express.static(UPLOAD_DIR));
 
 app.use(require('./routes/auth'));
 app.use(requireAuth);
+app.use(csrfMiddleware);
 app.use(require('./routes/account'));
 app.use('/photos', require('./routes/photos'));
 app.use('/albums', require('./routes/albums'));

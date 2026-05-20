@@ -1,4 +1,4 @@
-const { requireAuth, requireAdmin, canModify, errorHandler, wrapAsync } = require('../middleware');
+const { csrfMiddleware, requireAuth, requireAdmin, canModify, errorHandler, wrapAsync } = require('../middleware');
 
 describe('requireAuth', () => {
   const next = jest.fn();
@@ -148,6 +148,93 @@ describe('canModify', () => {
 
   it('returns false for non-owner viewer', () => {
     expect(canModify({ role: 'viewer', userId: 20 }, { user_id: 10 })).toBe(false);
+  });
+});
+
+describe('csrfMiddleware', () => {
+  function makeReq(method = 'GET', sessionCsrf = undefined, headers = {}, body = {}) {
+    return { method, session: sessionCsrf !== undefined ? { csrf: sessionCsrf } : {}, headers, body };
+  }
+
+  beforeEach(() => jest.resetAllMocks());
+
+  it('generates a csrf token on the session when absent', () => {
+    const req = makeReq('GET');
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(typeof req.session.csrf).toBe('string');
+    expect(req.session.csrf.length).toBeGreaterThan(0);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses an existing csrf token', () => {
+    const req = makeReq('GET', 'existing-token');
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(req.session.csrf).toBe('existing-token');
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls next() for GET without checking token', () => {
+    const req = makeReq('GET', 'tok');
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for POST with no token', () => {
+    const req = makeReq('POST', 'tok');
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for POST with wrong X-CSRF-Token header', () => {
+    const req = makeReq('POST', 'tok', { 'x-csrf-token': 'wrong' });
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('calls next() for POST with correct X-CSRF-Token header', () => {
+    const req = makeReq('POST', 'tok', { 'x-csrf-token': 'tok' });
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls next() for POST with correct _csrf body field', () => {
+    const req = makeReq('POST', 'tok', {}, { _csrf: 'tok' });
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips token check for multipart POST', () => {
+    const req = makeReq('POST', 'tok', { 'content-type': 'multipart/form-data; boundary=abc' });
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('enforces token on DELETE requests', () => {
+    const req = makeReq('DELETE', 'tok');
+    const res = { status: jest.fn().mockReturnThis(), send: jest.fn() };
+    const next = jest.fn();
+    csrfMiddleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 });
 

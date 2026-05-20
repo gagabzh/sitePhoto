@@ -78,6 +78,15 @@ describe('US-2: Create user', () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users/new?error=1');
   });
+
+  it('POST /admin/users returns 400 for invalid role', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users')
+      .send('name=Bob&email=bob%40test.com&password=password1&role=superadmin');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
+  });
 });
 
 describe('US-3: Edit user', () => {
@@ -118,6 +127,15 @@ describe('US-3: Edit user', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users/2/edit?error=1');
+  });
+
+  it('POST /admin/users/:id returns 400 for invalid role', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users/2')
+      .send('name=Alice&email=alice%40test.com&role=god');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
 
