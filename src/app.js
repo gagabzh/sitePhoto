@@ -48,6 +48,7 @@ app.use('/albums', require('./routes/albums'));
 app.use('/tags', require('./routes/tags'));
 app.use('/timeline', require('./routes/timeline'));
 app.use('/map', require('./routes/map'));
+app.use('/travels', require('./routes/travels'));
 app.use('/api', require('./routes/api'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
 
