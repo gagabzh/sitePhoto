@@ -146,6 +146,14 @@ function renderManagePage(data) {
         <label>DESCRIPTION</label>
         <textarea id="tm-dr-desc" rows="3" maxlength="500" placeholder="optional description…">${esc(t.description || '')}</textarea>
       </div>
+      <div class="df" id="tm-dr-ai-section" style="display:${t.category === 'people' ? '' : 'none'}">
+        <label>AI DESCRIPTION</label>
+        <div>
+          <button type="button" id="tm-dr-ai-pick" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 10px;border:1.5px dashed var(--ink-faint);background:none;cursor:pointer;color:var(--ink-soft);">✦ pick photos to describe</button>
+          <div id="tm-dr-ai-grid" style="display:none;margin-top:8px;display:none;flex-wrap:wrap;gap:6px;max-height:180px;overflow-y:auto;"></div>
+          <button type="button" id="tm-dr-ai-gen" style="display:none;margin-top:8px;font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;">Generate description</button>
+        </div>
+      </div>
       <button class="btn btn-primary" id="tm-dr-save" style="margin-top:auto;">save</button>
       <div class="tm-dz">
         <h4>DANGER ZONE</h4>

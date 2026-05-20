@@ -195,3 +195,58 @@ describe('POST /api/ai/set-reference', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('POST /api/ai/describe-person', () => {
+  it('returns a description from Ollama', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })  // people tag
+      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });     // photos
+    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    generate.mockResolvedValue({ response: '"young woman with red hair, glasses"' });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.description).toBe('young woman with red hair, glasses');
+  });
+
+  it('returns 400 for missing photoIds', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for invalid tagId', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/ai/describe-person').send({ tagId: 'x', photoIds: [1] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when tag is not a people tag', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/ai/describe-person').send({ tagId: 99, photoIds: [1] });
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 503 when Ollama is unreachable', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })
+      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });
+    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    generate.mockRejectedValue(new Error('Ollama unreachable: ECONNREFUSED'));
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain('Ollama unreachable');
+  });
+
+  it('returns 403 when called by a viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
+    expect(res.status).toBe(403);
+  });
+});
