@@ -657,7 +657,7 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
             lpData.photos = d.photos || [];
             renderLpGrid('album');
             renderLpGrid('photo');
-          }).catch(function(){});
+          }).catch(function(){ toast('Could not load content — try again'); });
       }
       function renderLpGrid(type) {
         var el = document.getElementById('lp-'+type+'s');
@@ -696,7 +696,8 @@ function editFormView(travel, linkedAlbums, linkedPhotos, allViewers, travelView
         var el = document.getElementById('lp-status');
         if(el) el.textContent = total + ' item' + (total!==1?'s':'') + ' selected';
       }
-      document.getElementById('lp-search').addEventListener('input', function(){ renderLpGrid(lpMode); });
+      var lpSearchEl = document.getElementById('lp-search');
+      if(lpSearchEl) lpSearchEl.addEventListener('input', function(){ renderLpGrid(lpMode); });
       var linkAlbumsBtn = document.getElementById('link-albums-btn');
       if(linkAlbumsBtn) linkAlbumsBtn.addEventListener('click', function(){ openLinkModal('album'); });
       var linkPhotosBtn = document.getElementById('link-photos-btn');
