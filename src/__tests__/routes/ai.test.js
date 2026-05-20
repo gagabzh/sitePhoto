@@ -1,6 +1,6 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../ollama', () => ({ generate: jest.fn() }));
-jest.mock('fs', () => ({ readFileSync: jest.fn() }));
+jest.mock('fs', () => ({ promises: { readFile: jest.fn() } }));
 jest.mock('../../uploadHelpers', () => ({ UPLOAD_DIR: '/uploads' }));
 
 const request = require('supertest');
@@ -45,7 +45,7 @@ describe('POST /api/ai/identify-people', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
       .mockResolvedValueOnce({ rows: [ALICE_TAG, BOB_TAG] });
-    fs.readFileSync.mockReturnValue(Buffer.from('fake-image'));
+    fs.promises.readFile.mockResolvedValue(Buffer.from('fake-image'));
     generate.mockResolvedValue({ response: 'I can see alice in the photo.' });
 
     const res = await request(makeApp(EDITOR_SESSION))
@@ -60,7 +60,7 @@ describe('POST /api/ai/identify-people', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
       .mockResolvedValueOnce({ rows: [BOB_TAG] }); // bob has description 'tall, glasses'
-    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    fs.promises.readFile.mockResolvedValue(Buffer.from('img'));
     generate.mockResolvedValue({ response: 'none' });
 
     await request(makeApp(EDITOR_SESSION))
@@ -75,9 +75,9 @@ describe('POST /api/ai/identify-people', () => {
       .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
       .mockResolvedValueOnce({ rows: [ALICE_W_REF] });
     // query photo is read first, then reference photos in the loop
-    fs.readFileSync
-      .mockReturnValueOnce(Buffer.from('query-image'))  // photo.jpg (query)
-      .mockReturnValueOnce(Buffer.from('ref-image'));    // ref.jpg (alice's reference)
+    fs.promises.readFile
+      .mockResolvedValueOnce(Buffer.from('query-image'))  // photo.jpg (query)
+      .mockResolvedValueOnce(Buffer.from('ref-image'));    // ref.jpg (alice's reference)
     generate.mockResolvedValue({ response: 'alice' });
 
     await request(makeApp(EDITOR_SESSION))
@@ -93,7 +93,7 @@ describe('POST /api/ai/identify-people', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
       .mockResolvedValueOnce({ rows: [ALICE_W_REF] });
-    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    fs.promises.readFile.mockResolvedValue(Buffer.from('img'));
     generate.mockResolvedValue({ response: 'alice' });
 
     const res = await request(makeApp(EDITOR_SESSION))
@@ -106,7 +106,7 @@ describe('POST /api/ai/identify-people', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
       .mockResolvedValueOnce({ rows: [ALICE_TAG] });
-    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    fs.promises.readFile.mockResolvedValue(Buffer.from('img'));
     generate.mockRejectedValue(new Error('Ollama unreachable: ECONNREFUSED'));
 
     const res = await request(makeApp(EDITOR_SESSION))
@@ -201,7 +201,7 @@ describe('POST /api/ai/describe-person', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })  // people tag
       .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });     // photos
-    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    fs.promises.readFile.mockResolvedValue(Buffer.from('img'));
     generate.mockResolvedValue({ response: '"young woman with red hair, glasses"' });
 
     const res = await request(makeApp(EDITOR_SESSION))
@@ -234,7 +234,7 @@ describe('POST /api/ai/describe-person', () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })
       .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });
-    fs.readFileSync.mockReturnValue(Buffer.from('img'));
+    fs.promises.readFile.mockResolvedValue(Buffer.from('img'));
     generate.mockRejectedValue(new Error('Ollama unreachable: ECONNREFUSED'));
 
     const res = await request(makeApp(EDITOR_SESSION))
