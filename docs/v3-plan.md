@@ -193,6 +193,20 @@ Items identified during the initial codebase review (May 2026). Ordered by prior
 - Start with the most tested routes (`photos.js`, `albums.js`) to keep the refactor safe
 - Target: route handlers contain only HTTP plumbing; business logic is independently unit-testable
 
+**TQ-17 — Log (don't swallow) file deletion errors**
+- `safeUnlink` and fire-and-forget `.catch(() => {})` calls silently discard unlink errors; orphaned files go unnoticed
+- Replace empty catch blocks with `console.warn` at minimum; consider a structured log entry with the file path and error code
+- Related to TR-8 in the travel page backlog
+
+**TQ-18 — Unify UI language (pick EN or FR)**
+- Mixed English/French labels exist in the UI (form labels, button text, error messages)
+- Decide on one language and do a pass to make all user-facing strings consistent
+
+**TQ-19 — Split `layout.js`**
+- `layout.js` is ~2,000 lines: CSS string, nav HTML, page shell, location-search script, CSRF script, and `esc()` utility all in one file
+- Split into: `src/layout/page.js` (shell + nav), `public/style.css` (extracted CSS — see TQ-10), `src/layout/esc.js` (utility)
+- Supersedes TQ-10; doing both together avoids a second large refactor
+
 ---
 
 ## Dependencies
