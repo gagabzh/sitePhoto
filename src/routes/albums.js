@@ -485,6 +485,8 @@ router.get('/:id/access', requireEditor, wrapAsync(async (req, res) => {
 }));
 
 router.post('/:id/access/add', requireEditor, wrapAsync(async (req, res) => {
+  const viewerId = parseInt(req.body.viewer_id, 10);
+  if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -492,12 +494,14 @@ router.post('/:id/access/add', requireEditor, wrapAsync(async (req, res) => {
 
   await db.query(
     'INSERT INTO album_access (album_id, viewer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-    [req.params.id, req.body.viewer_id]
+    [req.params.id, viewerId]
   );
   res.redirect(`/albums/${req.params.id}/access`);
 }));
 
 router.post('/:id/access/remove', requireEditor, wrapAsync(async (req, res) => {
+  const viewerId = parseInt(req.body.viewer_id, 10);
+  if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -505,7 +509,7 @@ router.post('/:id/access/remove', requireEditor, wrapAsync(async (req, res) => {
 
   await db.query(
     'DELETE FROM album_access WHERE album_id = $1 AND viewer_id = $2',
-    [req.params.id, req.body.viewer_id]
+    [req.params.id, viewerId]
   );
   res.redirect(`/albums/${req.params.id}/access`);
 }));
@@ -585,6 +589,8 @@ router.get('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
 }));
 
 router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
+  const photoId = parseInt(req.body.photo_id, 10);
+  if (!Number.isInteger(photoId)) return res.status(400).send('Invalid id');
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -592,7 +598,7 @@ router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
 
   await db.query(
     'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-    [req.params.id, req.body.photo_id]
+    [req.params.id, photoId]
   );
   res.redirect(`/albums/${req.params.id}/photos/add`);
 }));
@@ -600,6 +606,8 @@ router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
 // ── US-A2: Remove photo from album ──────────────────────────────────────────
 
 router.post('/:id/photos/remove', requireEditor, wrapAsync(async (req, res) => {
+  const photoId = parseInt(req.body.photo_id, 10);
+  if (!Number.isInteger(photoId)) return res.status(400).send('Invalid id');
   const { rows } = await db.query('SELECT user_id FROM albums WHERE id = $1', [req.params.id]);
   const album = rows[0];
   if (!album) return res.status(404).send('Album not found');
@@ -607,7 +615,7 @@ router.post('/:id/photos/remove', requireEditor, wrapAsync(async (req, res) => {
 
   await db.query(
     'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = $2',
-    [req.params.id, req.body.photo_id]
+    [req.params.id, photoId]
   );
   res.redirect(`/albums/${req.params.id}`);
 }));

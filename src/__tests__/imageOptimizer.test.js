@@ -18,7 +18,7 @@ const LARGE = 3 * MB;      // 3 MB  — over the threshold
 let pipeline;
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   pipeline = {
     resize:   jest.fn().mockReturnThis(),
     jpeg:     jest.fn().mockReturnThis(),

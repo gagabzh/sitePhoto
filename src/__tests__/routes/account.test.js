@@ -6,7 +6,7 @@ const express = require('express');
 const db = require('../../db');
 const bcrypt = require('bcryptjs');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => jest.resetAllMocks());
 
 const USER_SESSION = { userId: 10, name: 'Saev', role: 'editor' };
 

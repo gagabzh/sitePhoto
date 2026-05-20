@@ -7,7 +7,7 @@ const db = require('../../db');
 const bcrypt = require('bcryptjs');
 const { requireAdmin } = require('../../middleware');
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => jest.resetAllMocks());
 
 const ADMIN_SESSION = { userId: 1, name: 'Admin', role: 'admin' };
 const EDITOR_SESSION = { userId: 2, name: 'Editor', role: 'editor' };
