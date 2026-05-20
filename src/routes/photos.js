@@ -365,7 +365,15 @@ router.get('/:id', wrapAsync(async (req, res) => {
                         + '<button title="Dismiss" style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:1rem;line-height:1;padding:0">✗</button>';
                       chip.querySelectorAll('button')[0].addEventListener('click', function(){
                         fetch('/api/ai/confirm-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID, tagId:s.tagId})})
-                          .then(function(){ chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>'; });
+                          .then(function(){
+                            var refBtn = s.hasReference ? '' : ' <button title="Use this photo as ' + s.name + '\'s reference" style="background:none;border:none;cursor:pointer;font-size:0.9rem;padding:0;opacity:0.6" data-ref="1">📌</button>';
+                            chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>' + refBtn;
+                            var rb = chip.querySelector('[data-ref]');
+                            if (rb) rb.addEventListener('click', function(){
+                              fetch('/api/ai/set-reference', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tagId:s.tagId, photoId:PHOTO_ID})})
+                                .then(function(){ rb.textContent='📌'; rb.title='Reference set'; rb.disabled=true; rb.style.opacity='1'; });
+                            });
+                          });
                       });
                       chip.querySelectorAll('button')[1].addEventListener('click', function(){ chip.remove(); });
                       chips.appendChild(chip);
