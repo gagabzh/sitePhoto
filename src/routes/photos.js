@@ -366,7 +366,7 @@ router.get('/:id', wrapAsync(async (req, res) => {
                       chip.querySelectorAll('button')[0].addEventListener('click', function(){
                         fetch('/api/ai/confirm-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID, tagId:s.tagId})})
                           .then(function(){
-                            var refBtn = s.hasReference ? '' : ' <button title="Use this photo as ' + s.name + '\'s reference" style="background:none;border:none;cursor:pointer;font-size:0.9rem;padding:0;opacity:0.6" data-ref="1">📌</button>';
+                            var refBtn = s.hasReference ? '' : ' <button title="Set reference: ' + s.name + '" style="background:none;border:none;cursor:pointer;font-size:0.9rem;padding:0;opacity:0.6" data-ref="1">📌</button>';
                             chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>' + refBtn;
                             var rb = chip.querySelector('[data-ref]');
                             if (rb) rb.addEventListener('click', function(){
