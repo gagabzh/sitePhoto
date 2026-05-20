@@ -87,6 +87,15 @@ describe('US-2: Create user', () => {
     expect(res.status).toBe(400);
     expect(db.query).not.toHaveBeenCalled();
   });
+
+  it('POST /admin/users returns 400 for password shorter than 8 chars', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users')
+      .send('name=Bob&email=bob%40test.com&password=short&role=viewer');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
+  });
 });
 
 describe('US-3: Edit user', () => {
@@ -214,5 +223,15 @@ describe('US-5: Admin reset user password', () => {
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/users/2/password?done=1');
+  });
+
+  it('POST /admin/users/:id/password returns 400 for password shorter than 8 chars', async () => {
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/admin/users/2/password')
+      .send('password=short');
+
+    expect(res.status).toBe(400);
+    expect(bcrypt.hash).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
   });
 });

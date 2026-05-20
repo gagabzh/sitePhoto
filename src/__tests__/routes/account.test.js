@@ -88,4 +88,14 @@ describe('US-6: Change own password', () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/account/password?error=1');
   });
+
+  it('POST /account/password returns 400 for password shorter than 8 chars', async () => {
+    const res = await request(makeApp(USER_SESSION))
+      .post('/account/password')
+      .send('current=oldpass&password=short');
+
+    expect(res.status).toBe(400);
+    expect(db.query).not.toHaveBeenCalled();
+    expect(bcrypt.hash).not.toHaveBeenCalled();
+  });
 });

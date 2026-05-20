@@ -1,4 +1,4 @@
-const { csrfMiddleware, requireAuth, requireAdmin, canModify, errorHandler, wrapAsync } = require('../middleware');
+const { nonceMiddleware, csrfMiddleware, requireAuth, requireAdmin, canModify, errorHandler, wrapAsync } = require('../middleware');
 
 describe('requireAuth', () => {
   const next = jest.fn();
@@ -148,6 +148,58 @@ describe('canModify', () => {
 
   it('returns false for non-owner viewer', () => {
     expect(canModify({ role: 'viewer', userId: 20 }, { user_id: 10 })).toBe(false);
+  });
+});
+
+describe('nonceMiddleware', () => {
+  // nonceMiddleware replaces res.send with a patching wrapper; the original
+  // send is stored as origSend internally. We capture output via a plain fn.
+  function makeRes() {
+    const captured = [];
+    const res = { locals: {}, send: (body) => captured.push(body) };
+    return { res, captured };
+  }
+
+  it('sets res.locals.nonce to a non-empty string and calls next()', () => {
+    const { res } = makeRes();
+    const next = jest.fn();
+    nonceMiddleware({}, res, next);
+    expect(typeof res.locals.nonce).toBe('string');
+    expect(res.locals.nonce.length).toBeGreaterThan(0);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('injects nonce into bare <script> tags in HTML response', () => {
+    const { res, captured } = makeRes();
+    nonceMiddleware({}, res, jest.fn());
+    const nonce = res.locals.nonce;
+    res.send('<!DOCTYPE html><script>alert(1)</script>');
+    expect(captured[0]).toContain(`<script nonce="${nonce}">`);
+  });
+
+  it('adds nonce to <script src="..."> tags', () => {
+    const { res, captured } = makeRes();
+    nonceMiddleware({}, res, jest.fn());
+    const nonce = res.locals.nonce;
+    res.send('<!DOCTYPE html><script src="/app.js"></script>');
+    expect(captured[0]).toContain(`<script nonce="${nonce}" src="/app.js">`);
+  });
+
+  it('does not modify non-HTML bodies', () => {
+    const { res, captured } = makeRes();
+    nonceMiddleware({}, res, jest.fn());
+    res.send('{"ok":true}');
+    expect(captured[0]).toBe('{"ok":true}');
+  });
+
+  it('generates a unique nonce per request', () => {
+    const nonces = new Set();
+    for (let i = 0; i < 5; i++) {
+      const { res } = makeRes();
+      nonceMiddleware({}, res, jest.fn());
+      nonces.add(res.locals.nonce);
+    }
+    expect(nonces.size).toBe(5);
   });
 });
 

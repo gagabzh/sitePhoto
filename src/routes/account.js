@@ -38,6 +38,7 @@ router.get('/account/password', (req, res) => {
 
 router.post('/account/password', wrapAsync(async (req, res) => {
   const { current, password } = req.body;
+  if (!password || password.length < 8) return res.status(400).send('Password must be at least 8 characters');
   const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
   const valid = await bcrypt.compare(current, rows[0].password_hash);
   if (!valid) return res.redirect('/account/password?error=1');

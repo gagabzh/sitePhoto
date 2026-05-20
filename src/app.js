@@ -2,7 +2,7 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const path = require('path');
-const { requireAuth, requireAdmin, csrfMiddleware, errorHandler } = require('./middleware');
+const { nonceMiddleware, requireAuth, requireAdmin, csrfMiddleware, errorHandler } = require('./middleware');
 
 if (!process.env.SESSION_SECRET) {
   console.warn('WARNING: SESSION_SECRET env var is not set — using insecure default. Set it before deploying.');
@@ -10,14 +10,15 @@ if (!process.env.SESSION_SECRET) {
 
 const app = express();
 
+// Nonce must be set before helmet so the CSP header can reference it
+app.use(nonceMiddleware);
 app.use(helmet({
-  // Leaflet loads tiles from OpenStreetMap and unpkg CDN; relax CSP accordingly
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'unpkg.com'],
-      styleSrc: ["'self'", "'unsafe-inline'", 'unpkg.com', 'fonts.googleapis.com'],
-      imgSrc: ["'self'", 'data:', '*.basemaps.cartocdn.com', 'unpkg.com'],
+      scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
+      styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
+      imgSrc: ["'self'", 'data:', '*.basemaps.cartocdn.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
       connectSrc: ["'self'"],
     },
@@ -39,6 +40,10 @@ app.use(session({
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR));
+
+// Serve Leaflet and MarkerCluster from npm packages (replaces unpkg CDN)
+app.use('/vendor/leaflet', express.static(path.join(__dirname, '..', 'node_modules', 'leaflet', 'dist')));
+app.use('/vendor/leaflet.markercluster', express.static(path.join(__dirname, '..', 'node_modules', 'leaflet.markercluster', 'dist')));
 
 app.use(require('./routes/auth'));
 app.use(requireAuth);

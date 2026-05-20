@@ -176,8 +176,8 @@ function miniMapHtml(mapId, geojson, photoPins, opts = {}) {
 
   return `
     <div id="${mapId}" style="height:${height}px;width:100%" class="${cssClass}"></div>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+    <script src="/vendor/leaflet/leaflet.js"></script>
     <script>(function(){
       var m = L.map('${mapId}', { center:[20,0], zoom:${zoom}, zoomControl:${opts.zoomControl !== false} });
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
