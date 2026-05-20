@@ -15,7 +15,7 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function parseFrom(raw) {
   if (typeof raw !== 'string') return null;
-  return /^\/photos$|^\/albums\/\d+$/.test(raw) ? raw : null;
+  return /^\/photos$|^\/albums\/\d+$|^\/travels\/[a-z0-9-]+$/.test(raw) ? raw : null;
 }
 
 // US-P1: Photo list — Family Wall layout

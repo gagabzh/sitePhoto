@@ -760,7 +760,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
   });
 
   const albumCards = linkedAlbums.map(a => `
-    <a href="/albums/${a.id}" class="tv-acard">
+    <a href="/albums/${a.id}?from=/travels/${slug}" class="tv-acard">
       <div class="tv-acard-cover">
         ${a.cover_filename
           ? `<img src="/uploads/${esc(a.cover_filename)}" alt="${esc(a.title)}">`
@@ -775,7 +775,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
 
   const mosaicCells = linkedPhotos.map(p => `
     <div class="tv-mcell">
-      <a href="/photos/${p.id}">
+      <a href="/photos/${p.id}?from=/travels/${slug}">
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title || '')}" loading="lazy">
       </a>
     </div>`).join('');
@@ -864,7 +864,7 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
 
   const byDate = {};
   linkedPhotos.forEach(p => {
-    const d = p.taken_at ? p.taken_at.substring(0, 10) : 'unknown';
+    const d = p.taken_at ? new Date(p.taken_at).toISOString().substring(0, 10) : 'unknown';
     if (!byDate[d]) byDate[d] = [];
     byDate[d].push(p);
   });
@@ -891,7 +891,7 @@ function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, se
     const yrStr  = dt ? dt.getFullYear() : '';
     const cells  = photos.slice(0, 4).map(p => `
       <div class="tv-stop-cell">
-        <a href="/photos/${p.id}">
+        <a href="/photos/${p.id}?from=/travels/${slug}">
           <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title || '')}" loading="lazy">
         </a>
       </div>`).join('');

@@ -15,6 +15,11 @@ const {
 
 const TRASH = `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
 
+function parseFrom(raw) {
+  if (typeof raw !== 'string') return null;
+  return /^\/albums$|^\/travels\/[a-z0-9-]+$/.test(raw) ? raw : null;
+}
+
 // ── Album list (all roles) ───────────────────────────────────────────────────
 
 router.get('/', wrapAsync(async (req, res) => {
@@ -210,6 +215,7 @@ router.post('/', requireEditor, wrapAsync(async (req, res) => {
 // ── Album detail (all roles) ─────────────────────────────────────────────────
 
 router.get('/:id', wrapAsync(async (req, res) => {
+  const from = parseFrom(req.query.from);
   const [albumRes, photosRes] = await Promise.all([
     db.query(
       'SELECT a.*, u.name AS creator FROM albums a JOIN users u ON u.id = a.user_id WHERE a.id = $1',
@@ -299,7 +305,7 @@ router.get('/:id', wrapAsync(async (req, res) => {
         </div>
         <p style="font-family:'Kalam',cursive;font-size:0.85rem;color:var(--ink-soft);margin:0.1rem 0 0;">by ${esc(album.creator)}</p>
         <div class="ad-actions">
-          <a class="btn btn-secondary" href="/albums">← Back</a>
+          <a class="btn btn-secondary" href="${from || '/albums'}">← Back</a>
           ${canEdit ? `
             <button class="btn btn-secondary btn-sm" id="sel-select-btn" type="button">select</button>
             <a class="btn" href="/albums/${album.id}/photos/upload">↑ Upload</a>
