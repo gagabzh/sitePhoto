@@ -58,6 +58,86 @@ function renderManageScript(editTag) {
     var drawerClose=document.getElementById('tm-drawer-close');
     var backdrop=document.getElementById('tm-backdrop');
 
+    function updateAiSection(category){
+      var aiSection=document.getElementById('tm-dr-ai-section');
+      if(aiSection) aiSection.style.display=category==='people'?'':'none';
+      resetAiPicker();
+    }
+
+    function resetAiPicker(){
+      var grid=document.getElementById('tm-dr-ai-grid');
+      var genBtn=document.getElementById('tm-dr-ai-gen');
+      if(grid){grid.innerHTML='';grid.style.display='none';}
+      if(genBtn) genBtn.style.display='none';
+      selectedPhotoIds=[];
+    }
+
+    var selectedPhotoIds=[];
+
+    var aiPickBtn=document.getElementById('tm-dr-ai-pick');
+    if(aiPickBtn){
+      aiPickBtn.addEventListener('click',function(){
+        var id=drawer&&drawer.dataset.id;
+        if(!id) return;
+        resetAiPicker();
+        aiPickBtn.textContent='loading…';
+        fetch('/api/tags/'+id+'/photos').then(function(r){return r.json();}).then(function(photos){
+          aiPickBtn.textContent='✦ pick photos to describe';
+          var grid=document.getElementById('tm-dr-ai-grid');
+          var genBtn=document.getElementById('tm-dr-ai-gen');
+          if(!grid) return;
+          if(!photos.length){grid.innerHTML='<span style="font-family:Kalam,cursive;font-size:12px;color:var(--ink-faint);">no photos tagged yet</span>';grid.style.display='flex';return;}
+          photos.forEach(function(p){
+            var wrap=document.createElement('div');
+            wrap.style.cssText='position:relative;width:56px;height:56px;cursor:pointer;border:2px solid transparent;border-radius:4px;overflow:hidden;flex-shrink:0;';
+            var img=document.createElement('img');
+            img.src='/uploads/'+p.filename;
+            img.style.cssText='width:100%;height:100%;object-fit:cover;';
+            img.title=p.title||'';
+            var check=document.createElement('div');
+            check.style.cssText='display:none;position:absolute;inset:0;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;font-size:20px;color:#fff;';
+            check.textContent='✓';
+            wrap.appendChild(img);
+            wrap.appendChild(check);
+            wrap.addEventListener('click',function(){
+              var idx=selectedPhotoIds.indexOf(p.id);
+              if(idx===-1){
+                selectedPhotoIds.push(p.id);
+                wrap.style.borderColor='var(--accent)';
+                check.style.display='flex';
+              } else {
+                selectedPhotoIds.splice(idx,1);
+                wrap.style.borderColor='transparent';
+                check.style.display='none';
+              }
+              if(genBtn) genBtn.style.display=selectedPhotoIds.length?'':'none';
+            });
+            grid.appendChild(wrap);
+          });
+          grid.style.display='flex';
+        }).catch(function(){aiPickBtn.textContent='✦ pick photos to describe';});
+      });
+    }
+
+    var aiGenBtn=document.getElementById('tm-dr-ai-gen');
+    if(aiGenBtn){
+      aiGenBtn.addEventListener('click',function(){
+        var id=drawer&&drawer.dataset.id;
+        if(!id||!selectedPhotoIds.length) return;
+        aiGenBtn.textContent='generating…';
+        aiGenBtn.disabled=true;
+        fetch('/api/ai/describe-person',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tagId:parseInt(id),photoIds:selectedPhotoIds})})
+          .then(function(r){return r.json();}).then(function(d){
+            aiGenBtn.textContent='Generate description';
+            aiGenBtn.disabled=false;
+            if(d.error){showToast('AI error: '+d.error);return;}
+            var descEl=document.getElementById('tm-dr-desc');
+            if(descEl&&d.description){descEl.value=d.description;showToast('description generated ✓');}
+            else{showToast('AI returned empty — try a clearer photo');console.log('[describe-person] raw Ollama response:',d.rawResponse);}
+          }).catch(function(){aiGenBtn.textContent='Generate description';aiGenBtn.disabled=false;showToast('network error');});
+      });
+    }
+
     function openDrawer(id){
       if(!drawer) return;
       var url=new URL(window.location.href);
@@ -74,6 +154,7 @@ function renderManageScript(editTag) {
         if(kindEl)  kindEl.value=t.category||'';
         if(descEl)  descEl.value=t.description||'';
         renderAliasPills(t.aliases||[]);
+        updateAiSection(t.category||'');
         drawer.classList.add('open');
         if(backdrop) backdrop.classList.add('show');
       }).catch(function(){
@@ -98,6 +179,13 @@ function renderManageScript(editTag) {
     if(saveBtn) saveBtn.addEventListener('click', function(){
       doSave().then(function(){ location.reload(); });
     });
+
+    var kindSelectEl=document.getElementById('tm-dr-kind');
+    if(kindSelectEl){
+      kindSelectEl.addEventListener('change',function(){
+        updateAiSection(this.value);
+      });
+    }
 
     // Open drawer from row
     document.querySelectorAll('[data-edit]').forEach(function(el){

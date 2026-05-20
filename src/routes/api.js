@@ -221,6 +221,22 @@ router.get('/tags/:id/detail', requireEditor, wrapAsync(async (req, res) => {
   res.json(rows[0]);
 }));
 
+// ── GET /api/tags/:id/photos — photos tagged with this tag (for AI picker) ────
+
+router.get('/tags/:id/photos', requireEditor, wrapAsync(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  const { rows } = await db.query(`
+    SELECT p.id, p.filename, p.title
+    FROM photos p
+    JOIN photo_tags pt ON pt.photo_id = p.id
+    WHERE pt.tag_id = $1
+    ORDER BY p.taken_at DESC NULLS LAST, p.created_at DESC
+    LIMIT 30
+  `, [id]);
+  res.json(rows);
+}));
+
 // ── POST /api/tags — create tag ───────────────────────────────────────────────
 
 router.post('/tags', requireEditor, wrapAsync(async (req, res) => {

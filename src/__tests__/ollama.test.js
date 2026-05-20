@@ -14,8 +14,9 @@ function makeReq() {
   return req;
 }
 
-function makeRes(body) {
+function makeRes(body, statusCode = 200) {
   return {
+    statusCode,
     on: jest.fn((event, cb) => {
       if (event === 'data') cb(body);
       if (event === 'end') cb();
@@ -58,6 +59,16 @@ describe('generate', () => {
 
     await expect(generate({ prompt: 'hi' })).rejects.toThrow('timed out');
     expect(req.destroy).toHaveBeenCalled();
+  });
+
+  it('rejects with Ollama error message on non-2xx status', async () => {
+    const req = makeReq();
+    http.request.mockImplementation((_, cb) => {
+      cb(makeRes('{"error":"model \'llava\' not found"}', 404));
+      return req;
+    });
+
+    await expect(generate({ prompt: 'hi' })).rejects.toThrow("model 'llava' not found");
   });
 
   it('includes images in the request payload', async () => {

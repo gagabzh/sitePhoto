@@ -6,8 +6,8 @@ const { generate } = require('../ollama');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { UPLOAD_DIR } = require('../uploadHelpers');
 
-function readB64(filename) {
-  return fs.readFileSync(path.join(UPLOAD_DIR, filename)).toString('base64');
+async function readB64(filename) {
+  return (await fs.promises.readFile(path.join(UPLOAD_DIR, filename))).toString('base64');
 }
 
 // ── POST /api/ai/identify-people ──────────────────────────────────────────────
@@ -32,7 +32,7 @@ router.post('/identify-people', requireEditor, wrapAsync(async (req, res) => {
 
   let queryB64;
   try {
-    queryB64 = readB64(photoRows[0].filename);
+    queryB64 = await readB64(photoRows[0].filename);
   } catch {
     return res.status(500).json({ error: 'Could not read photo file' });
   }
@@ -43,7 +43,7 @@ router.post('/identify-people', requireEditor, wrapAsync(async (req, res) => {
   const images     = [];
 
   for (const t of withRef) {
-    try { images.push(readB64(t.ref_filename)); }
+    try { images.push(await readB64(t.ref_filename)); }
     catch { /* reference file missing — treat as no reference */ }
   }
   images.push(queryB64);
@@ -128,6 +128,48 @@ router.post('/set-reference', requireEditor, wrapAsync(async (req, res) => {
 
   await db.query('UPDATE tags SET reference_photo_id = $1 WHERE id = $2', [photoId, tagId]);
   res.json({ ok: true });
+}));
+
+// ── POST /api/ai/describe-person ──────────────────────────────────────────────
+// Accepts { tagId, photoIds[] }. Sends selected photos to Ollama and returns
+// a short physical description to populate the people tag's description field.
+
+router.post('/describe-person', requireEditor, wrapAsync(async (req, res) => {
+  const tagId    = parseInt(req.body.tagId, 10);
+  const photoIds = Array.isArray(req.body.photoIds)
+    ? req.body.photoIds.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 20)
+    : [];
+  if (!Number.isInteger(tagId) || !photoIds.length) {
+    return res.status(400).json({ error: 'invalid params' });
+  }
+
+  const { rows: tags } = await db.query(
+    "SELECT id, name FROM tags WHERE id = $1 AND category = 'people'", [tagId]
+  );
+  if (!tags.length) return res.status(404).json({ error: 'people tag not found' });
+
+  const { rows: photos } = await db.query(
+    'SELECT filename FROM photos WHERE id = ANY($1::int[])', [photoIds]
+  );
+  if (!photos.length) return res.status(404).json({ error: 'no photos found' });
+
+  const images = [];
+  for (const p of photos) {
+    try { images.push(await readB64(p.filename)); } catch { /* skip unreadable */ }
+  }
+  if (!images.length) return res.status(500).json({ error: 'could not read photo files' });
+
+  const prompt = `Describe the physical appearance of the main person in the photo${images.length > 1 ? 's' : ''}: hair color and style, approximate age, and one or two distinctive features.`;
+
+  let ollamaResponse;
+  try {
+    ollamaResponse = await generate({ prompt, images });
+  } catch (err) {
+    return res.status(503).json({ error: err.message });
+  }
+
+  const description = (ollamaResponse.response || '').trim().replace(/^["']|["']$/g, '').slice(0, 500);
+  res.json({ description, rawResponse: ollamaResponse.response });
 }));
 
 module.exports = router;
