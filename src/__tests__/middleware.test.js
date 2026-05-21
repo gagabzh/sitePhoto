@@ -1,4 +1,4 @@
-const { nonceMiddleware, csrfMiddleware, requireAuth, requireAdmin, canModify, errorHandler, wrapAsync } = require('../middleware');
+const { nonceMiddleware, csrfMiddleware, requireAuth, requireAdmin, errorHandler, wrapAsync } = require('../middleware');
 
 describe('requireAuth', () => {
   const next = jest.fn();
@@ -130,24 +130,6 @@ describe('errorHandler', () => {
     const res = makeRes();
     errorHandler({}, {}, res, next);
     expect(res.send).toHaveBeenCalledWith('Internal server error');
-  });
-});
-
-describe('canModify', () => {
-  it('returns true for admin regardless of ownership', () => {
-    expect(canModify({ role: 'admin', userId: 99 }, { user_id: 10 })).toBe(true);
-  });
-
-  it('returns true for owner', () => {
-    expect(canModify({ role: 'editor', userId: 10 }, { user_id: 10 })).toBe(true);
-  });
-
-  it('returns false for non-owner editor', () => {
-    expect(canModify({ role: 'editor', userId: 20 }, { user_id: 10 })).toBe(false);
-  });
-
-  it('returns false for non-owner viewer', () => {
-    expect(canModify({ role: 'viewer', userId: 20 }, { user_id: 10 })).toBe(false);
   });
 });
 

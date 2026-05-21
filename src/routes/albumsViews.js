@@ -1,5 +1,5 @@
 const { page, esc } = require('../layout');
-const { canModify } = require('../middleware');
+const { canModify } = require('../permissions');
 const { selectionBar, selectionScript, lbOverlay, lbScript } = require('../components');
 const { singleUploadFields, batchUploadFields } = require('../uploadHelpers');
 

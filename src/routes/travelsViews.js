@@ -1,5 +1,5 @@
 const { page, esc } = require('../layout');
-const { canModify } = require('../middleware');
+const { canModify } = require('../permissions');
 
 function safeJson(v) {
   return JSON.stringify(v).replace(/<\/script>/gi, '<\\/script>');
