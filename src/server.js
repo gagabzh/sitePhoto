@@ -5,10 +5,20 @@ const migrate = require('./migrate');
 
 const PORT = process.env.PORT || 3000;
 
+if (process.env.NODE_ENV === 'production') {
+  const missing = ['SEED_EMAIL', 'SEED_PASS'].filter(k => !process.env[k]);
+  if (missing.length) {
+    console.error(`FATAL: ${missing.join(', ')} must be set via environment variables in production.`);
+    process.exit(1);
+  }
+} else if (!process.env.SEED_EMAIL || !process.env.SEED_PASS) {
+  console.warn('WARNING: SEED_EMAIL/SEED_PASS not set — using insecure defaults. Set them before deploying.');
+}
+
 async function seedAdmin() {
-  const name = process.env.SEED_NAME || 'Saev';
+  const name  = process.env.SEED_NAME  || 'Saev';
   const email = process.env.SEED_EMAIL || 'saev.bzh@pm.me';
-  const pass = process.env.SEED_PASS || 'changeme';
+  const pass  = process.env.SEED_PASS  || 'changeme';
   const { rows } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
   if (rows.length === 0) {
     const hash = await bcrypt.hash(pass, 10);
