@@ -1,7 +1,6 @@
 const router = require('express').Router();
 const fs = require('fs');
 const path = require('path');
-const db = require('../db');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { filterOwnedPhotoIds } = require('../permissions');
 const { optimizePhoto } = require('../imageOptimizer');
@@ -12,6 +11,10 @@ const {
 const {
   renderPhotoListPage, renderUploadPage, renderPhotoDetailPage, renderPhotoEditPage,
 } = require('./photosViews');
+const {
+  fetchPhotoList, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
+  insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner, updatePhoto,
+} = require('./photosQueries');
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -22,29 +25,9 @@ function parseFrom(raw) {
 
 // US-P1: Photo list — Family Wall layout
 router.get('/', requireEditor, wrapAsync(async (req, res) => {
-  const [photosResult, albumResult] = await Promise.all([
-    db.query(`
-      SELECT p.id, p.filename, p.title, p.user_id, u.name AS uploader,
-        COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
-      FROM photos p
-      JOIN users u ON u.id = p.user_id
-      LEFT JOIN photo_tags pt ON pt.photo_id = p.id
-      LEFT JOIN tags t ON t.id = pt.tag_id
-      GROUP BY p.id, u.name
-      ORDER BY p.created_at DESC
-    `),
-    db.query(`
-      SELECT a.id, a.title,
-        (SELECT p2.filename FROM photos p2 JOIN album_photos ap2 ON ap2.photo_id = p2.id
-         WHERE ap2.album_id = a.id ORDER BY p2.created_at ASC LIMIT 1) AS cover_filename
-      FROM albums a
-      ORDER BY a.created_at DESC
-      LIMIT 1
-    `),
-  ]);
+  const [photoRows, latestAlbum] = await Promise.all([fetchPhotoList(), fetchLatestAlbum()]);
 
-  const rows = photosResult.rows.map(p => ({ ...p, canEdit: canModify(req.session, p) }));
-  const latestAlbum = (albumResult && albumResult.rows && albumResult.rows[0]) || null;
+  const rows = photoRows.map(p => ({ ...p, canEdit: canModify(req.session, p) }));
 
   const uploaderCounts = {};
   const tagCounts = {};
@@ -70,14 +53,7 @@ router.post('/bulk-tag', requireEditor, wrapAsync(async (req, res) => {
   const allowedIds = await filterOwnedPhotoIds(req.session, ids);
   if (!allowedIds.length) return res.redirect('/photos');
 
-  const { rows: [tagRow] } = await db.query(
-    'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-    [tag]
-  );
-  await db.query(
-    'INSERT INTO photo_tags (photo_id, tag_id) SELECT unnest($1::int[]), $2 ON CONFLICT DO NOTHING',
-    [allowedIds, tagRow.id]
-  );
+  await bulkApplyTag(tag, allowedIds);
 
   res.redirect('/photos');
 }));
@@ -94,12 +70,7 @@ router.post('/bulk-untag', requireEditor, wrapAsync(async (req, res) => {
   const allowedIds = await filterOwnedPhotoIds(req.session, ids);
   if (!allowedIds.length) return res.redirect('/photos');
 
-  await db.query(
-    `DELETE FROM photo_tags
-     WHERE photo_id = ANY($1::int[])
-       AND tag_id = (SELECT id FROM tags WHERE name = $2)`,
-    [allowedIds, tag]
-  );
+  await bulkRemoveTag(tag, allowedIds);
   res.redirect('/photos');
 }));
 
@@ -143,12 +114,9 @@ router.post('/upload', requireEditor, (req, res, next) => {
       const resolvedTakenAt = taken_at || (exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null);
       const resolvedLat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const resolvedLon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
-      const { rows } = await db.query(
-        'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id',
-        [req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, resolvedLat, resolvedLon, ncUrl]
-      );
-      if (tags) await setTags(rows[0].id, tags);
-      res.redirect(`/photos/${rows[0].id}`);
+      const photoId = await insertPhoto(req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, resolvedLat, resolvedLon, ncUrl);
+      if (tags) await setTags(photoId, tags);
+      res.redirect(`/photos/${photoId}`);
     } catch (e) {
       next(e);
     }
@@ -158,18 +126,7 @@ router.post('/upload', requireEditor, (req, res, next) => {
 // View single photo (all authenticated users)
 router.get('/:id', wrapAsync(async (req, res) => {
   const from = parseFrom(req.query.from);
-  const { rows } = await db.query(`
-    SELECT p.*, u.name AS uploader,
-      COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
-    FROM photos p
-    JOIN users u ON u.id = p.user_id
-    LEFT JOIN photo_tags pt ON pt.photo_id = p.id
-    LEFT JOIN tags t ON t.id = pt.tag_id
-    WHERE p.id = $1
-    GROUP BY p.id, u.name
-  `, [req.params.id]);
-
-  const photo = rows[0];
+  const photo = await fetchPhotoWithTags(req.params.id);
   if (!photo) return res.status(404).send('Photo not found');
 
   const canEdit = canModify(req.session, photo);
@@ -179,17 +136,7 @@ router.get('/:id', wrapAsync(async (req, res) => {
 // US-P3: Edit form
 router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
   const from = parseFrom(req.query.from);
-  const { rows } = await db.query(`
-    SELECT p.*,
-      COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
-    FROM photos p
-    LEFT JOIN photo_tags pt ON pt.photo_id = p.id
-    LEFT JOIN tags t ON t.id = pt.tag_id
-    WHERE p.id = $1
-    GROUP BY p.id
-  `, [req.params.id]);
-
-  const photo = rows[0];
+  const photo = await fetchPhotoForEdit(req.params.id);
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
@@ -198,8 +145,7 @@ router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
 
 // US-P3: Save edits
 router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
-  const { rows } = await db.query('SELECT user_id FROM photos WHERE id = $1', [req.params.id]);
-  const photo = rows[0];
+  const photo = await getPhotoOwner(req.params.id);
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
@@ -207,18 +153,14 @@ router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
   const lat = parseCoord(latitude, -90, 90);
   const lon = parseCoord(longitude, -180, 180);
-  await db.query(
-    'UPDATE photos SET title = $1, description = $2, taken_at = $3, nextcloud_url = $4, latitude = $5, longitude = $6, updated_at = NOW() WHERE id = $7',
-    [title, description || null, taken_at || null, ncUrl, lat, lon, req.params.id]
-  );
+  await updatePhoto(req.params.id, title, description || null, taken_at || null, ncUrl, lat, lon);
   await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);
 }));
 
 // US-P4: Delete
 router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
-  const { rows } = await db.query('SELECT user_id, filename FROM photos WHERE id = $1', [req.params.id]);
-  const photo = rows[0];
+  const photo = await getPhotoOwner(req.params.id);
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
