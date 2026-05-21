@@ -231,21 +231,17 @@ describe('POST /albums/new/folder — create album from folder', () => {
 
   it('applies shared tags to all photos', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 3 }] })   // INSERT album
-      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // INSERT photo 1
-      .mockResolvedValueOnce({ rows: [] })             // INSERT album_photos 1
-      .mockResolvedValueOnce({ rows: [] })             // DELETE photo_tags (11)
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // INSERT tags 'summer'
-      .mockResolvedValueOnce({ rows: [] })             // INSERT photo_tags (11, 1)
-      .mockResolvedValueOnce({ rows: [{ id: 2 }] })   // INSERT tags '2024'
-      .mockResolvedValueOnce({ rows: [] })             // INSERT photo_tags (11, 2)
-      .mockResolvedValueOnce({ rows: [{ id: 12 }] })  // INSERT photo 2
-      .mockResolvedValueOnce({ rows: [] })             // INSERT album_photos 2
-      .mockResolvedValueOnce({ rows: [] })             // DELETE photo_tags (12)
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // INSERT tags 'summer'
-      .mockResolvedValueOnce({ rows: [] })             // INSERT photo_tags (12, 1)
-      .mockResolvedValueOnce({ rows: [{ id: 2 }] })   // INSERT tags '2024'
-      .mockResolvedValueOnce({ rows: [] });            // INSERT photo_tags (12, 2)
+      .mockResolvedValueOnce({ rows: [{ id: 3 }] })              // INSERT album
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })             // INSERT photo 1
+      .mockResolvedValueOnce({ rows: [] })                        // INSERT album_photos 1
+      .mockResolvedValueOnce({ rows: [] })                        // DELETE photo_tags (11)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })  // INSERT tags unnest (11)
+      .mockResolvedValueOnce({ rows: [] })                        // INSERT photo_tags unnest (11)
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] })             // INSERT photo 2
+      .mockResolvedValueOnce({ rows: [] })                        // INSERT album_photos 2
+      .mockResolvedValueOnce({ rows: [] })                        // DELETE photo_tags (12)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }, { id: 2 }] })  // INSERT tags unnest (12)
+      .mockResolvedValueOnce({ rows: [] });                       // INSERT photo_tags unnest (12)
 
     await request(makeApp(EDITOR_SESSION))
       .post('/albums/new/folder')
@@ -253,11 +249,11 @@ describe('POST /albums/new/folder — create album from folder', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO tags'),
-      ['summer']
+      [['summer', '2024']]
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photo_tags'),
-      [11, 1]
+      [11, [1, 2]]
     );
   });
 
@@ -920,13 +916,13 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
       .mockResolvedValueOnce({ rows: [{ id: 11 }] })        // INSERT photo 1
       .mockResolvedValueOnce({ rows: [] })                  // INSERT album_photos 1
       .mockResolvedValueOnce({ rows: [] })                  // DELETE photo_tags (11)
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })         // INSERT tags 'paris'
-      .mockResolvedValueOnce({ rows: [] })                  // INSERT photo_tags (11, 1)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })         // INSERT tags unnest (11)
+      .mockResolvedValueOnce({ rows: [] })                  // INSERT photo_tags unnest (11)
       .mockResolvedValueOnce({ rows: [{ id: 12 }] })        // INSERT photo 2
       .mockResolvedValueOnce({ rows: [] })                  // INSERT album_photos 2
       .mockResolvedValueOnce({ rows: [] })                  // DELETE photo_tags (12)
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })         // INSERT tags 'paris'
-      .mockResolvedValueOnce({ rows: [] });                 // INSERT photo_tags (12, 1)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })         // INSERT tags unnest (12)
+      .mockResolvedValueOnce({ rows: [] });                 // INSERT photo_tags unnest (12)
 
     await request(makeApp(EDITOR_SESSION))
       .post('/albums/1/photos/batch')
@@ -934,11 +930,11 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO tags'),
-      ['paris']
+      [['paris']]
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photo_tags'),
-      [11, 1]
+      [11, [1]]
     );
   });
 

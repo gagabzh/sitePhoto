@@ -1,4 +1,4 @@
-const { nonceMiddleware, csrfMiddleware, requireAuth, requireAdmin, canModify, errorHandler, wrapAsync } = require('../middleware');
+const { nonceMiddleware, csrfMiddleware, requireAuth, requireAdmin, errorHandler, wrapAsync } = require('../middleware');
 
 describe('requireAuth', () => {
   const next = jest.fn();
@@ -133,24 +133,6 @@ describe('errorHandler', () => {
   });
 });
 
-describe('canModify', () => {
-  it('returns true for admin regardless of ownership', () => {
-    expect(canModify({ role: 'admin', userId: 99 }, { user_id: 10 })).toBe(true);
-  });
-
-  it('returns true for owner', () => {
-    expect(canModify({ role: 'editor', userId: 10 }, { user_id: 10 })).toBe(true);
-  });
-
-  it('returns false for non-owner editor', () => {
-    expect(canModify({ role: 'editor', userId: 20 }, { user_id: 10 })).toBe(false);
-  });
-
-  it('returns false for non-owner viewer', () => {
-    expect(canModify({ role: 'viewer', userId: 20 }, { user_id: 10 })).toBe(false);
-  });
-});
-
 describe('nonceMiddleware', () => {
   // nonceMiddleware replaces res.send with a patching wrapper; the original
   // send is stored as origSend internally. We capture output via a plain fn.
@@ -200,6 +182,30 @@ describe('nonceMiddleware', () => {
       nonces.add(res.locals.nonce);
     }
     expect(nonces.size).toBe(5);
+  });
+
+  it('injects nonce into bare <style> tags in HTML response', () => {
+    const { res, captured } = makeRes();
+    nonceMiddleware({}, res, jest.fn());
+    const nonce = res.locals.nonce;
+    res.send('<!DOCTYPE html><style>body{margin:0}</style>');
+    expect(captured[0]).toContain(`<style nonce="${nonce}">`);
+  });
+
+  it('adds nonce to <style> tags that already have other attributes', () => {
+    const { res, captured } = makeRes();
+    nonceMiddleware({}, res, jest.fn());
+    const nonce = res.locals.nonce;
+    res.send('<!DOCTYPE html><style type="text/css">body{}</style>');
+    expect(captured[0]).toContain(`<style nonce="${nonce}" type="text/css">`);
+  });
+
+  it('does not double-inject nonce into <style> tags that already have one', () => {
+    const { res, captured } = makeRes();
+    nonceMiddleware({}, res, jest.fn());
+    const nonce = res.locals.nonce;
+    res.send(`<!DOCTYPE html><style nonce="${nonce}">body{}</style>`);
+    expect(captured[0]).toBe(`<!DOCTYPE html><style nonce="${nonce}">body{}</style>`);
   });
 });
 

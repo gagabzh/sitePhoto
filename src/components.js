@@ -153,6 +153,7 @@ function selectionScript() {
       if(sel.has(id)) sel.delete(id); else{sel.add(id);lastId=id;}
       updateUI();
     }
+    // intentional: selects only loaded tiles — correct UX for infinite scroll
     function selectAll(){tiles.forEach(function(t){sel.add(tid(t));});updateUI();}
     function selectNone(){sel.clear();updateUI();}
     function invertSel(){tiles.forEach(function(t){var id=tid(t);if(sel.has(id))sel.delete(id);else sel.add(id);});updateUI();}
@@ -177,8 +178,8 @@ function selectionScript() {
       });
     });
 
-    /* Long-press per tile */
-    tiles.forEach(function(tile){
+    /* Per-tile event setup — called for initial tiles and lazy-loaded tiles via registerSelTiles */
+    function setupTile(tile){
       var timer=null,fired=false,sx=0,sy=0;
       tile.addEventListener('pointerdown',function(e){
         if(e.button&&e.button!==0) return;
@@ -206,22 +207,17 @@ function selectionScript() {
           else toggle(tid(tile));
         }
       });
-      /* Block link navigation in selection mode */
       tile.addEventListener('click',function(e){
         if(mode==='selecting') e.preventDefault();
       });
-    });
-
-    /* Hover-check button */
-    tiles.forEach(function(tile){
       var hc=tile.querySelector('.hovercheck');
-      if(!hc) return;
-      hc.addEventListener('click',function(e){
+      if(hc) hc.addEventListener('click',function(e){
         e.stopPropagation();
         if(mode==='browse') enterSelection(tid(tile));
         else toggle(tid(tile));
       });
-    });
+    }
+    tiles.forEach(setupTile);
 
     /* Toolbar row-1 buttons */
     if(selBtn) selBtn.addEventListener('click',function(){enterSelection(null);});
@@ -272,6 +268,17 @@ function selectionScript() {
         selectAll();
       }
     });
+
+    /* Registration hook for tiles appended after initial render (e.g. lazy loading) */
+    window.registerSelTiles=window.registerSelTiles||function(newTiles){
+      newTiles.forEach(function(tile){
+        tiles.push(tile);
+        setupTile(tile);
+        if(mode==='selecting') tile.classList.add('sel-selecting');
+      });
+      total=tiles.length;
+      updateUI();
+    };
   })();</script>`;
 }
 
