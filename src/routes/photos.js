@@ -12,7 +12,7 @@ const {
   renderPhotoListPage, renderUploadPage, renderPhotoDetailPage, renderPhotoEditPage,
 } = require('./photosViews');
 const {
-  fetchPhotoList, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
+  fetchPhotoPage, fetchPhotoStats, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
   insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner, updatePhoto,
 } = require('./photosQueries');
 
@@ -25,20 +25,31 @@ function parseFrom(raw) {
 
 // US-P1: Photo list — Family Wall layout
 router.get('/', requireEditor, wrapAsync(async (req, res) => {
-  const [photoRows, latestAlbum] = await Promise.all([fetchPhotoList(), fetchLatestAlbum()]);
+  const [{ photos, nextCursor }, stats, latestAlbum] = await Promise.all([
+    fetchPhotoPage(null, 24),
+    fetchPhotoStats(),
+    fetchLatestAlbum(),
+  ]);
+  const rows = photos.map(p => ({ ...p, canEdit: canModify(req.session, p) }));
+  res.send(renderPhotoListPage({
+    rows, uploaders: stats.uploaders, topTags: stats.topTags,
+    total: stats.total, nextCursor, latestAlbum, session: req.session,
+  }));
+}));
 
-  const rows = photoRows.map(p => ({ ...p, canEdit: canModify(req.session, p) }));
-
-  const uploaderCounts = {};
-  const tagCounts = {};
-  for (const p of rows) {
-    uploaderCounts[p.uploader] = (uploaderCounts[p.uploader] || 0) + 1;
-    for (const t of p.tags) tagCounts[t] = (tagCounts[t] || 0) + 1;
-  }
-  const uploaders = Object.entries(uploaderCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const topTags   = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
-  res.send(renderPhotoListPage({ rows, uploaders, topTags, latestAlbum, session: req.session }));
+// Cursor-based pagination for lazy loading (must be before /:id)
+router.get('/api/page', requireEditor, wrapAsync(async (req, res) => {
+  const cursor = req.query.cursor ? parseInt(req.query.cursor, 10) : null;
+  const limit  = Math.min(parseInt(req.query.limit, 10) || 24, 100);
+  if (cursor !== null && !Number.isFinite(cursor)) return res.status(400).json({ error: 'Invalid cursor' });
+  const { photos, nextCursor } = await fetchPhotoPage(cursor, limit);
+  res.json({
+    photos: photos.map(p => ({
+      id: p.id, filename: p.filename, title: p.title,
+      canEdit: canModify(req.session, p),
+    })),
+    nextCursor,
+  });
 }));
 
 // Bulk tag selected photos

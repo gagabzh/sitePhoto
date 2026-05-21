@@ -1,6 +1,9 @@
 const db = require('../db');
 
-async function fetchPhotoList() {
+async function fetchPhotoPage(cursor, limit = 24) {
+  const params = [limit + 1];
+  const cursorClause = cursor != null ? 'WHERE p.id < $2' : '';
+  if (cursor != null) params.push(cursor);
   const { rows } = await db.query(`
     SELECT p.id, p.filename, p.title, p.user_id, u.name AS uploader,
       COALESCE(array_agg(t.name ORDER BY t.name) FILTER (WHERE t.name IS NOT NULL), '{}') AS tags
@@ -8,10 +11,27 @@ async function fetchPhotoList() {
     JOIN users u ON u.id = p.user_id
     LEFT JOIN photo_tags pt ON pt.photo_id = p.id
     LEFT JOIN tags t ON t.id = pt.tag_id
+    ${cursorClause}
     GROUP BY p.id, u.name
-    ORDER BY p.created_at DESC
-  `);
-  return rows;
+    ORDER BY p.id DESC
+    LIMIT $1
+  `, params);
+  const hasMore = rows.length > limit;
+  const photos = hasMore ? rows.slice(0, limit) : rows;
+  return { photos, nextCursor: hasMore ? photos[photos.length - 1].id : null };
+}
+
+async function fetchPhotoStats() {
+  const [uploaderRes, tagRes, countRes] = await Promise.all([
+    db.query(`SELECT u.name, COUNT(*)::int AS cnt FROM photos p JOIN users u ON u.id = p.user_id GROUP BY u.name ORDER BY cnt DESC LIMIT 5`),
+    db.query(`SELECT t.name, COUNT(*)::int AS cnt FROM photo_tags pt JOIN tags t ON t.id = pt.tag_id GROUP BY t.name ORDER BY cnt DESC LIMIT 10`),
+    db.query(`SELECT COUNT(*)::int AS n FROM photos`),
+  ]);
+  return {
+    uploaders: uploaderRes.rows.map(r => [r.name, r.cnt]),
+    topTags:   tagRes.rows.map(r => [r.name, r.cnt]),
+    total:     countRes.rows[0]?.n ?? 0,
+  };
 }
 
 async function fetchLatestAlbum() {
@@ -94,7 +114,8 @@ async function updatePhoto(id, title, description, takenAt, ncUrl, lat, lon) {
 }
 
 module.exports = {
-  fetchPhotoList,
+  fetchPhotoPage,
+  fetchPhotoStats,
   fetchLatestAlbum,
   bulkApplyTag,
   bulkRemoveTag,

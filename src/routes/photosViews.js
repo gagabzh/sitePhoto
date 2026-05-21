@@ -2,7 +2,7 @@ const { page, esc } = require('../layout');
 const { selectionBar, selectionScript } = require('../components');
 const { singleUploadFields } = require('../uploadHelpers');
 
-function renderPhotoListPage({ rows, uploaders, topTags, latestAlbum, session }) {
+function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, latestAlbum, session }) {
   const firstname = esc((session.name || '').split(' ')[0]);
 
   if (rows.length === 0) {
@@ -57,7 +57,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, latestAlbum, session })
   return page('Photos', `
     <div class="wall-greet">
       <h1>hi <span style="color:var(--accent)">${firstname}</span>, welcome home.</h1>
-      <p class="wall-count">${rows.length} photo${rows.length !== 1 ? 's' : ''}</p>
+      <p class="wall-count">${total} photo${total !== 1 ? 's' : ''}</p>
     </div>
     ${heroHtml}
     <form method="POST" action="/photos/bulk-tag" data-sel-form>
@@ -69,6 +69,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, latestAlbum, session })
             <a class="btn" href="/photos/upload">+ Upload</a>
           </div>
           ${mosaicHtml}
+          ${nextCursor ? `<div id="photo-sentinel" data-cursor="${nextCursor}"></div>` : ''}
         </div>
         <aside class="wall-side">
           <div class="wall-panel">
@@ -88,6 +89,37 @@ function renderPhotoListPage({ rows, uploaders, topTags, latestAlbum, session })
       </div>
     </form>
     ${selectionScript()}
+    ${nextCursor ? `<script>
+(function(){
+  var sentinel=document.getElementById('photo-sentinel');
+  if(!sentinel) return;
+  var cursor=sentinel.dataset.cursor,loading=false;
+  function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function renderCell(p){
+    return '<div class="wall-cell"><a href="/photos/'+p.id+'?from=/photos">'
+      +'<img src="/uploads/'+escHtml(p.filename)+'" alt="'+escHtml(p.title)+'" loading="lazy"></a></div>';
+  }
+  var observer=new IntersectionObserver(function(entries){
+    if(!entries[0].isIntersecting||loading) return;
+    loading=true;
+    fetch('/photos/api/page?cursor='+cursor+'&limit=24')
+      .then(function(r){return r.json();})
+      .then(function(d){
+        for(var i=0;i<d.photos.length;i+=9){
+          var chunk=d.photos.slice(i,i+9);
+          var div=document.createElement('div');
+          div.className='wall-mosaic';
+          div.innerHTML=chunk.map(renderCell).join('');
+          sentinel.parentNode.insertBefore(div,sentinel);
+        }
+        if(d.nextCursor){cursor=d.nextCursor;loading=false;}
+        else{observer.disconnect();sentinel.remove();}
+      })
+      .catch(function(){loading=false;});
+  },{rootMargin:'400px'});
+  observer.observe(sentinel);
+})();
+</script>` : ''}
   `, session);
 }
 

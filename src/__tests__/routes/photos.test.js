@@ -73,8 +73,20 @@ function makeApp(sessionData) {
 // ── US-P1: List ──────────────────────────────────────────────────────────────
 
 describe('US-P1: GET /photos — photo list', () => {
+  // GET /photos calls 5 db.query in this order (Promise.all order):
+  //   1. fetchPhotoPage (photo rows)
+  //   2. fetchPhotoStats: uploader counts
+  //   3. fetchPhotoStats: tag counts
+  //   4. fetchPhotoStats: total COUNT
+  //   5. fetchLatestAlbum
+
   it('returns 200 and renders photos for editor', async () => {
-    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })      // fetchPhotoPage
+      .mockResolvedValueOnce({ rows: [{ name: 'Alice', cnt: 1 }] }) // uploaders
+      .mockResolvedValueOnce({ rows: [] })                // topTags
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })        // total
+      .mockResolvedValueOnce({ rows: [] });               // fetchLatestAlbum
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
     expect(res.status).toBe(200);
     expect(res.text).toContain('Sunset');
@@ -82,7 +94,12 @@ describe('US-P1: GET /photos — photo list', () => {
   });
 
   it('returns 200 and renders photos for admin', async () => {
-    db.query.mockResolvedValue({ rows: [] });
+    db.query
+      .mockResolvedValueOnce({ rows: [] })  // fetchPhotoPage (empty)
+      .mockResolvedValueOnce({ rows: [] })  // uploaders
+      .mockResolvedValueOnce({ rows: [] })  // topTags
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] }) // total
+      .mockResolvedValueOnce({ rows: [] }); // fetchLatestAlbum
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
     expect(res.status).toBe(200);
     expect(res.text).toContain('Upload the first one');
@@ -417,8 +434,17 @@ describe('POST /photos/bulk-tag — apply tag to multiple photos', () => {
 });
 
 describe('GET /photos — photo list selection mode', () => {
+  function mockPhotoList(photo) {
+    db.query
+      .mockResolvedValueOnce({ rows: [photo] })           // fetchPhotoPage
+      .mockResolvedValueOnce({ rows: [] })                // uploaders
+      .mockResolvedValueOnce({ rows: [] })                // topTags
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })        // total
+      .mockResolvedValueOnce({ rows: [] });               // fetchLatestAlbum
+  }
+
   it('shows sel-tile and sel-select-btn for editor-owned photos', async () => {
-    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
+    mockPhotoList({ ...FAKE_PHOTO, user_id: 10, tags: [] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
     expect(res.text).toContain('sel-tile');
     expect(res.text).toContain('id="sel-select-btn"');
@@ -427,13 +453,13 @@ describe('GET /photos — photo list selection mode', () => {
   });
 
   it('does not show sel-tile on photos owned by others', async () => {
-    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
+    mockPhotoList({ ...FAKE_PHOTO, user_id: 99, tags: [] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
     expect(res.text).not.toContain('data-photo-id');
   });
 
   it('admin sees sel-tile on all photos', async () => {
-    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99, tags: [] }] });
+    mockPhotoList({ ...FAKE_PHOTO, user_id: 99, tags: [] });
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
     expect(res.text).toContain('sel-tile');
   });
@@ -876,6 +902,51 @@ describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
     expect(res.text).toContain('loc-search-input');
     expect(res.text).toContain('Search a place');
     expect(res.text).not.toContain('48.8566');
+  });
+});
+
+// ── TQ-8: Pagination API ─────────────────────────────────────────────────────
+
+describe('GET /photos/api/page — cursor-based pagination', () => {
+  it('returns first page with no cursor', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ ...FAKE_PHOTO, tags: [] }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/api/page');
+    expect(res.status).toBe(200);
+    expect(res.body.photos).toHaveLength(1);
+    expect(res.body.photos[0].id).toBe(1);
+    expect(res.body.photos[0].filename).toBe('test-uuid.jpg');
+    expect(res.body.nextCursor).toBeNull();
+  });
+
+  it('sets nextCursor when a full page is returned', async () => {
+    // fetchPhotoPage requests limit+1 = 25; returning 25 rows signals hasMore
+    const manyPhotos = Array.from({ length: 25 }, (_, i) => ({ ...FAKE_PHOTO, id: 100 - i, tags: [] }));
+    db.query.mockResolvedValueOnce({ rows: manyPhotos });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/api/page?limit=24');
+    expect(res.status).toBe(200);
+    expect(res.body.photos).toHaveLength(24);
+    expect(res.body.nextCursor).toBe(manyPhotos[23].id);
+  });
+
+  it('passes cursor to the WHERE clause', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/api/page?cursor=50');
+    expect(res.status).toBe(200);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE p.id < $2'),
+      expect.arrayContaining([50])
+    );
+  });
+
+  it('includes canEdit based on ownership', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ ...FAKE_PHOTO, user_id: 10, tags: [] }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/api/page');
+    expect(res.body.photos[0].canEdit).toBe(true);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION)).get('/photos/api/page');
+    expect(res.status).toBe(403);
   });
 });
 
