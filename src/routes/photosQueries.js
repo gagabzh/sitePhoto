@@ -66,7 +66,7 @@ async function bulkRemoveTag(tagName, photoIds) {
   );
 }
 
-async function insertPhoto(userId, filename, originalFilename, title, description, mimeType, size, takenAt, exposureTime, focalLength, lat, lon, ncUrl) {
+async function insertPhoto({ userId, filename, originalFilename, title, description, mimeType, size, takenAt, exposureTime, focalLength, lat, lon, ncUrl }) {
   const { rows: [{ id }] } = await db.query(
     'INSERT INTO photos (user_id, filename, original_filename, title, description, mime_type, size, taken_at, exposure_time, focal_length, latitude, longitude, nextcloud_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id',
     [userId, filename, originalFilename, title, description, mimeType, size, takenAt, exposureTime, focalLength, lat, lon, ncUrl]
