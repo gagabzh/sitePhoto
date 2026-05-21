@@ -40,7 +40,9 @@ const gpxUpload = multer({
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 async function safeUnlink(p) {
-  try { await fsp.unlink(p); } catch (_) {}
+  try { await fsp.unlink(p); } catch (err) {
+    if (err.code !== 'ENOENT') console.warn(`safeUnlink: failed to remove ${p}: ${err.code || err.message}`);
+  }
 }
 
 function makeSlug(title) {

@@ -12,12 +12,7 @@ function nonceMiddleware(req, res, next) {
           return /\bnonce=/.test(a) ? `<script${a}>` : `<script nonce="${nonce}"${a}>`;
         });
       }
-      if (body.includes('<style')) {
-        body = body.replace(/<style(\s[^>]*)?>/g, (_, attrs) => {
-          const a = attrs || '';
-          return /\bnonce=/.test(a) ? `<style${a}>` : `<style nonce="${nonce}"${a}>`;
-        });
-      }
+
     }
     return origSend(body);
   };

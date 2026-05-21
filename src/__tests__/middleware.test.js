@@ -184,29 +184,7 @@ describe('nonceMiddleware', () => {
     expect(nonces.size).toBe(5);
   });
 
-  it('injects nonce into bare <style> tags in HTML response', () => {
-    const { res, captured } = makeRes();
-    nonceMiddleware({}, res, jest.fn());
-    const nonce = res.locals.nonce;
-    res.send('<!DOCTYPE html><style>body{margin:0}</style>');
-    expect(captured[0]).toContain(`<style nonce="${nonce}">`);
-  });
 
-  it('adds nonce to <style> tags that already have other attributes', () => {
-    const { res, captured } = makeRes();
-    nonceMiddleware({}, res, jest.fn());
-    const nonce = res.locals.nonce;
-    res.send('<!DOCTYPE html><style type="text/css">body{}</style>');
-    expect(captured[0]).toContain(`<style nonce="${nonce}" type="text/css">`);
-  });
-
-  it('does not double-inject nonce into <style> tags that already have one', () => {
-    const { res, captured } = makeRes();
-    nonceMiddleware({}, res, jest.fn());
-    const nonce = res.locals.nonce;
-    res.send(`<!DOCTYPE html><style nonce="${nonce}">body{}</style>`);
-    expect(captured[0]).toBe(`<!DOCTYPE html><style nonce="${nonce}">body{}</style>`);
-  });
 });
 
 describe('csrfMiddleware', () => {

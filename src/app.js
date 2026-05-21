@@ -17,7 +17,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
-      styleSrcElem: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`, 'fonts.googleapis.com'],
+      styleSrcElem: ["'self'", 'fonts.googleapis.com'],
       styleSrcAttr: ["'unsafe-inline'"], // permits inline style= attributes; future hardening: remove inline styles then drop this directive
       imgSrc: ["'self'", 'data:', '*.basemaps.cartocdn.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
@@ -41,6 +41,7 @@ app.use(session({
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
 app.use('/uploads', express.static(UPLOAD_DIR));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Serve Leaflet and MarkerCluster from npm packages (replaces unpkg CDN)
 app.use('/vendor/leaflet', express.static(path.join(__dirname, '..', 'node_modules', 'leaflet', 'dist')));

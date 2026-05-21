@@ -104,7 +104,9 @@ async function deletePhotos(ids) {
   );
   await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [ids]);
   for (const p of rows) {
-    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(() => {});
+    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(err => {
+      console.warn(`deletePhotos: failed to unlink ${p.filename}: ${err.code || err.message}`);
+    });
   }
 }
 
