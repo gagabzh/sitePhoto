@@ -52,16 +52,15 @@ function sanitizeNextcloudUrl(raw) {
 async function setTags(photoId, rawTags) {
   await db.query('DELETE FROM photo_tags WHERE photo_id = $1', [photoId]);
   const names = String(rawTags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-  for (const name of names) {
-    const { rows } = await db.query(
-      'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
-      [name]
-    );
-    await db.query(
-      'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-      [photoId, rows[0].id]
-    );
-  }
+  if (!names.length) return;
+  const { rows: tagRows } = await db.query(
+    'INSERT INTO tags (name) SELECT unnest($1::text[]) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+    [names]
+  );
+  await db.query(
+    'INSERT INTO photo_tags (photo_id, tag_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+    [photoId, tagRows.map(r => r.id)]
+  );
 }
 
 // Shared GPS + Nextcloud fields for single-photo upload forms
