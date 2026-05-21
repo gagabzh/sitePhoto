@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
+const { filterAlbumPhotoIds } = require('../permissions');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const {
@@ -183,19 +184,10 @@ router.post('/:id/photos/bulk-delete', requireEditor, wrapAsync(async (req, res)
   const ids = [].concat(raw).map(Number).filter(n => n > 0);
   if (!ids.length) return res.redirect(`/albums/${req.params.id}`);
 
-  const { rows } = req.session.role === 'admin'
-    ? await db.query(
-        'SELECT p.id FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[])',
-        [req.params.id, ids]
-      )
-    : await db.query(
-        'SELECT p.id FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 AND p.id = ANY($2::int[]) AND p.user_id = $3',
-        [req.params.id, ids, req.session.userId]
-      );
+  const allowedIds = await filterAlbumPhotoIds(req.session, req.params.id, ids);
+  if (!allowedIds.length) return res.redirect(`/albums/${req.params.id}`);
 
-  if (!rows.length) return res.redirect(`/albums/${req.params.id}`);
-
-  await deletePhotos(rows.map(r => r.id));
+  await deletePhotos(allowedIds);
   res.redirect(`/albums/${req.params.id}`);
 }));
 

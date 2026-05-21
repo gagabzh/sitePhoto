@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../db');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
+const { filterOwnedPhotoIds } = require('../permissions');
 const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const {
@@ -66,17 +67,13 @@ router.post('/bulk-tag', requireEditor, wrapAsync(async (req, res) => {
   const ids = [].concat(raw).map(Number).filter(n => n > 0);
   if (!ids.length) return res.redirect('/photos');
 
-  const { rows: allowed } = req.session.role === 'admin'
-    ? await db.query('SELECT id FROM photos WHERE id = ANY($1::int[])', [ids])
-    : await db.query('SELECT id FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
-
-  if (!allowed.length) return res.redirect('/photos');
+  const allowedIds = await filterOwnedPhotoIds(req.session, ids);
+  if (!allowedIds.length) return res.redirect('/photos');
 
   const { rows: [tagRow] } = await db.query(
     'INSERT INTO tags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
     [tag]
   );
-  const allowedIds = allowed.map(r => r.id);
   await db.query(
     'INSERT INTO photo_tags (photo_id, tag_id) SELECT unnest($1::int[]), $2 ON CONFLICT DO NOTHING',
     [allowedIds, tagRow.id]
@@ -94,17 +91,14 @@ router.post('/bulk-untag', requireEditor, wrapAsync(async (req, res) => {
   const ids = [].concat(raw).map(Number).filter(n => n > 0);
   if (!ids.length) return res.redirect('/photos');
 
-  const { rows: allowed } = req.session.role === 'admin'
-    ? await db.query('SELECT id FROM photos WHERE id = ANY($1::int[])', [ids])
-    : await db.query('SELECT id FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
-
-  if (!allowed.length) return res.redirect('/photos');
+  const allowedIds = await filterOwnedPhotoIds(req.session, ids);
+  if (!allowedIds.length) return res.redirect('/photos');
 
   await db.query(
     `DELETE FROM photo_tags
      WHERE photo_id = ANY($1::int[])
        AND tag_id = (SELECT id FROM tags WHERE name = $2)`,
-    [allowed.map(r => r.id), tag]
+    [allowedIds, tag]
   );
   res.redirect('/photos');
 }));
@@ -117,13 +111,10 @@ router.post('/bulk-delete', requireEditor, wrapAsync(async (req, res) => {
   const ids = [].concat(raw).map(Number).filter(n => n > 0);
   if (!ids.length) return res.redirect('/photos');
 
-  const { rows } = req.session.role === 'admin'
-    ? await db.query('SELECT id FROM photos WHERE id = ANY($1::int[])', [ids])
-    : await db.query('SELECT id FROM photos WHERE id = ANY($1::int[]) AND user_id = $2', [ids, req.session.userId]);
+  const allowedIds = await filterOwnedPhotoIds(req.session, ids);
+  if (!allowedIds.length) return res.redirect('/photos');
 
-  if (!rows.length) return res.redirect('/photos');
-
-  await deletePhotos(rows.map(r => r.id));
+  await deletePhotos(allowedIds);
   res.redirect('/photos');
 }));
 
