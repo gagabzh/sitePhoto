@@ -69,7 +69,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
             <a class="btn" href="/photos/upload">+ Upload</a>
           </div>
           ${mosaicHtml}
-          ${nextCursor ? `<div id="photo-sentinel" data-cursor="${nextCursor}"></div>` : ''}
+          ${nextCursor && session.role !== 'viewer' ? `<div id="photo-sentinel" data-cursor="${nextCursor}"></div>` : ''}
         </div>
         <aside class="wall-side">
           <div class="wall-panel">
@@ -89,7 +89,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
       </div>
     </form>
     ${selectionScript()}
-    ${nextCursor ? `<script>
+    ${nextCursor && session.role !== 'viewer' ? `<script>
 (function(){
   var sentinel=document.getElementById('photo-sentinel');
   if(!sentinel) return;

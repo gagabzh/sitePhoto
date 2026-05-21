@@ -109,6 +109,27 @@ describe('US-P1: GET /photos — photo list', () => {
     const res = await request(makeApp(VIEWER_SESSION)).get('/photos');
     expect(res.status).toBe(403);
   });
+
+  it('renders photo-sentinel for editor when nextCursor is set', () => {
+    const { renderPhotoListPage } = require('../../routes/photosViews');
+    const html = renderPhotoListPage({
+      rows: [{ ...FAKE_PHOTO, canEdit: true }],
+      uploaders: [], topTags: [], total: 50, nextCursor: 24, latestAlbum: null,
+      session: EDITOR_SESSION,
+    });
+    expect(html).toContain('id="photo-sentinel"');
+    expect(html).toContain('data-cursor="24"');
+  });
+
+  it('suppresses photo-sentinel for viewer even when nextCursor is set', () => {
+    const { renderPhotoListPage } = require('../../routes/photosViews');
+    const html = renderPhotoListPage({
+      rows: [{ ...FAKE_PHOTO, canEdit: false }],
+      uploaders: [], topTags: [], total: 50, nextCursor: 24, latestAlbum: null,
+      session: VIEWER_SESSION,
+    });
+    expect(html).not.toContain('photo-sentinel');
+  });
 });
 
 // ── US-P1: Upload form ───────────────────────────────────────────────────────
