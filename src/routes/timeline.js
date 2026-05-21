@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
-const { page, esc } = require('../layout');
 const { wrapAsync } = require('../middleware');
+const { renderTimelinePage } = require('./timelineViews');
 
 function groupByInterval(rows, interval) {
   const groups = [];
@@ -146,170 +146,11 @@ router.get('/', wrapAsync(async (req, res) => {
   const years = photos.map(p => new Date(p.display_date).getUTCFullYear());
   const firstYear = years.length ? Math.min(...years) : null;
 
-  // Filter selects
-  const albumOptions = albums.map(a =>
-    `<option value="${a.id}" ${String(albumFilter) === String(a.id) ? 'selected' : ''}>${esc(a.title)}</option>`
-  ).join('');
-  const tagOptions = tags.map(t =>
-    `<option value="${esc(t.name)}" ${tagFilter === t.name ? 'selected' : ''}>${esc(t.name)}</option>`
-  ).join('');
-
-  const groupOptions = ['month', 'year', 'day'].map(v =>
-    `<option value="${v}" ${groupInterval === v ? 'selected' : ''}>${v.charAt(0).toUpperCase() + v.slice(1)}</option>`
-  ).join('');
-
-  const filterBar = `
-    <form class="tl-filter-bar" method="GET" action="/timeline">
-      ${groupInterval !== 'month' ? `<input type="hidden" name="group" value="${groupInterval}">` : ''}
-      <label>Album
-        <select name="album">
-          <option value="">All</option>
-          ${albumOptions}
-        </select>
-      </label>
-      <label>Tag
-        <select name="tag">
-          <option value="">All</option>
-          ${tagOptions}
-        </select>
-      </label>
-      <label>From <input type="date" name="from" value="${fromFilter || ''}"></label>
-      <label>To <input type="date" name="to" value="${toFilter || ''}"></label>
-      <button class="btn btn-sm" type="submit">Filter</button>
-      ${albumFilter || tagFilter || fromFilter || toFilter ? `<a class="btn btn-sm btn-secondary" href="/timeline${groupInterval !== 'month' ? '?group=' + groupInterval : ''}">Clear</a>` : ''}
-    </form>
-    <form class="tl-group-row" method="GET" action="/timeline">
-      ${albumFilter ? `<input type="hidden" name="album" value="${esc(String(albumFilter))}">` : ''}
-      ${tagFilter ? `<input type="hidden" name="tag" value="${esc(tagFilter)}">` : ''}
-      ${fromFilter ? `<input type="hidden" name="from" value="${fromFilter}">` : ''}
-      ${toFilter ? `<input type="hidden" name="to" value="${toFilter}">` : ''}
-      Group by
-      <select name="group">${groupOptions}</select>
-      <button class="btn btn-sm" type="submit">Apply</button>
-    </form>`;
-
-  // "When" label helpers
-  const today = new Date();
-  const nowKey = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
-  const prevDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
-  const prevKey = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, '0')}`;
-
-  function whenLabel(key) {
-    if (groupInterval === 'year') {
-      const thisYear = today.getUTCFullYear();
-      if (key === String(thisYear)) return 'this yr.';
-      if (key === String(thisYear - 1)) return 'last yr.';
-      return key;
-    }
-    if (groupInterval === 'day') {
-      const [y, m, d] = key.split('-');
-      const dt = new Date(Date.UTC(+y, +m - 1, +d));
-      const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-      const diffDays = Math.round((todayUtc - dt) / 86400000);
-      if (diffDays === 0) return 'today';
-      if (diffDays === 1) return 'yest.';
-      return dt.toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' }).toLowerCase();
-    }
-    if (key === nowKey) return 'now';
-    if (key === prevKey) return 'last mo.';
-    const [y, m] = key.split('-');
-    return new Date(Date.UTC(+y, +m - 1, 1))
-      .toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
-      .toLowerCase();
-  }
-
-  // Grid variant and render
-  function gridVariant(n) {
-    if (n <= 1) return 'k1';
-    if (n === 2) return 'k2';
-    if (n === 3) return 'k3';
-    if (n >= 5) return 'k5';
-    return 'k4';
-  }
-
-  // Base params shared by all drill-in links (no from/to — those are per-group)
-  const baseParams = new URLSearchParams();
-  if (albumFilter) baseParams.set('album', albumFilter);
-  if (tagFilter) baseParams.set('tag', tagFilter);
-  if (groupInterval !== 'month') baseParams.set('group', groupInterval);
-
-  const singleGroup = groups.length === 1;
-
-  function renderGrid(gp, periodFrom, periodTo) {
-    const n = gp.length;
-
-    // When the timeline shows exactly one group the user has drilled in — show all photos.
-    if (singleGroup) {
-      const cells = gp.map(p => `
-      <div class="tl-cell">
-        <a href="/photos/${p.id}">
-          <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
-        </a>
-      </div>`).join('');
-      return `<div class="tl-grid k5">${cells}</div>`;
-    }
-
-    const v = gridVariant(n);
-    const maxShown = { k1: 1, k2: 2, k3: 3, k4: 4, k5: 5 }[v];
-    const shown = gp.slice(0, maxShown);
-    const extra = n - maxShown;
-
-    const cells = shown.map(p => `
-      <div class="tl-cell">
-        <a href="/photos/${p.id}">
-          <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
-        </a>
-      </div>`).join('');
-
-    let moreCell = '';
-    if (extra > 0) {
-      const drillParams = new URLSearchParams(baseParams);
-      drillParams.set('from', periodFrom);
-      drillParams.set('to', periodTo);
-      moreCell = `
-      <div class="tl-cell">
-        <a class="tl-more" href="/timeline?${drillParams}">+${extra} more</a>
-      </div>`;
-    }
-
-    return `<div class="tl-grid ${v}">${cells}${moreCell}</div>`;
-  }
-
-  const content = groups.length === 0
-    ? '<p class="tl-empty">No photos found.</p>'
-    : `<div class="tl-timeline">${groups.map(({ key, label, periodFrom, periodTo, photos: gp }) => {
-        const uploaders = [...new Set(gp.map(p => p.uploader))].join(' · ');
-        return `
-          <div class="tl-entry">
-            <div class="tl-when">
-              <span class="tl-when-dot"></span>${whenLabel(key)}
-              <span class="tl-when-yr">${key.split('-')[0]}</span>
-            </div>
-            <div>
-              <h3>${esc(label)}</h3>
-              <p class="tl-meta">${gp.length} photo${gp.length !== 1 ? 's' : ''} · <em>${esc(uploaders)}</em></p>
-              ${renderGrid(gp, periodFrom, periodTo)}
-            </div>
-          </div>`;
-      }).join('')}
-    </div>`;
-
-  res.send(page('Timeline', `
-    <div class="tl-hero">
-      <div>
-        <h1>Timeline</h1>
-        <p class="tl-headline">everything we've <em>seen together,</em><br>in order.</p>
-        <p class="tl-lede">a shared archive — scroll backwards in time.</p>
-      </div>
-      <div class="tl-stats">
-        <b>${totalPhotos}</b> photo${totalPhotos !== 1 ? 's' : ''}<br>
-        <b>${uniqueUploaders}</b> ${uniqueUploaders === 1 ? 'person' : 'people'}<br>
-        ${firstYear ? `<b>${firstYear}</b> first photo` : ''}
-      </div>
-    </div>
-    ${filterBar}
-    ${content}
-  `, req.session));
+  res.send(renderTimelinePage({
+    groups, totalPhotos, uniqueUploaders, firstYear,
+    albums, tags, albumFilter, tagFilter, fromFilter, toFilter, groupInterval,
+    session: req.session,
+  }));
 }));
 
 module.exports = router;
