@@ -125,7 +125,12 @@ router.post('/upload', requireEditor, (req, res, next) => {
       const resolvedTakenAt = taken_at || (exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null);
       const resolvedLat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const resolvedLon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
-      const photoId = await insertPhoto(req.session.userId, req.file.filename, req.file.originalname, title, description || null, req.file.mimetype, finalSize, resolvedTakenAt, exif.exposureTime || null, exif.focalLength || null, resolvedLat, resolvedLon, ncUrl);
+      const photoId = await insertPhoto({
+        userId: req.session.userId, filename: req.file.filename, originalFilename: req.file.originalname,
+        title, description: description || null, mimeType: req.file.mimetype, size: finalSize,
+        takenAt: resolvedTakenAt, exposureTime: exif.exposureTime || null, focalLength: exif.focalLength || null,
+        lat: resolvedLat, lon: resolvedLon, ncUrl,
+      });
       if (tags) await setTags(photoId, tags);
       res.redirect(`/photos/${photoId}`);
     } catch (e) {

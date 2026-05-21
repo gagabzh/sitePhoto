@@ -69,7 +69,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
             <a class="btn" href="/photos/upload">+ Upload</a>
           </div>
           ${mosaicHtml}
-          ${nextCursor ? `<div id="photo-sentinel" data-cursor="${nextCursor}"></div>` : ''}
+          ${nextCursor && session.role !== 'viewer' ? `<div id="photo-sentinel" data-cursor="${nextCursor}"></div>` : ''}
         </div>
         <aside class="wall-side">
           <div class="wall-panel">
@@ -89,15 +89,21 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
       </div>
     </form>
     ${selectionScript()}
-    ${nextCursor ? `<script>
+    ${nextCursor && session.role !== 'viewer' ? `<script>
 (function(){
   var sentinel=document.getElementById('photo-sentinel');
   if(!sentinel) return;
   var cursor=sentinel.dataset.cursor,loading=false;
   function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function renderCell(p){
-    return '<div class="wall-cell"><a href="/photos/'+p.id+'?from=/photos">'
-      +'<img src="/uploads/'+escHtml(p.filename)+'" alt="'+escHtml(p.title)+'" loading="lazy"></a></div>';
+    var e=p.canEdit;
+    return '<div class="wall-cell'+(e?' sel-tile':'')+'"'
+      +(e?' data-photo-id="'+p.id+'" data-href="/photos/'+p.id+'?from=/photos"':'')+'>'
+      +'<a href="/photos/'+p.id+'?from=/photos"><img src="/uploads/'+escHtml(p.filename)+'" alt="'+escHtml(p.title)+'" loading="lazy"></a>'
+      +(e?'<button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>'
+        +'<div class="press-ring"></div>'
+        +'<span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="'+escHtml(p.title)+'"></span>':'')
+      +'</div>';
   }
   var observer=new IntersectionObserver(function(entries){
     if(!entries[0].isIntersecting||loading) return;
@@ -111,6 +117,8 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
           div.className='wall-mosaic';
           div.innerHTML=chunk.map(renderCell).join('');
           sentinel.parentNode.insertBefore(div,sentinel);
+          var newTiles=Array.from(div.querySelectorAll('.sel-tile'));
+          if(newTiles.length&&window.registerSelTiles) window.registerSelTiles(newTiles);
         }
         if(d.nextCursor){cursor=d.nextCursor;loading=false;}
         else{observer.disconnect();sentinel.remove();}

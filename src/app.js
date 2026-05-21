@@ -18,7 +18,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`],
       styleSrcElem: ["'self'", (req, res) => `'nonce-${res.locals.nonce}'`, 'fonts.googleapis.com'],
-      styleSrcAttr: ["'unsafe-inline'"],
+      styleSrcAttr: ["'unsafe-inline'"], // permits inline style= attributes; future hardening: remove inline styles then drop this directive
       imgSrc: ["'self'", 'data:', '*.basemaps.cartocdn.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
       connectSrc: ["'self'"],

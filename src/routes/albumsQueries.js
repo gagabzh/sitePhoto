@@ -138,7 +138,7 @@ async function fetchPhotosNotInAlbum(albumId) {
   return rows;
 }
 
-async function addPhotoToAlbum(albumId, photoId) {
+async function linkPhotoToAlbum(albumId, photoId) {
   await db.query(
     'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
     [albumId, photoId]
@@ -152,7 +152,7 @@ async function removePhotoFromAlbum(albumId, photoId) {
   );
 }
 
-async function insertAlbumPhoto(albumId, photoId) {
+async function insertNewAlbumPhoto(albumId, photoId) {
   await db.query(
     'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2)',
     [albumId, photoId]
@@ -174,7 +174,7 @@ module.exports = {
   updateAlbum,
   deleteAlbum,
   fetchPhotosNotInAlbum,
-  addPhotoToAlbum,
+  linkPhotoToAlbum,
   removePhotoFromAlbum,
-  insertAlbumPhoto,
+  insertNewAlbumPhoto,
 };

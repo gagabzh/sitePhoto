@@ -205,6 +205,12 @@ describe('selectionScript', () => {
     expect(s).toContain('/api/tags/index');
     expect(s).toContain('sel-tag-datalist');
   });
+
+  it('exposes window.registerSelTiles for lazy-loaded tile registration', () => {
+    const s = selectionScript();
+    expect(s).toContain('registerSelTiles');
+    expect(s).toContain('setupTile');
+  });
 });
 
 // ── lbOverlay ─────────────────────────────────────────────────────────────────

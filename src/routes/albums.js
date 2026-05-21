@@ -18,8 +18,8 @@ const {
   fetchAlbumList, createAlbum, getAlbum, getAlbumOwner, getAlbumWithCreator,
   fetchAlbumPhotos, checkViewerAccess, bulkRemovePhotosFromAlbum,
   fetchViewerAccessLists, addViewerAccess, removeViewerAccess,
-  updateAlbum, deleteAlbum, fetchPhotosNotInAlbum, addPhotoToAlbum,
-  removePhotoFromAlbum, insertAlbumPhoto,
+  updateAlbum, deleteAlbum, fetchPhotosNotInAlbum, linkPhotoToAlbum,
+  removePhotoFromAlbum, insertNewAlbumPhoto,
 } = require('./albumsQueries');
 const { insertPhoto } = require('./photosQueries');
 
@@ -75,7 +75,7 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
           [req.session.userId, file.filename, file.originalname, photoTitle,
            file.mimetype, finalSize, meta.takenAt || null, lat, lon]
         );
-        await insertAlbumPhoto(albumId, photo.id);
+        await insertNewAlbumPhoto(albumId, photo.id);
         if (tags) await setTags(photo.id, tags);
       }
 
@@ -238,7 +238,7 @@ router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
   if (!album) return res.status(404).send('Album not found');
   if (!canModify(req.session, album)) return res.status(403).send('Access denied');
 
-  await addPhotoToAlbum(req.params.id, photoId);
+  await linkPhotoToAlbum(req.params.id, photoId);
   res.redirect(`/albums/${req.params.id}/photos/add`);
 }));
 
@@ -293,12 +293,13 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
       const takenAt = exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null;
       const lat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const lon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
-      const photoId = await insertPhoto(
-        req.session.userId, req.file.filename, req.file.originalname, title, description || null,
-        req.file.mimetype, finalSize, takenAt, exif.exposureTime || null,
-        exif.focalLength || null, lat, lon, ncUrl
-      );
-      await insertAlbumPhoto(albumId, photoId);
+      const photoId = await insertPhoto({
+        userId: req.session.userId, filename: req.file.filename, originalFilename: req.file.originalname,
+        title, description: description || null, mimeType: req.file.mimetype, size: finalSize,
+        takenAt, exposureTime: exif.exposureTime || null, focalLength: exif.focalLength || null,
+        lat, lon, ncUrl,
+      });
+      await insertNewAlbumPhoto(albumId, photoId);
       if (tags) await setTags(photoId, tags);
       res.redirect(`/albums/${albumId}`);
     } catch (e) {
@@ -348,7 +349,7 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
           [req.session.userId, file.filename, file.originalname, photoTitle,
            file.mimetype, finalSize, meta.takenAt || null, lat, lon]
         );
-        await insertAlbumPhoto(req.params.id, photo.id);
+        await insertNewAlbumPhoto(req.params.id, photo.id);
         if (sharedTags) await setTags(photo.id, sharedTags);
       }
       res.redirect(`/albums/${req.params.id}`);
