@@ -153,6 +153,7 @@ function selectionScript() {
       if(sel.has(id)) sel.delete(id); else{sel.add(id);lastId=id;}
       updateUI();
     }
+    // intentional: selects only loaded tiles — correct UX for infinite scroll
     function selectAll(){tiles.forEach(function(t){sel.add(tid(t));});updateUI();}
     function selectNone(){sel.clear();updateUI();}
     function invertSel(){tiles.forEach(function(t){var id=tid(t);if(sel.has(id))sel.delete(id);else sel.add(id);});updateUI();}
@@ -269,7 +270,7 @@ function selectionScript() {
     });
 
     /* Registration hook for tiles appended after initial render (e.g. lazy loading) */
-    window.registerSelTiles=function(newTiles){
+    window.registerSelTiles=window.registerSelTiles||function(newTiles){
       newTiles.forEach(function(tile){
         tiles.push(tile);
         setupTile(tile);
