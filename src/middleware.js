@@ -5,11 +5,19 @@ function nonceMiddleware(req, res, next) {
   res.locals.nonce = nonce;
   const origSend = res.send.bind(res);
   res.send = function (body) {
-    if (typeof body === 'string' && body.includes('<script')) {
-      body = body.replace(/<script(\s[^>]*)?>/g, (_, attrs) => {
-        const a = attrs || '';
-        return /\bnonce=/.test(a) ? `<script${a}>` : `<script nonce="${nonce}"${a}>`;
-      });
+    if (typeof body === 'string') {
+      if (body.includes('<script')) {
+        body = body.replace(/<script(\s[^>]*)?>/g, (_, attrs) => {
+          const a = attrs || '';
+          return /\bnonce=/.test(a) ? `<script${a}>` : `<script nonce="${nonce}"${a}>`;
+        });
+      }
+      if (body.includes('<style')) {
+        body = body.replace(/<style(\s[^>]*)?>/g, (_, attrs) => {
+          const a = attrs || '';
+          return /\bnonce=/.test(a) ? `<style${a}>` : `<style nonce="${nonce}"${a}>`;
+        });
+      }
     }
     return origSend(body);
   };
