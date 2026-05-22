@@ -31,7 +31,8 @@ jobs:
             set -e
             cd ~/sitephoto
 
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             # First deploy only: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d redis
             docker compose -f docker-compose.prod.yml --env-file .env.prod build app
