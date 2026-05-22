@@ -219,12 +219,12 @@ Run the DB migration and start the stack:
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 
 # Run the V9 migration (adds s3_key column)
-docker compose -f docker-compose.prod.yml exec db \
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db \
   psql -U sitephoto -d sitephoto -f /dev/stdin < migrations/v9.sql
 
 # Verify everything is up
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs app --tail=20
+docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs app --tail=20
 ```
 
 ---
@@ -290,8 +290,9 @@ From Instance-1, confirm Redis is reachable by Instance-2:
 
 ```bash
 # On Instance-1: check Redis is bound to vRack IP
-docker compose -f docker-compose.prod.yml exec redis redis-cli \
-  -a $REDIS_PASSWORD ping
+REDIS_PASS=$(grep ^REDIS_PASSWORD .env.prod | cut -d= -f2)
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec redis \
+  redis-cli -a "$REDIS_PASS" ping
 # Should return PONG
 
 # On Instance-2: test Redis connection (replace 10.0.0.x with Instance-1 vRack IP)

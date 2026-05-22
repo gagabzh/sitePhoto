@@ -39,6 +39,8 @@ services:
     # Host-level restriction is enforced by the port mapping below:
     # Docker only publishes port 6379 on REDIS_BIND_IP (vRack IP), so it is
     # never reachable from the public interface.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD}
