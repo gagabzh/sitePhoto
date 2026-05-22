@@ -216,7 +216,7 @@ Run the DB migration and start the stack:
 
 ```bash
 # Start the full stack (first run also creates the DB schema via init-db.sql)
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 
 # Run the V9 migration (adds s3_key column)
 docker compose -f docker-compose.prod.yml exec db \
@@ -350,7 +350,7 @@ Caddy will automatically obtain a Let's Encrypt certificate when DNS resolves.
 # GitHub Actions handles this automatically on push to main.
 # Manual restart:
 ssh ubuntu@<instance1_public_ip> \
-  'cd ~/sitephoto && docker compose -f docker-compose.prod.yml up -d --no-deps app caddy'
+  'cd ~/sitephoto && docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-deps app caddy'
 ```
 
 ### Restart the worker after a code push
