@@ -1,13 +1,11 @@
 const router = require('express').Router();
-const fs = require('fs');
-const path = require('path');
 const db = require('../db');
 const { generate } = require('../ollama');
 const { requireEditor, wrapAsync } = require('../middleware');
-const { UPLOAD_DIR } = require('../uploadHelpers');
+const { readPhotoBuffer } = require('../storage');
 
 async function readB64(filename) {
-  return (await fs.promises.readFile(path.join(UPLOAD_DIR, filename))).toString('base64');
+  return (await readPhotoBuffer(filename)).toString('base64');
 }
 
 // ── POST /api/ai/identify-people ──────────────────────────────────────────────

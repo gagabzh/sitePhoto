@@ -1,0 +1,13 @@
+# Production — Instance-2 (worker)
+# Consumes BullMQ jobs from Redis on Instance-1 (vRack private IP).
+# Reads photos from OVH Object Storage; calls Ollama on the host.
+# Copy .env.local.example (repo root) to .env.worker, fill in values, then:
+#   docker compose -f worker/docker-compose.yml up -d
+
+services:
+  worker:
+    build: .
+    restart: always
+    env_file: ../.env.worker
+    extra_hosts:
+      - "host-gateway:host-gateway"

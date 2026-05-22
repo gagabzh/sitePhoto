@@ -1,5 +1,6 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
-jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
+jest.mock('../../imageOptimizer', () => ({ optimizeBuffer: jest.fn() }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../components', () => ({
   selectionBar: jest.fn(() => '<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>'),
@@ -9,33 +10,37 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
 }));
-jest.mock('multer', () => {
-  const m = jest.fn().mockReturnValue({
-    single: jest.fn().mockReturnValue((req, res, cb) => {
-      req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
-      cb();
-    }),
-  });
-  m.diskStorage = jest.fn().mockReturnValue({});
-  return m;
+jest.mock('../../storage', () => ({
+  uploadPhoto: jest.fn().mockResolvedValue(),
+  deletePhoto: jest.fn().mockRejectedValue(new Error('S3 not configured')),
+  readPhotoBuffer: jest.fn(),
+  downloadPhoto: jest.fn(),
+  streamPhoto: jest.fn(),
+}));
+jest.mock('../../uploadHelpers', () => {
+  const actual = jest.requireActual('../../uploadHelpers');
+  return { ...actual, upload: { single: jest.fn(), array: jest.fn() }, processAndUpload: jest.fn() };
 });
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const fs = require('fs');
-const { upload } = require('../../uploadHelpers');
-const { optimizePhoto } = require('../../imageOptimizer');
+const { upload, processAndUpload } = require('../../uploadHelpers');
+const storage = require('../../storage');
+const { addIdentificationJob } = require('../../queue/producer');
 const { extractMetadata } = require('../../extractMetadata');
 const { selectionBar, selectionScript } = require('../../components');
 
 beforeEach(() => {
   jest.resetAllMocks();
   upload.single.mockReturnValue((req, res, cb) => {
-    req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
+    req.file = { buffer: Buffer.from('test'), originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
     cb();
   });
-  optimizePhoto.mockResolvedValue(4000);
+  processAndUpload.mockResolvedValue({ filename: 'test-uuid.jpg', size: 4000 });
+  storage.deletePhoto.mockRejectedValue(new Error('S3 not configured'));
+  addIdentificationJob.mockResolvedValue();
   extractMetadata.mockResolvedValue({});
   fs.promises.unlink.mockResolvedValue();
   selectionBar.mockReturnValue('<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>');

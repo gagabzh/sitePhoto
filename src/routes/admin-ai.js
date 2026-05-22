@@ -1,7 +1,8 @@
 const router = require('express').Router();
 const db = require('../db');
 const { page, esc } = require('../layout');
-const { deletePhotos, UPLOAD_DIR } = require('../uploadHelpers');
+const { deletePhotos } = require('../uploadHelpers');
+const { readPhotoBuffer } = require('../storage');
 const { findDuplicates } = require('../photoHash');
 const { wrapAsync } = require('../middleware');
 
@@ -67,7 +68,7 @@ router.get('/', (req, res) => {
 // ── POST /admin/ai/scan ───────────────────────────────────────────────────────
 router.post('/scan', wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT id, filename, title FROM photos ORDER BY id');
-  const groups = await findDuplicates(rows, UPLOAD_DIR);
+  const groups = await findDuplicates(rows, readPhotoBuffer);
 
   req.session.duplicateGroups = groups;
   req.session.duplicateScannedAt = new Date().toISOString();

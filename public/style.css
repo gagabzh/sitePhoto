@@ -1768,3 +1768,26 @@ tr:hover .tm-row-actions { opacity:1; }
   .tv-lp-grid { grid-template-columns: repeat(2,1fr); }
   .tv-det-head h1 { font-size: 2.8rem; }
 }
+
+/* ── Socket.io toast notification (V4) ─────────────────────────────────────── */
+.sp-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  background: var(--ink, #1a1a1a);
+  color: var(--paper, #faf8f3);
+  padding: 0.7rem 1rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-family: var(--font-mono, monospace);
+  max-width: 320px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 9999;
+  pointer-events: none;
+}
+.sp-toast.sp-toast-on {
+  opacity: 1;
+  transform: translateY(0);
+}

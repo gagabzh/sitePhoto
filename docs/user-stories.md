@@ -313,3 +313,46 @@ As a developer, I track test coverage (% of lines/branches exercised), code dupl
 
 **IQ-5 — VPS hardening** ✓
 As a sysadmin, I apply VPS-level security measures (SSH key-only auth, firewall rules, automatic security updates, fail2ban or equivalent) so the server is not trivially compromised.
+
+---
+
+## Version 4
+
+---
+
+## Feature: Cloud Object Storage (S3)
+
+**S3-1 — Photos stored in Object Storage**
+As an editor uploading a photo, the file is stored in OVH Object Storage (S3-compatible bucket) rather than on the server's local disk — so storage capacity is decoupled from the server, and photos are not lost if the server is replaced.
+
+**S3-2 — Transparent experience for viewers**
+As a viewer, browsing, downloading, and viewing photos works exactly as before — the migration to S3 storage is invisible to me.
+
+**S3-3 — Photo deletion removes S3 object**
+As an editor or admin deleting a photo, the file is removed from the S3 bucket at the same time as the database record — so no orphaned objects accumulate in storage.
+
+---
+
+## Feature: Async Identification Queue
+
+**Q-1 — Upload returns immediately**
+As an editor uploading a photo, the upload response is instant. People identification runs in the background on a dedicated worker — so I am never blocked waiting for the AI to finish.
+
+**Q-2 — Real-time identification notification**
+As an editor, after uploading a photo I see an "Identification in progress…" badge on it. When the worker finishes, the suggested people tags appear on the photo in real time without reloading the page.
+
+**Q-3 — Identification resilience**
+As an editor, if the worker is offline when I upload, the identification job is held in the queue and runs automatically when the worker comes back online — no photo is silently skipped.
+
+---
+
+## Infrastructure (V4)
+
+**IV4-1 — Two-instance private architecture**
+As a developer, the site runs on two OVH Public Cloud instances connected over a private vRack network: Instance-1 runs the Express app and PostgreSQL; Instance-2 runs the Node.js worker and Ollama. Redis is exposed only on the private network. Inter-instance HTTP calls are authenticated with a shared secret.
+
+**IV4-2 — Local development with MinIO and Redis**
+As a developer, running `docker compose up` locally starts a MinIO container (S3-compatible) and a Redis container alongside the app and worker — so the full async flow can be tested without any cloud account.
+
+**IV4-3 — Worker instance on-demand lifecycle** *(optional)*
+As a developer, Instance-2 starts automatically when a job enters the queue and shuts down (shelved, not billed) after a configurable period of inactivity — so compute cost is proportional to actual usage.

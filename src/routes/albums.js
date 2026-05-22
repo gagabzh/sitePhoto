@@ -1,14 +1,13 @@
 const router = require('express').Router();
 const path = require('path');
-const fs = require('fs');
 const db = require('../db');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { filterAlbumPhotoIds } = require('../permissions');
-const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const {
-  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos,
+  upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
 } = require('../uploadHelpers');
+const { addIdentificationJob } = require('../queue/producer');
 const {
   renderAlbumListPage, renderNewAlbumPage, renderNewFromFolderPage, renderAlbumDetailPage,
   renderAlbumEditPage, renderAlbumAccessPage, renderAddPhotosPage,
@@ -58,10 +57,9 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
       const albumId = await createAlbum(req.session.userId, title, description || null);
 
       for (const file of (req.files || [])) {
-        const filepath = path.join(UPLOAD_DIR, file.filename);
-        const [finalSize, meta] = await Promise.all([
-          optimizePhoto(filepath, file.mimetype),
-          extractMetadata(filepath),
+        const [{ filename, size: finalSize }, meta] = await Promise.all([
+          processAndUpload(file),
+          extractMetadata(file.buffer),
         ]);
 
         const lat = meta.latitude ?? sharedLat;
@@ -72,11 +70,12 @@ router.post('/new/folder', requireEditor, (req, res, next) => {
           `INSERT INTO photos
             (user_id, filename, original_filename, title, mime_type, size, taken_at, latitude, longitude)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [req.session.userId, file.filename, file.originalname, photoTitle,
+          [req.session.userId, filename, file.originalname, photoTitle,
            file.mimetype, finalSize, meta.takenAt || null, lat, lon]
         );
         await insertNewAlbumPhoto(albumId, photo.id);
         if (tags) await setTags(photo.id, tags);
+        addIdentificationJob({ photoId: photo.id, userId: req.session.userId, photoS3Key: filename, socketId: null }).catch(() => {});
       }
 
       res.redirect(`/albums/${albumId}`);
@@ -284,23 +283,23 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
 
     const { title, description, tags, latitude, longitude, nextcloud_url } = req.body;
     try {
-      const filepath = path.join(UPLOAD_DIR, req.file.filename);
-      const [finalSize, exif] = await Promise.all([
-        optimizePhoto(filepath, req.file.mimetype),
-        extractMetadata(filepath),
+      const [{ filename, size: finalSize }, exif] = await Promise.all([
+        processAndUpload(req.file),
+        extractMetadata(req.file.buffer),
       ]);
       const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
       const takenAt = exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null;
       const lat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const lon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
       const photoId = await insertPhoto({
-        userId: req.session.userId, filename: req.file.filename, originalFilename: req.file.originalname,
+        userId: req.session.userId, filename, originalFilename: req.file.originalname,
         title, description: description || null, mimeType: req.file.mimetype, size: finalSize,
         takenAt, exposureTime: exif.exposureTime || null, focalLength: exif.focalLength || null,
         lat, lon, ncUrl,
       });
       await insertNewAlbumPhoto(albumId, photoId);
       if (tags) await setTags(photoId, tags);
+      addIdentificationJob({ photoId, userId: req.session.userId, photoS3Key: filename, socketId: null }).catch(() => {});
       res.redirect(`/albums/${albumId}`);
     } catch (e) {
       next(e);
@@ -332,10 +331,9 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
 
     try {
       for (const file of (req.files || [])) {
-        const filepath = path.join(UPLOAD_DIR, file.filename);
-        const [finalSize, meta] = await Promise.all([
-          optimizePhoto(filepath, file.mimetype),
-          extractMetadata(filepath),
+        const [{ filename, size: finalSize }, meta] = await Promise.all([
+          processAndUpload(file),
+          extractMetadata(file.buffer),
         ]);
 
         const lat = meta.latitude ?? sharedLat;
@@ -346,11 +344,12 @@ router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
           `INSERT INTO photos
             (user_id, filename, original_filename, title, mime_type, size, taken_at, latitude, longitude)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [req.session.userId, file.filename, file.originalname, photoTitle,
+          [req.session.userId, filename, file.originalname, photoTitle,
            file.mimetype, finalSize, meta.takenAt || null, lat, lon]
         );
         await insertNewAlbumPhoto(req.params.id, photo.id);
         if (sharedTags) await setTags(photo.id, sharedTags);
+        addIdentificationJob({ photoId: photo.id, userId: req.session.userId, photoS3Key: filename, socketId: null }).catch(() => {});
       }
       res.redirect(`/albums/${req.params.id}`);
     } catch (e) {

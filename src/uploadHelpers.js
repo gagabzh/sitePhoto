@@ -5,19 +5,17 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const db = require('./db');
+const { uploadPhoto, deletePhoto } = require('./storage');
+const { optimizeBuffer } = require('./imageOptimizer');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 
 // Extension derived from MIME type — prevents stored XSS via .html uploads
 const MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => cb(null, uuidv4() + (MIME_EXT[file.mimetype] || '.bin')),
-});
-
+// Memory storage: file lands in req.file.buffer, never touches disk.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => cb(null, Object.hasOwn(MIME_EXT, file.mimetype)),
 });
@@ -95,7 +93,17 @@ function batchUploadFields() {
     </label>`;
 }
 
-// Delete photos from DB and remove their files from disk
+// Optimise a multer memory-storage file and upload it to S3.
+// Returns { filename, size } where filename is also the S3 key.
+async function processAndUpload(file) {
+  const ext = MIME_EXT[file.mimetype] || '.bin';
+  const filename = uuidv4() + ext;
+  const optimized = await optimizeBuffer(file.buffer, file.mimetype);
+  await uploadPhoto(filename, optimized, file.mimetype);
+  return { filename, size: optimized.length };
+}
+
+// Delete photos from DB and remove their files (S3 first, disk fallback for legacy photos).
 async function deletePhotos(ids) {
   if (!ids.length) return;
   const { rows } = await db.query(
@@ -103,14 +111,18 @@ async function deletePhotos(ids) {
     [ids]
   );
   await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [ids]);
-  // File deletion is fire-and-forget: DB row is gone first, so a crash between
-  // the two leaves an orphaned file on disk. Long-term fix: a pending_delete
-  // table or a background cleanup job. The warn below makes orphans visible.
   for (const p of rows) {
-    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(err => {
-      console.warn(`deletePhotos: failed to unlink ${p.filename}: ${err.code || err.message}`);
+    deletePhoto(p.filename).catch(() => {
+      // Fallback: photo not in S3 yet — try local disk (legacy uploads pre-V4).
+      fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(err => {
+        console.warn(`deletePhotos: failed to delete ${p.filename}: ${err.code || err.message}`);
+      });
     });
   }
 }
 
-module.exports = { UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, singleUploadFields, batchUploadFields, deletePhotos };
+module.exports = {
+  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl,
+  setTags, singleUploadFields, batchUploadFields,
+  processAndUpload, deletePhotos,
+};

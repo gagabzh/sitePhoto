@@ -221,6 +221,7 @@ function page(title, body, session) {
     document.querySelectorAll('.loc-search-wrap').forEach(initLocationSearch);
   })();</script>
 <script>(function(){var t=document.querySelector('meta[name="csrf-token"]');if(!t||!t.content)return;var c=t.content;document.querySelectorAll('form[method="POST"],form[method="post"]').forEach(function(f){if(!f.querySelector('[name="_csrf"]')){var i=document.createElement('input');i.type='hidden';i.name='_csrf';i.value=c;f.appendChild(i);}});var o=window.fetch;window.fetch=function(u,p){if(p&&p.method&&!/^(GET|HEAD)$/i.test(p.method)){p=Object.assign({},p);p.headers=Object.assign({'X-CSRF-Token':c},p.headers||{});}return o.call(this,u,p);};}());</script>
+  ${session ? '<script src="/socket.io/socket.io.js"></script><script src="/socket-client.js"></script>' : ''}
 </body>
 </html>`;
 }

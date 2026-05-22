@@ -1,0 +1,39 @@
+name: Deploy — Instance 1 (app)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'migrations/**'
+      - 'Dockerfile'
+      - 'package*.json'
+      - 'init-db.sql'
+      - 'Caddyfile'
+      - 'docker-compose.prod.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Instance 1
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.INSTANCE1_HOST }}
+          username: ${{ secrets.INSTANCE1_USER }}
+          key: ${{ secrets.INSTANCE1_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/sitephoto
+
+            git pull origin main
+
+            docker compose -f docker-compose.prod.yml build app
+            docker compose -f docker-compose.prod.yml up -d --no-deps app caddy
+
+            echo "Deploy complete: $(date)"

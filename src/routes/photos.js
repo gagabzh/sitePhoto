@@ -1,13 +1,11 @@
 const router = require('express').Router();
-const fs = require('fs');
-const path = require('path');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { filterOwnedPhotoIds } = require('../permissions');
-const { optimizePhoto } = require('../imageOptimizer');
 const { extractMetadata } = require('../extractMetadata');
 const {
-  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos,
+  upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
 } = require('../uploadHelpers');
+const { addIdentificationJob } = require('../queue/producer');
 const {
   renderPhotoListPage, renderUploadPage, renderPhotoDetailPage, renderPhotoEditPage,
 } = require('./photosViews');
@@ -15,8 +13,6 @@ const {
   fetchPhotoPage, fetchPhotoStats, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
   insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner, updatePhoto,
 } = require('../repositories/photos');
-
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function parseFrom(raw) {
   if (typeof raw !== 'string') return null;
@@ -118,20 +114,22 @@ router.post('/upload', requireEditor, (req, res, next) => {
 
     const { title, description, tags, taken_at, latitude, longitude, nextcloud_url } = req.body;
     try {
-      const filepath = path.join(UPLOAD_DIR, req.file.filename);
-      const exif = await extractMetadata(filepath);
-      const finalSize = await optimizePhoto(filepath, req.file.mimetype);
+      const [{ filename, size: finalSize }, exif] = await Promise.all([
+        processAndUpload(req.file),
+        extractMetadata(req.file.buffer),
+      ]);
       const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
       const resolvedTakenAt = taken_at || (exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null);
       const resolvedLat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const resolvedLon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
       const photoId = await insertPhoto({
-        userId: req.session.userId, filename: req.file.filename, originalFilename: req.file.originalname,
+        userId: req.session.userId, filename, originalFilename: req.file.originalname,
         title, description: description || null, mimeType: req.file.mimetype, size: finalSize,
         takenAt: resolvedTakenAt, exposureTime: exif.exposureTime || null, focalLength: exif.focalLength || null,
         lat: resolvedLat, lon: resolvedLon, ncUrl,
       });
       if (tags) await setTags(photoId, tags);
+      addIdentificationJob({ photoId, userId: req.session.userId, photoS3Key: filename, socketId: null }).catch(() => {});
       res.redirect(`/photos/${photoId}`);
     } catch (e) {
       next(e);

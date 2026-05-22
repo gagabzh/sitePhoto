@@ -7,11 +7,12 @@ function formatExposureTime(value) {
   return `1/${denom}`;
 }
 
-async function extractMetadata(filepath) {
+// Accepts a file path string or a Buffer — exifr handles both.
+async function extractMetadata(source) {
   try {
     const [data, gps] = await Promise.all([
-      exifr.parse(filepath, ['DateTimeOriginal', 'ExposureTime', 'FocalLength']),
-      exifr.gps(filepath).catch(() => null),
+      exifr.parse(source, ['DateTimeOriginal', 'ExposureTime', 'FocalLength']),
+      exifr.gps(source).catch(() => null),
     ]);
     const result = {};
     if (data) {
