@@ -10,7 +10,7 @@ const connection = {
 
 const identificationQueue = new Queue('identification', { connection });
 
-// payload: { photoId, userId, photoS3Key, socketId }
+// payload: { photoId, userId, photoS3Key }
 async function addIdentificationJob(payload) {
   return identificationQueue.add('identify-photo', payload, {
     attempts: 3,

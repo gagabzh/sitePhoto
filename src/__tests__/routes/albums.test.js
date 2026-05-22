@@ -221,7 +221,7 @@ describe('POST /albums/new/folder — create album from folder', () => {
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/3');
@@ -269,7 +269,7 @@ describe('POST /albums/new/folder — create album from folder', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
     );
   });
 
@@ -678,7 +678,7 @@ describe('POST /albums/:id/photos/upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, null, null, null, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, null, null, null, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1');
@@ -696,9 +696,9 @@ describe('POST /albums/:id/photos/upload', () => {
       .send('title=T&latitude=48.8566&longitude=2.3522'); // form says Paris
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    // latitude=[10], longitude=[11] (no album_id column)
-    expect(call[1][10]).toBeCloseTo(51.5074); // EXIF (London) wins
-    expect(call[1][11]).toBeCloseTo(-0.1278);
+    // latitude=[11], longitude=[12] (s3_key added at index 2)
+    expect(call[1][11]).toBeCloseTo(51.5074); // EXIF (London) wins
+    expect(call[1][12]).toBeCloseTo(-0.1278);
   });
 
   it('returns 403 for viewer', async () => {
@@ -902,7 +902,7 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1');
@@ -950,7 +950,7 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
     );
   });
 

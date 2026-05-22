@@ -123,13 +123,13 @@ router.post('/upload', requireEditor, (req, res, next) => {
       const resolvedLat = exif.latitude  ?? parseCoord(latitude, -90, 90)   ?? null;
       const resolvedLon = exif.longitude ?? parseCoord(longitude, -180, 180) ?? null;
       const photoId = await insertPhoto({
-        userId: req.session.userId, filename, originalFilename: req.file.originalname,
+        userId: req.session.userId, filename, s3Key: filename, originalFilename: req.file.originalname,
         title, description: description || null, mimeType: req.file.mimetype, size: finalSize,
         takenAt: resolvedTakenAt, exposureTime: exif.exposureTime || null, focalLength: exif.focalLength || null,
         lat: resolvedLat, lon: resolvedLon, ncUrl,
       });
       if (tags) await setTags(photoId, tags);
-      addIdentificationJob({ photoId, userId: req.session.userId, photoS3Key: filename, socketId: null }).catch(() => {});
+      addIdentificationJob({ photoId, userId: req.session.userId, photoS3Key: filename }).catch(() => {});
       res.redirect(`/photos/${photoId}`);
     } catch (e) {
       next(e);

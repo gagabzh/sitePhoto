@@ -16,7 +16,7 @@ const connection = {
 };
 
 const worker = new Worker('identification', async (job) => {
-  const { photoId, userId, photoS3Key, socketId } = job.data;
+  const { photoId, userId, photoS3Key } = job.data;
   console.log(`[worker] job ${job.id} — photo ${photoId} (${photoS3Key})`);
 
   const photoBuffer = await downloadPhoto(photoS3Key);

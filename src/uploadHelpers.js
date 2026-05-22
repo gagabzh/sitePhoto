@@ -103,21 +103,26 @@ async function processAndUpload(file) {
   return { filename, size: optimized.length };
 }
 
-// Delete photos from DB and remove their files (S3 first, disk fallback for legacy photos).
+// Delete photos from DB and remove their files.
+// s3_key IS NOT NULL  → V4 upload stored in S3
+// s3_key IS NULL      → legacy upload stored on local disk
 async function deletePhotos(ids) {
   if (!ids.length) return;
   const { rows } = await db.query(
-    'SELECT filename FROM photos WHERE id = ANY($1::int[])',
+    'SELECT filename, s3_key FROM photos WHERE id = ANY($1::int[])',
     [ids]
   );
   await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [ids]);
   for (const p of rows) {
-    deletePhoto(p.filename).catch(() => {
-      // Fallback: photo not in S3 yet — try local disk (legacy uploads pre-V4).
-      fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(err => {
-        console.warn(`deletePhotos: failed to delete ${p.filename}: ${err.code || err.message}`);
+    if (p.s3_key) {
+      deletePhoto(p.s3_key).catch(err => {
+        console.warn(`deletePhotos: S3 delete failed for ${p.s3_key}: ${err.message}`);
       });
-    });
+    } else {
+      fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(err => {
+        console.warn(`deletePhotos: disk delete failed for ${p.filename}: ${err.code || err.message}`);
+      });
+    }
   }
 }
 
