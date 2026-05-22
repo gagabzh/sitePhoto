@@ -16,7 +16,7 @@ const {
   insertTravel, updateTravelGpx, clearTravelGpx, deleteTravel,
   fetchLinkableAlbums, fetchLinkablePhotos,
   fetchOwnedAlbums, fetchOwnedPhotos, fetchValidViewers, checkSlugConflict,
-} = require('./travelsQueries');
+} = require('../repositories/travels');
 
 // GPX files stored outside the static-served uploads/ dir so they require auth to download
 const GPX_DIR = process.env.GPX_DIR || path.join(process.cwd(), 'gpx');

@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { wrapAsync } = require('../middleware');
 const { renderTimelinePage } = require('./timelineViews');
-const { fetchPhotos, fetchFilterOptions } = require('./timelineQueries');
+const { fetchPhotos, fetchFilterOptions } = require('../repositories/timeline');
 
 function groupByInterval(rows, interval) {
   const groups = [];

@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { page } = require('../../layout');
 const { requireEditor, wrapAsync } = require('../../middleware');
-const { buildManageQuery, fetchTagsCsv, fetchManageData } = require('./queries');
+const { buildManageQuery, fetchTagsCsv, fetchManageData } = require('../../repositories/tags');
 const { renderManagePage } = require('./manageViews');
 const { renderManageScript } = require('./manageScript');
 
