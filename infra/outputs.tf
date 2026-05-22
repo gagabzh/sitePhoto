@@ -10,6 +10,11 @@ output "instance1_private_ip" {
   value       = openstack_compute_instance_v2.instance1.network[1].fixed_ip_v4
 }
 
+output "instance2_id" {
+  description = "Instance-2 UUID → INSTANCE2_ID env var (Phase 11 lifecycle management)"
+  value       = openstack_compute_instance_v2.instance2.id
+}
+
 output "instance2_public_ip" {
   description = "Instance-2 public IP (outbound only — no inbound security group rules)"
   value       = openstack_compute_instance_v2.instance2.network[0].fixed_ip_v4
@@ -76,6 +81,14 @@ output "env_prod_instance1" {
     S3_BUCKET=${var.s3_bucket_name}
     S3_ACCESS_KEY=${ovh_cloud_project_user_s3_credential.s3.access_key_id}
     S3_SECRET_KEY=${ovh_cloud_project_user_s3_credential.s3.secret_access_key}
+
+    # Phase 11 — Instance-2 lifecycle (optional, leave blank to disable)
+    OVH_APP_KEY=<same-key-as-terraform>
+    OVH_APP_SECRET=<same-secret-as-terraform>
+    OVH_CONSUMER_KEY=<same-consumer-key-as-terraform>
+    OVH_PROJECT_ID=${openstack_compute_instance_v2.instance2.tenant_id}
+    INSTANCE2_ID=${openstack_compute_instance_v2.instance2.id}
+    INSTANCE2_IDLE_MINUTES=10
   ENV
 }
 

@@ -4,6 +4,7 @@ const db      = require('./db');
 const app     = require('./app');
 const migrate = require('./migrate');
 const { initSocketIO } = require('./notifications');
+const { startQueueEvents } = require('./queue/events');
 
 const PORT = process.env.PORT || 3000;
 
@@ -38,6 +39,7 @@ db.query('SELECT 1')
   .then(() => {
     const server = http.createServer(app);
     initSocketIO(server);
+    startQueueEvents();
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });

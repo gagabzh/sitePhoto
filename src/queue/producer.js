@@ -1,6 +1,7 @@
 'use strict';
 
 const { Queue } = require('bullmq');
+const { onJobAdded } = require('../instance-lifecycle');
 
 const connection = {
   host: process.env.REDIS_HOST || '127.0.0.1',
@@ -12,10 +13,12 @@ const identificationQueue = new Queue('identification', { connection });
 
 // payload: { photoId, userId, photoS3Key }
 async function addIdentificationJob(payload) {
-  return identificationQueue.add('identify-photo', payload, {
+  const job = await identificationQueue.add('identify-photo', payload, {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
   });
+  onJobAdded(); // non-blocking: unshelve Instance-2 if needed
+  return job;
 }
 
 module.exports = { addIdentificationJob };
