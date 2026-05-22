@@ -23,7 +23,7 @@ app.use(helmet({
       styleSrcAttr: ["'unsafe-inline'"], // permits inline style= attributes; future hardening: remove inline styles then drop this directive
       imgSrc: ["'self'", 'data:', '*.basemaps.cartocdn.com'],
       fontSrc: ["'self'", 'fonts.gstatic.com'],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'"], // 'self' covers wss:// on the same origin (HTTPS → wss:// upgrade)
       scriptSrcAttr: ["'unsafe-inline'"], // existing onclick= handlers in views
     },
   },

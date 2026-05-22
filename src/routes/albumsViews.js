@@ -108,7 +108,7 @@ function renderNewFromFolderPage({ session }) {
         </div>
       </form>
     </div>
-  `, session);
+  `, session, true);
 }
 
 function renderAlbumDetailPage({ album, photos, canEdit, from, session }) {
@@ -192,7 +192,7 @@ function renderAlbumDetailPage({ album, photos, canEdit, from, session }) {
       </div>
     </div>
     ${photoSection}
-  `, session);
+  `, session, true);
 }
 
 function renderAlbumEditPage({ album, session }) {
@@ -303,7 +303,7 @@ function renderAddPhotosPage({ album, photos, session }) {
       </div>
     </div>
     ${grid}
-  `, session);
+  `, session, true);
 }
 
 function renderUploadToAlbumPage({ album, errorMsg, session }) {
@@ -329,7 +329,7 @@ function renderUploadToAlbumPage({ album, errorMsg, session }) {
         </div>
       </form>
     </div>
-  `, session);
+  `, session, true);
 }
 
 function renderBatchUploadPage({ album, session }) {
@@ -352,7 +352,7 @@ function renderBatchUploadPage({ album, session }) {
         </div>
       </form>
     </div>
-  `, session);
+  `, session, true);
 }
 
 module.exports = {

@@ -6,7 +6,9 @@
 
 services:
   worker:
-    build: .
+    build:
+      context: ..
+      dockerfile: worker/Dockerfile
     restart: always
     env_file: ../.env.worker
     extra_hosts:

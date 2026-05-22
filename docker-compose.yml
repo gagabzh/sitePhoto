@@ -51,7 +51,9 @@ services:
         condition: service_healthy
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
     restart: unless-stopped
     environment:
       REDIS_HOST: redis

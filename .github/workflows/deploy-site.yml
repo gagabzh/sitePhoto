@@ -33,6 +33,7 @@ jobs:
 
             git pull origin main
 
+            # First deploy only: docker compose -f docker-compose.prod.yml up -d redis
             docker compose -f docker-compose.prod.yml build app
             docker compose -f docker-compose.prod.yml up -d --no-deps app caddy
 

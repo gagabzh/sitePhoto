@@ -12,7 +12,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
         <p class="wall-count">0 photos</p>
       </div>
       <p>No photos yet. <a href="/photos/upload">Upload the first one.</a></p>
-    `, session);
+    `, session, true);
   }
 
   const heroHtml = `
@@ -128,7 +128,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
   observer.observe(sentinel);
 })();
 </script>` : ''}
-  `, session);
+  `, session, true);
 }
 
 function renderUploadPage({ error, session }) {
@@ -154,7 +154,7 @@ function renderUploadPage({ error, session }) {
         </div>
       </form>
     </div>
-  `, session);
+  `, session, true);
 }
 
 function renderPhotoDetailPage({ photo, canEdit, from, session }) {
@@ -245,7 +245,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, session }) {
         </div>
       </div>
     </div>
-  `, session);
+  `, session, true);
 }
 
 function renderPhotoEditPage({ photo, from, session }) {
