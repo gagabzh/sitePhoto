@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY src ./src
+COPY public ./public
 COPY migrations ./migrations
 RUN mkdir -p uploads
 EXPOSE 3000
