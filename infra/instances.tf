@@ -18,8 +18,10 @@ locals {
   instance1_userdata = <<-CLOUD_INIT
     #!/bin/bash
     set -e
-    apt-get update -qq
-    apt-get install -y -qq git ufw curl
+    # Wait for unattended-upgrades to release the apt lock (runs automatically on first boot)
+    systemctl disable --now unattended-upgrades || true
+    while ! apt-get -o DPkg::Lock::Timeout=120 update -qq; do sleep 5; done
+    apt-get -o DPkg::Lock::Timeout=120 install -y -qq git ufw curl
     curl -fsSL https://get.docker.com | sh
 
     # Firewall — allow public traffic on 22/80/443, vRack-only on 6379/3001
@@ -43,8 +45,10 @@ locals {
   instance2_userdata = <<-CLOUD_INIT
     #!/bin/bash
     set -e
-    apt-get update -qq
-    apt-get install -y -qq git curl ufw
+    # Wait for unattended-upgrades to release the apt lock (runs automatically on first boot)
+    systemctl disable --now unattended-upgrades || true
+    while ! apt-get -o DPkg::Lock::Timeout=120 update -qq; do sleep 5; done
+    apt-get -o DPkg::Lock::Timeout=120 install -y -qq git curl ufw
     curl -fsSL https://get.docker.com | sh
 
     # Firewall — no public inbound, SSH from vRack only
@@ -56,8 +60,7 @@ locals {
     usermod -aG docker ubuntu
     su - ubuntu -c "git clone ${var.git_repo_url} ~/sitephoto"
     curl -fsSL https://ollama.com/install.sh | sh
-    systemctl enable ollama
-    systemctl start ollama
+    systemctl enable --now ollama
     echo "sitephoto instance-2 init done (pull llava manually)" > /var/log/sitephoto-init.log
   CLOUD_INIT
 }
