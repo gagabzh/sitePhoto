@@ -200,6 +200,7 @@ openssl rand -hex 16   # for DB_PASSWORD and REDIS_PASSWORD
 |---|---|
 | `DOMAIN` | Your domain name (e.g. `photos.example.com`) |
 | `DB_PASSWORD` | Generated above |
+| `DATABASE_URL` | `postgresql://sitephoto:<DB_PASSWORD>@db:5432/sitephoto` — same password as above |
 | `SESSION_SECRET` | Generated above (`openssl rand -hex 32`) |
 | `SEED_EMAIL` / `SEED_PASS` | Admin account credentials |
 | `REDIS_BIND_IP` | `terraform output instance1_private_ip` |
@@ -412,11 +413,23 @@ terraform destroy
 
 | Problem | Check |
 |---|---|
-| SSH timeout to Instance-1 | Security group `sitephoto-instance1` has port 22 open |
-| SSH timeout to Instance-2 | Use jump host; port 22 on Instance-2 only open from 10.0.0.0/24 |
-| Redis connection refused from Instance-2 | `REDIS_BIND_IP` in `.env.prod` matches Instance-1 vRack IP |
-| S3 upload fails | `forcePathStyle: true` is set in `src/storage.js` (already done); verify `S3_ENDPOINT` region matches bucket region |
-| Ollama not responding | `systemctl status ollama` on Instance-2; run `ollama pull llava` if model missing |
-| Worker not picking up jobs | Verify `REDIS_HOST` in `.env.worker` is Instance-1's vRack IP, not `127.0.0.1` |
-| Caddy not issuing certificate | DNS A record must resolve before Caddy starts; wait for propagation |
-| Image name not found | Run `openstack image list --os-region-name GRA11 \| grep -i ubuntu` to get exact name |
+| SSH timeout to Instance-1 | ufw allows port 22 — check `sudo ufw status` |
+| SSH timeout to Instance-2 | Use jump host; ufw on Instance-2 only allows port 22 from 10.0.0.0/24 |
+| Instance-2 accessible via public SSH | ufw not applied — run the ufw rules manually (see Step 9) |
+| 502 Bad Gateway | App container is restarting — check `docker compose logs app` |
+| `Database connection failed: password authentication failed` | `DATABASE_URL` password doesn't match `DB_PASSWORD`; check both values in `.env.prod` are identical |
+| `Database connection failed:` (empty error) | `DATABASE_URL` missing from `.env.prod` — add `postgresql://sitephoto:<DB_PASSWORD>@db:5432/sitephoto` |
+| Redis `WRONGPASS` from shell | `$REDIS_PASSWORD` is not in shell env — use `REDIS_PASS=$(grep ^REDIS_PASSWORD .env.prod \| cut -d= -f2)` |
+| Redis `bind: Address not available` | vRack IP can't be bound inside container — Redis must bind to `0.0.0.0` (already fixed in `docker-compose.prod.yml`) |
+| Docker `permission denied` on socket | Re-login after first setup — `usermod -aG docker ubuntu` requires a new session |
+| Compose vars empty (`DB_PASSWORD`, `REDIS_BIND_IP`) | Always pass `--env-file .env.prod` to `docker compose` commands |
+| OVH API 403 on `terraform apply` | Token missing `GET /cloud/project` (without wildcard) — regenerate with all 5 rules |
+| OpenStack endpoint not found | `compute_region` set to `GRA` (storage region) — use `GRA9` or `GRA11` |
+| Security group quota exceeded | New projects have 0 quota — ufw is used instead (no quota needed) |
+| cloud-init did not run | Instances existed before user_data was set — run setup manually or `terraform destroy -target` and recreate |
+| apt lock error in cloud-init | `unattended-upgrades` holds the lock on first boot — already fixed in `instances.tf` |
+| Ollama `command not found` | cloud-init failed before Ollama step — run `curl -fsSL https://ollama.com/install.sh \| sudo sh` manually |
+| S3 upload fails | Verify `S3_ENDPOINT` region matches bucket region; `forcePathStyle: true` is set in `src/storage.js` |
+| Worker not picking up jobs | Verify `REDIS_HOST` in `.env.worker` matches Instance-1 vRack IP |
+| Caddy not issuing certificate | DNS A record must resolve to Instance-1 public IP before first request |
+| Image name not found in Terraform | Run `openstack image list --os-region-name GRA9 \| grep -i ubuntu` to get exact name |
