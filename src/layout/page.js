@@ -1,4 +1,14 @@
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const { esc } = require('./esc');
+
+// Computed once at startup; changes when CSS content changes, busting browser caches
+let cssVersion = '1';
+try {
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'));
+  cssVersion = crypto.createHash('sha256').update(css).digest('hex').slice(0, 8);
+} catch { /* fallback to '1' in test environments without the file */ }
 
 function page(title, body, session) {
   const initial = session ? esc((session.name || '?')[0].toUpperCase()) : '';
@@ -42,7 +52,7 @@ function page(title, body, session) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Kalam:wght@400;700&family=Architects+Daughter&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=${cssVersion}">
 </head>
 <body>
   ${nav}
