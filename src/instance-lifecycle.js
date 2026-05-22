@@ -17,12 +17,17 @@ let cachedStatus = null;
 let cacheTime = 0;
 let idleTimer = null;
 let _client = null;
+// Guards concurrent unshelve calls (e.g. bulk upload before cache is warm).
+// Set to true the moment we decide to unshelve; cleared when setStatus() is called.
+let unshelveInFlight = false;
 
 function isEnabled() {
   return !!(
     process.env.INSTANCE2_ID &&
     process.env.OVH_PROJECT_ID &&
-    process.env.OVH_APP_KEY
+    process.env.OVH_APP_KEY &&
+    process.env.OVH_APP_SECRET &&
+    process.env.OVH_CONSUMER_KEY
   );
 }
 
@@ -62,11 +67,13 @@ async function getStatus() {
 function setStatus(status) {
   cachedStatus = status;
   cacheTime = Date.now();
+  unshelveInFlight = false;
 }
 
 async function unshelveIfNeeded() {
   const status = await getStatus();
-  if (status === 'SHELVED_OFFLOADED') {
+  if (status === 'SHELVED_OFFLOADED' && !unshelveInFlight) {
+    unshelveInFlight = true;
     console.log('[lifecycle] Instance-2 shelved — requesting unshelve');
     await ovhRequest(
       'POST',
@@ -116,6 +123,7 @@ function onQueueDrained() {
 function _resetForTesting() {
   cachedStatus = null;
   cacheTime = 0;
+  unshelveInFlight = false;
   if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
   _client = null;
 }

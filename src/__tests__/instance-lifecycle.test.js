@@ -58,6 +58,16 @@ describe('isEnabled()', () => {
     delete process.env.OVH_APP_KEY;
     expect(isEnabled()).toBe(false);
   });
+
+  it('returns false when OVH_APP_SECRET is missing', () => {
+    delete process.env.OVH_APP_SECRET;
+    expect(isEnabled()).toBe(false);
+  });
+
+  it('returns false when OVH_CONSUMER_KEY is missing', () => {
+    delete process.env.OVH_CONSUMER_KEY;
+    expect(isEnabled()).toBe(false);
+  });
 });
 
 describe('onJobAdded()', () => {
@@ -89,6 +99,17 @@ describe('onJobAdded()', () => {
     onJobAdded();
     await flushPromises();
     expect(mockRequest).toHaveBeenCalledTimes(1); // GET only
+  });
+
+  it('fires unshelve only once when two jobs arrive before cache is warm', async () => {
+    mockStatus('SHELVED_OFFLOADED');
+    // Simulate bulk upload: two concurrent onJobAdded() calls before the first
+    // OVH GET completes and warms the cache.
+    onJobAdded();
+    onJobAdded();
+    await flushPromises();
+    const unshelveCalls = mockRequest.mock.calls.filter(([m, p]) => m === 'POST' && p.includes('/unshelve'));
+    expect(unshelveCalls).toHaveLength(1);
   });
 
   it('cancels pending idle timer when a new job arrives', async () => {
