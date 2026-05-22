@@ -18,6 +18,16 @@ Browser
 
 ---
 
+## State management
+
+Terraform state is stored locally in `terraform.tfstate` (gitignored).  
+`.terraform.lock.hcl` (provider version lock) **is** committed and should stay in git.
+
+For a solo project, local state is fine — just keep a manual backup of `terraform.tfstate`.  
+To migrate to a remote OVH S3 backend (recommended for teams), see the comments in `backend.tf`.
+
+---
+
 ## Prerequisites
 
 Install on your local machine:
