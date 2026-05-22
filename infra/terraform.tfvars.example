@@ -1,0 +1,44 @@
+# Copy to terraform.tfvars and fill in all values.
+# Never commit terraform.tfvars — it contains secrets.
+
+# ── OVH API credentials ───────────────────────────────────────────────────────
+# Create at https://www.ovh.com/auth/api/createToken
+# Required rights: GET/POST/PUT/DELETE /cloud/project/*
+ovh_application_key    = ""
+ovh_application_secret = ""
+ovh_consumer_key       = ""
+
+# ── Public Cloud project ──────────────────────────────────────────────────────
+# The ID shown in the URL of your Public Cloud project in the OVH manager.
+ovh_project_id = ""
+
+# ── OpenStack credentials ─────────────────────────────────────────────────────
+# OVH Control Panel → Public Cloud → Users & Roles → create or use existing user
+# → download openrc.sh → extract OS_USERNAME and OS_PASSWORD values
+openstack_user_name = ""
+openstack_password  = ""
+
+# ── Regions ───────────────────────────────────────────────────────────────────
+# Verify which compute regions are enabled in your project:
+# OVH Control Panel → Public Cloud → Instances → change region dropdown
+# Common GRA options: GRA7, GRA9, GRA11
+compute_region = "GRA11"
+storage_region = "GRA"
+
+# ── SSH key ───────────────────────────────────────────────────────────────────
+# Generate: ssh-keygen -t ed25519 -C "sitephoto-deploy" -f ~/.ssh/sitephoto_deploy
+# Keep the private key; paste the public key (.pub) here.
+# Store the private key as GitHub Actions secrets:
+#   INSTANCE1_SSH_KEY, INSTANCE2_SSH_KEY (can be the same key)
+ssh_public_key = "ssh-ed25519 AAAA... sitephoto-deploy"
+
+# ── Instance sizing ───────────────────────────────────────────────────────────
+# Verify flavor availability in your region:
+# OVH Control Panel → Public Cloud → Instances → create → check flavor list
+instance1_flavor = "b3-8"   # 4 vCPU, 8 GB — General Purpose
+instance2_flavor = "c3-8"   # 4 vCPU, 8 GB — CPU Optimised (use c3-16 for larger models)
+
+# ── Image ─────────────────────────────────────────────────────────────────────
+# Exact image name visible in OVH Control Panel or via:
+# openstack image list --region GRA11
+ubuntu_image_name = "Ubuntu 24.04"

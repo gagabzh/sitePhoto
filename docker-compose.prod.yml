@@ -1,7 +1,7 @@
 # Production — Instance-1 (OVH Public Cloud)
 # Worker runs separately on Instance-2. No MinIO (uses real OVH Object Storage).
 # Copy .env.example to .env.prod, fill in all values, then:
-#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 
 services:
   db:
@@ -25,6 +25,11 @@ services:
     build: .
     restart: always
     env_file: .env.prod
+    # Expose the internal API on the vRack IP only (port 3001 → app:3000).
+    # Instance-2 POSTs to http://<REDIS_BIND_IP>:3001/internal — never reachable
+    # from the public interface. Caddy still proxies to app:3000 internally.
+    ports:
+      - "${REDIS_BIND_IP}:3001:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -34,12 +39,17 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    # Bound to loopback + vRack private IP — never exposed on the public interface.
-    # Set REDIS_BIND_IP to the vRack IP of Instance-1 (e.g. 10.0.0.1).
+    # Redis binds to 0.0.0.0 inside the container (the container has its own
+    # network namespace — the vRack IP doesn't exist inside it).
+    # Host-level restriction is enforced by the port mapping below:
+    # Docker only publishes port 6379 on REDIS_BIND_IP (vRack IP), so it is
+    # never reachable from the public interface.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD}
-      --bind 127.0.0.1 ${REDIS_BIND_IP}
+      --bind 0.0.0.0
     ports:
       - "${REDIS_BIND_IP}:6379:6379"
     volumes:
