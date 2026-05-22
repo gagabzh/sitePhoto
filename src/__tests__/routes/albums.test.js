@@ -1,5 +1,6 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
-jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
+jest.mock('../../imageOptimizer', () => ({ optimizeBuffer: jest.fn() }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../components', () => ({
   selectionBar: jest.fn(() => '<div class="sel-bar-mock" id="sel-bar"></div>'),
@@ -11,44 +12,41 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
 }));
-jest.mock('multer', () => {
-  const m = jest.fn().mockReturnValue({
-    single: jest.fn().mockReturnValue((req, res, cb) => {
-      req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
-      cb();
-    }),
-    array: jest.fn().mockReturnValue((req, res, cb) => {
-      req.files = [
-        { filename: 'uuid-1.jpg', originalname: 'beach.jpg', mimetype: 'image/jpeg', size: 5000 },
-        { filename: 'uuid-2.jpg', originalname: 'sunset.png', mimetype: 'image/png', size: 3000 },
-      ];
-      cb();
-    }),
-  });
-  m.diskStorage = jest.fn().mockReturnValue({});
-  return m;
+jest.mock('../../storage', () => ({
+  uploadPhoto: jest.fn().mockResolvedValue(),
+  deletePhoto: jest.fn().mockRejectedValue(new Error('S3 not configured')),
+  readPhotoBuffer: jest.fn(),
+  downloadPhoto: jest.fn(),
+  streamPhoto: jest.fn(),
+}));
+jest.mock('../../uploadHelpers', () => {
+  const actual = jest.requireActual('../../uploadHelpers');
+  return { ...actual, upload: { single: jest.fn(), array: jest.fn() }, processAndUpload: jest.fn() };
 });
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const fs = require('fs');
-const { upload } = require('../../uploadHelpers');
-const { optimizePhoto } = require('../../imageOptimizer');
+const { upload, processAndUpload } = require('../../uploadHelpers');
+const storage = require('../../storage');
+const { addIdentificationJob } = require('../../queue/producer');
 const { extractMetadata } = require('../../extractMetadata');
 const { selectionBar, selectionScript, lbOverlay, lbScript } = require('../../components');
 
-const SINGLE_FILE = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
+const SINGLE_FILE = { buffer: Buffer.from('test'), originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
 const MULTI_FILES = [
-  { filename: 'uuid-1.jpg', originalname: 'beach.jpg', mimetype: 'image/jpeg', size: 5000 },
-  { filename: 'uuid-2.jpg', originalname: 'sunset.png', mimetype: 'image/png', size: 3000 },
+  { buffer: Buffer.from('test'), originalname: 'beach.jpg', mimetype: 'image/jpeg', size: 5000 },
+  { buffer: Buffer.from('test'), originalname: 'sunset.png', mimetype: 'image/png', size: 3000 },
 ];
 
 beforeEach(() => {
   jest.resetAllMocks();
   upload.single.mockReturnValue((req, res, cb) => { req.file = SINGLE_FILE; cb(); });
   upload.array.mockReturnValue((req, res, cb) => { req.files = MULTI_FILES; cb(); });
-  optimizePhoto.mockResolvedValue(4000);
+  processAndUpload.mockResolvedValue({ filename: 'test-uuid.jpg', size: 4000 });
+  storage.deletePhoto.mockRejectedValue(new Error('S3 not configured'));
+  addIdentificationJob.mockResolvedValue();
   extractMetadata.mockResolvedValue({});
   fs.promises.unlink.mockResolvedValue();
   selectionBar.mockReturnValue('<div class="sel-bar-mock" id="sel-bar"></div>');
@@ -223,7 +221,7 @@ describe('POST /albums/new/folder — create album from folder', () => {
     );
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/3');
@@ -271,7 +269,7 @@ describe('POST /albums/new/folder — create album from folder', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
     );
   });
 
@@ -680,7 +678,7 @@ describe('POST /albums/:id/photos/upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, null, null, null, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'photo.jpg', 'Beach Sunset', null, 'image/jpeg', 4000, null, null, null, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1');
@@ -698,9 +696,9 @@ describe('POST /albums/:id/photos/upload', () => {
       .send('title=T&latitude=48.8566&longitude=2.3522'); // form says Paris
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    // latitude=[10], longitude=[11] (no album_id column)
-    expect(call[1][10]).toBeCloseTo(51.5074); // EXIF (London) wins
-    expect(call[1][11]).toBeCloseTo(-0.1278);
+    // latitude=[11], longitude=[12] (s3_key added at index 2)
+    expect(call[1][11]).toBeCloseTo(51.5074); // EXIF (London) wins
+    expect(call[1][12]).toBeCloseTo(-0.1278);
   });
 
   it('returns 403 for viewer', async () => {
@@ -904,7 +902,7 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/albums/1');
@@ -952,7 +950,7 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'uuid-1.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'beach.jpg', 'beach', 'image/jpeg', 4000, null, 48.8566, 2.3522]
     );
   });
 

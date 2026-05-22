@@ -67,7 +67,7 @@ describe('POST /admin/ai/scan', () => {
     const res = await request(makeApp()).post('/admin/ai/scan');
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/admin/ai');
-    expect(findDuplicates).toHaveBeenCalledWith(fakePhotos, '/uploads');
+    expect(findDuplicates).toHaveBeenCalledWith(fakePhotos, expect.any(Function));
   });
 });
 

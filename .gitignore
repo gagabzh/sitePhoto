@@ -1,5 +1,8 @@
 node_modules/
 .env
+.env.local
+.env.prod
+worker/node_modules/
 .idea/
 uploads/
 sitephoto-design/

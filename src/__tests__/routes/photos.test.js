@@ -1,5 +1,6 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
-jest.mock('../../imageOptimizer', () => ({ optimizePhoto: jest.fn().mockResolvedValue(4000) }));
+jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
+jest.mock('../../imageOptimizer', () => ({ optimizeBuffer: jest.fn() }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../components', () => ({
   selectionBar: jest.fn(() => '<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>'),
@@ -9,33 +10,37 @@ jest.mock('fs', () => ({
   mkdirSync: jest.fn(),
   promises: { unlink: jest.fn().mockResolvedValue() },
 }));
-jest.mock('multer', () => {
-  const m = jest.fn().mockReturnValue({
-    single: jest.fn().mockReturnValue((req, res, cb) => {
-      req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
-      cb();
-    }),
-  });
-  m.diskStorage = jest.fn().mockReturnValue({});
-  return m;
+jest.mock('../../storage', () => ({
+  uploadPhoto: jest.fn().mockResolvedValue(),
+  deletePhoto: jest.fn().mockRejectedValue(new Error('S3 not configured')),
+  readPhotoBuffer: jest.fn(),
+  downloadPhoto: jest.fn(),
+  streamPhoto: jest.fn(),
+}));
+jest.mock('../../uploadHelpers', () => {
+  const actual = jest.requireActual('../../uploadHelpers');
+  return { ...actual, upload: { single: jest.fn(), array: jest.fn() }, processAndUpload: jest.fn() };
 });
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const fs = require('fs');
-const { upload } = require('../../uploadHelpers');
-const { optimizePhoto } = require('../../imageOptimizer');
+const { upload, processAndUpload } = require('../../uploadHelpers');
+const storage = require('../../storage');
+const { addIdentificationJob } = require('../../queue/producer');
 const { extractMetadata } = require('../../extractMetadata');
 const { selectionBar, selectionScript } = require('../../components');
 
 beforeEach(() => {
   jest.resetAllMocks();
   upload.single.mockReturnValue((req, res, cb) => {
-    req.file = { filename: 'test-uuid.jpg', originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
+    req.file = { buffer: Buffer.from('test'), originalname: 'photo.jpg', mimetype: 'image/jpeg', size: 5000 };
     cb();
   });
-  optimizePhoto.mockResolvedValue(4000);
+  processAndUpload.mockResolvedValue({ filename: 'test-uuid.jpg', size: 4000 });
+  storage.deletePhoto.mockRejectedValue(new Error('S3 not configured'));
+  addIdentificationJob.mockResolvedValue();
   extractMetadata.mockResolvedValue({});
   fs.promises.unlink.mockResolvedValue();
   selectionBar.mockReturnValue('<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>');
@@ -174,7 +179,7 @@ describe('US-P1/P2: POST /photos/upload — upload handling', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null, null, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'photo.jpg', 'Sunset', 'Nice', 'image/jpeg', 4000, null, null, null, null, null, null]
     );
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/photos/42');
@@ -618,7 +623,7 @@ describe('US-NC1: POST /photos/upload — store nextcloud_url', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, null, null, null, null, 'https://cloud.example/s/abc123']
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'photo.jpg', 'Beach', null, 'image/jpeg', 4000, null, null, null, null, null, 'https://cloud.example/s/abc123']
     );
     expect(res.status).toBe(302);
   });
@@ -726,7 +731,7 @@ describe('EXIF metadata: POST /photos/upload', () => {
 
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO photos'),
-      [10, 'test-uuid.jpg', 'photo.jpg', 'Alps', null, 'image/jpeg', 4000, '2024-06-15', '1/250', 50, null, null, null]
+      [10, 'test-uuid.jpg', 'test-uuid.jpg', 'photo.jpg', 'Alps', null, 'image/jpeg', 4000, '2024-06-15', '1/250', 50, null, null, null]
     );
   });
 
@@ -741,7 +746,7 @@ describe('EXIF metadata: POST /photos/upload', () => {
       .send('title=Alps&taken_at=2023-07-20');
 
     const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(callArgs[1][7]).toBe('2023-07-20');
+    expect(callArgs[1][8]).toBe('2023-07-20');
   });
 
   it('falls back to EXIF date when taken_at form field is empty', async () => {
@@ -755,7 +760,7 @@ describe('EXIF metadata: POST /photos/upload', () => {
       .send('title=Alps&taken_at=');
 
     const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(callArgs[1][7]).toBe('2024-06-15');
+    expect(callArgs[1][8]).toBe('2024-06-15');
   });
 
   it('stores nulls when EXIF is absent', async () => {
@@ -767,9 +772,9 @@ describe('EXIF metadata: POST /photos/upload', () => {
       .send('title=Alps');
 
     const callArgs = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(callArgs[1][7]).toBeNull();
     expect(callArgs[1][8]).toBeNull();
     expect(callArgs[1][9]).toBeNull();
+    expect(callArgs[1][10]).toBeNull();
   });
 });
 
@@ -805,8 +810,8 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
       .send('title=Paris&latitude=48.8566&longitude=2.3522');
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(call[1][10]).toBeCloseTo(48.8566);
-    expect(call[1][11]).toBeCloseTo(2.3522);
+    expect(call[1][11]).toBeCloseTo(48.8566);
+    expect(call[1][12]).toBeCloseTo(2.3522);
   });
 
   it('EXIF GPS takes priority over place-search GPS when both present', async () => {
@@ -819,8 +824,8 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
       .send('title=T&latitude=48.8566&longitude=2.3522');
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(call[1][10]).toBeCloseTo(51.5074); // EXIF wins
-    expect(call[1][11]).toBeCloseTo(-0.1278);
+    expect(call[1][11]).toBeCloseTo(51.5074); // EXIF wins
+    expect(call[1][12]).toBeCloseTo(-0.1278);
   });
 
   it('falls back to place-search GPS when EXIF has no GPS', async () => {
@@ -832,8 +837,8 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
       .send('title=London');
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(call[1][10]).toBeCloseTo(51.5074);
-    expect(call[1][11]).toBeCloseTo(-0.1278);
+    expect(call[1][11]).toBeCloseTo(51.5074);
+    expect(call[1][12]).toBeCloseTo(-0.1278);
   });
 
   it('rejects out-of-range coordinates', async () => {
@@ -845,8 +850,8 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
       .send('title=X&latitude=999&longitude=999');
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(call[1][10]).toBeNull();
     expect(call[1][11]).toBeNull();
+    expect(call[1][12]).toBeNull();
   });
 
   it('accepts DMS coordinates and converts to decimal', async () => {
@@ -858,8 +863,8 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
       .send("title=Cusco&latitude=14°02'01.7\"S&longitude=71°14'50.7\"W");
 
     const call = db.query.mock.calls.find(c => c[0].includes('INSERT INTO photos'));
-    expect(call[1][10]).toBeCloseTo(-14.0338, 3);
-    expect(call[1][11]).toBeCloseTo(-71.2474, 3);
+    expect(call[1][11]).toBeCloseTo(-14.0338, 3);
+    expect(call[1][12]).toBeCloseTo(-71.2474, 3);
   });
 
   it('upload form shows place search input and hidden lat/lon fields', async () => {

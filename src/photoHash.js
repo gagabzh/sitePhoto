@@ -3,8 +3,9 @@ const path = require('path');
 
 // Difference hash (dHash): resize to 9×8 grayscale, compare adjacent pixels
 // in each row. Returns a 64-bit BigInt (one bit per comparison).
-async function dHash(filepath) {
-  const { data } = await sharp(filepath)
+// source: Buffer or filepath string (sharp accepts both).
+async function dHash(source) {
+  const { data } = await sharp(source)
     .resize(9, 8, { fit: 'fill' })
     .grayscale()
     .raw()
@@ -34,11 +35,20 @@ function hammingDistance(a, b) {
 // Returns an array of groups (arrays of photo objects); only groups with ≥ 2
 // photos are included. Photos whose file cannot be read are silently skipped.
 // maxDist: maximum Hamming distance to consider a pair near-duplicate (default 10).
-async function findDuplicates(photos, uploadDir, maxDist = 10) {
+// uploadDirOrReadBuffer: a directory path string (legacy) or an async (filename) => Buffer function.
+async function findDuplicates(photos, uploadDirOrReadBuffer, maxDist = 10) {
+  // String → legacy disk path; function → async reader returning Buffer.
+  // When a string is given we pass the filepath directly to dHash (sharp accepts both)
+  // so tests that mock sharp still work without touching the filesystem.
+  const getSource = typeof uploadDirOrReadBuffer === 'function'
+    ? (filename) => uploadDirOrReadBuffer(filename)
+    : (filename) => path.join(uploadDirOrReadBuffer, filename);
+
   const hashes = [];
   for (const photo of photos) {
     try {
-      const h = await dHash(path.join(uploadDir, photo.filename));
+      const source = await getSource(photo.filename);
+      const h = await dHash(source);
       hashes.push({ photo, hash: h });
     } catch {
       // Unsupported format or file missing — skip silently

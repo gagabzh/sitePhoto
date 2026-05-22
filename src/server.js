@@ -1,7 +1,9 @@
+const http    = require('http');
 const bcrypt  = require('bcryptjs');
 const db      = require('./db');
 const app     = require('./app');
 const migrate = require('./migrate');
+const { initSocketIO } = require('./notifications');
 
 const PORT = process.env.PORT || 3000;
 
@@ -34,7 +36,9 @@ db.query('SELECT 1')
   .then(() => migrate())
   .then(() => seedAdmin())
   .then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = http.createServer(app);
+    initSocketIO(server);
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });
   })

@@ -1,5 +1,10 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('bcryptjs', () => ({ hash: jest.fn(), compare: jest.fn() }));
+jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
+jest.mock('../../storage', () => ({
+  uploadPhoto: jest.fn(), deletePhoto: jest.fn(), readPhotoBuffer: jest.fn(),
+  downloadPhoto: jest.fn(), streamPhoto: jest.fn(),
+}));
 
 const request = require('supertest');
 const app = require('../../app');
