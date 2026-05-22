@@ -17,9 +17,14 @@ jobs:
       - name: Deploy to Instance 2
         uses: appleboy/ssh-action@v1
         with:
+          # Instance-2 has no public inbound port 22 — SSH via Instance-1 as jump host.
+          # INSTANCE2_HOST must be Instance-2's vRack private IP (10.0.0.x).
           host: ${{ secrets.INSTANCE2_HOST }}
           username: ${{ secrets.INSTANCE2_USER }}
           key: ${{ secrets.INSTANCE2_SSH_KEY }}
+          proxy_host: ${{ secrets.INSTANCE1_HOST }}
+          proxy_username: ${{ secrets.INSTANCE1_USER }}
+          proxy_key: ${{ secrets.INSTANCE1_SSH_KEY }}
           script: |
             set -e
             cd ~/sitephoto

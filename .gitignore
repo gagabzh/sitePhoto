@@ -10,6 +10,6 @@ sitephoto-design/
 # Terraform — secrets and generated state
 infra/terraform.tfvars
 infra/.terraform/
-infra/.terraform.lock.hcl
 infra/terraform.tfstate
 infra/terraform.tfstate.backup
+# .terraform.lock.hcl is intentionally committed — it locks provider versions
