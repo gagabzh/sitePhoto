@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { wrapAsync } = require('../middleware');
 const { renderMapPage } = require('./mapViews');
-const { fetchGeoPhotos, fetchFilterOptions } = require('./mapQueries');
+const { fetchGeoPhotos, fetchFilterOptions } = require('../repositories/map');
 
 router.get('/', wrapAsync(async (req, res) => {
   const albumFilter  = req.query.album  ? parseInt(req.query.album)  : null;

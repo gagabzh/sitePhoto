@@ -8,7 +8,7 @@ const {
   fetchRecipeByToken,
   fetchAllRecipes,
   fetchMyRecipes,
-} = require('../../routes/tags/queries');
+} = require('../../repositories/tags');
 
 // resetAllMocks clears call history and mockResolvedValueOnce queues between tests.
 beforeEach(() => jest.resetAllMocks());

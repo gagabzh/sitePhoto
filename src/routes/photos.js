@@ -14,7 +14,7 @@ const {
 const {
   fetchPhotoPage, fetchPhotoStats, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
   insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner, updatePhoto,
-} = require('./photosQueries');
+} = require('../repositories/photos');
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 

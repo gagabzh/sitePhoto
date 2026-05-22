@@ -20,8 +20,8 @@ const {
   fetchViewerAccessLists, addViewerAccess, removeViewerAccess,
   updateAlbum, deleteAlbum, fetchPhotosNotInAlbum, linkPhotoToAlbum,
   removePhotoFromAlbum, insertNewAlbumPhoto,
-} = require('./albumsQueries');
-const { insertPhoto } = require('./photosQueries');
+} = require('../repositories/albums');
+const { insertPhoto } = require('../repositories/photos');
 
 function parseFrom(raw) {
   if (typeof raw !== 'string') return null;

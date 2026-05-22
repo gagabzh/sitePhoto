@@ -1,5 +1,5 @@
-const db = require('../../db');
-const { buildWhere, SECTIONS, ORDER_SQL } = require('../../combinator');
+const db = require('../db');
+const { buildWhere, SECTIONS, ORDER_SQL } = require('../combinator');
 
 async function fetchTagVocabulary(isViewer, userId) {
   const [{ rows: tagRows }, { rows: yearRows }] = await Promise.all([

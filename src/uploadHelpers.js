@@ -103,8 +103,13 @@ async function deletePhotos(ids) {
     [ids]
   );
   await db.query('DELETE FROM photos WHERE id = ANY($1::int[])', [ids]);
+  // File deletion is fire-and-forget: DB row is gone first, so a crash between
+  // the two leaves an orphaned file on disk. Long-term fix: a pending_delete
+  // table or a background cleanup job. The warn below makes orphans visible.
   for (const p of rows) {
-    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(() => {});
+    fs.promises.unlink(path.join(UPLOAD_DIR, p.filename)).catch(err => {
+      console.warn(`deletePhotos: failed to unlink ${p.filename}: ${err.code || err.message}`);
+    });
   }
 }
 

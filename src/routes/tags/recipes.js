@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { page } = require('../../layout');
 const { wrapAsync } = require('../../middleware');
-const { fetchRecipeByToken, fetchAllRecipes, fetchMyRecipes } = require('./queries');
+const { fetchRecipeByToken, fetchAllRecipes, fetchMyRecipes } = require('../../repositories/tags');
 const { renderAdminPage, renderMyRecipesPage } = require('./recipesViews');
 
 // ── GET /recipes/fork/:token — redirect to tag view with shared recipe ────────
