@@ -4,9 +4,10 @@ const PROJECT = 'proj-123';
 const INSTANCE_ID = 'inst-456';
 const OVH_TIME_URL = 'https://eu.api.ovh.com/1.0/auth/time';
 
-// Flush microtask queue. The chain depth here is ~15 levels (ovhTimestamp →
-// fetch → json → ovhRequest → fetch → getStatus → unshelveIfNeeded → …),
-// so we need enough ticks to drain it completely.
+// Flush microtask queue. Each await in an async chain consumes one tick;
+// the deepest path here is ~15 levels (ovhTimestamp × 2 awaits → ovhRequest
+// × 2 → getStatus → unshelveIfNeeded × 2 → POST path). 30 gives a 2× safety
+// margin — if the chain grows deeper and tests start failing, raise this.
 const flushPromises = async () => {
   for (let i = 0; i < 30; i++) await Promise.resolve();
 };
