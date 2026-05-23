@@ -39,11 +39,15 @@ router.post('/identification-result', requireWorkerSecret, wrapAsync(async (req,
 }));
 
 router.post('/describe-person-result', requireWorkerSecret, wrapAsync(async (req, res) => {
-  const { tagId, description, userId } = req.body;
+  const { tagId, description, userId, error } = req.body;
   if (!tagId || !userId) return res.status(400).json({ error: 'Missing tagId or userId' });
 
-  await db.query('UPDATE tags SET description = $1 WHERE id = $2', [description || '', tagId]);
-  notifyUser(userId, { tagId, description: description || '' }, 'describe-person-complete');
+  if (error) {
+    notifyUser(userId, { tagId, error }, 'describe-person-complete');
+  } else {
+    await db.query('UPDATE tags SET description = $1 WHERE id = $2', [description || '', tagId]);
+    notifyUser(userId, { tagId, description: description || '' }, 'describe-person-complete');
+  }
   res.json({ ok: true });
 }));
 

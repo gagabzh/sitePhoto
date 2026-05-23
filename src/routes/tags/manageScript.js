@@ -75,13 +75,14 @@ function renderManageScript(editTag) {
     var selectedPhotoIds=[];
     var pendingDescribeTagId=null;
 
-    // Receive describe-person result pushed by Instance-2 via WebSocket
+    // Receive describe-person result (or failure) pushed by Instance-2 via WebSocket
     document.addEventListener('sp:describe-person-complete',function(ev){
       var d=ev.detail;
       if(pendingDescribeTagId===null||d.tagId!==pendingDescribeTagId) return;
       pendingDescribeTagId=null;
       var genBtn=document.getElementById('tm-dr-ai-gen');
       if(genBtn){genBtn.textContent='Generate description';genBtn.disabled=false;}
+      if(d.error){showToast('AI error: '+d.error);return;}
       var descEl=document.getElementById('tm-dr-desc');
       if(descEl&&d.description){descEl.value=d.description;showToast('description generated ✓');}
       else{showToast('AI returned empty — try a clearer photo');}

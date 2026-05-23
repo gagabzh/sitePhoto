@@ -56,6 +56,10 @@ const worker = new Worker('identification', async (job) => {
 
 worker.on('failed', (job, err) => {
   console.error(`[worker] job ${job?.id} failed:`, err.message);
+  if (job?.name === 'describe-person') {
+    const { tagId, userId } = job.data;
+    postDescribePersonResult({ tagId, userId, error: err.message }).catch(() => {});
+  }
 });
 worker.on('error', (err) => {
   console.error('[worker] error:', err.message);
