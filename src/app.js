@@ -12,6 +12,10 @@ if (!process.env.SESSION_SECRET) {
 
 const app = express();
 
+// Trust the first proxy hop (Caddy) so express-rate-limit and req.ip use
+// the real client IP from X-Forwarded-For instead of Caddy's container IP.
+app.set('trust proxy', 1);
+
 // Nonce must be set before helmet so the CSP header can reference it
 app.use(nonceMiddleware);
 app.use(helmet({
