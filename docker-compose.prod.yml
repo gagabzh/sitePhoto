@@ -25,6 +25,12 @@ services:
     build: .
     restart: always
     env_file: .env.prod
+    environment:
+      # Override REDIS_HOST from .env.prod: the app container reaches Redis via
+      # the Docker bridge network using the service name, not the vRack IP.
+      # (The vRack IP is only routable from Instance-2 or the host — not from
+      # inside a container on the bridge network.)
+      REDIS_HOST: redis
     # Expose the internal API on the vRack IP only (port 3001 → app:3000).
     # Instance-2 POSTs to http://<REDIS_BIND_IP>:3001/internal — never reachable
     # from the public interface. Caddy still proxies to app:3000 internally.
