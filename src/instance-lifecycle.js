@@ -4,8 +4,14 @@
 // Unshelves Instance-2 when a job is added to the queue; shelves it again
 // after INSTANCE2_IDLE_MINUTES of queue inactivity (drained event).
 // All exports are no-ops when INSTANCE2_ID / OVH credentials are not set.
+//
+// Uses Node 18 built-in fetch + crypto instead of the 'ovh' npm package.
+// The ovh library threw ERR_UNESCAPED_CHARACTERS asynchronously inside an
+// event handler, outside any Promise wrapper, crashing the process.
 
-const ovh = require('ovh');
+const { createHash } = require('crypto');
+
+const OVH_API = 'https://eu.api.ovh.com/1.0';
 
 const IDLE_MINUTES = parseInt(process.env.INSTANCE2_IDLE_MINUTES || '10', 10);
 const IDLE_MS = IDLE_MINUTES * 60_000;
@@ -16,10 +22,10 @@ const CACHE_TTL_MS = 30_000;
 let cachedStatus = null;
 let cacheTime = 0;
 let idleTimer = null;
-let _client = null;
 // Guards concurrent unshelve calls (e.g. bulk upload before cache is warm).
-// Set to true the moment we decide to unshelve; cleared when setStatus() is called.
 let unshelveInFlight = false;
+// OVH server time offset (local_unix - ovh_unix), fetched once and reused.
+let timeOffset = null;
 
 function isEnabled() {
   return !!(
@@ -31,25 +37,46 @@ function isEnabled() {
   );
 }
 
-function getClient() {
-  if (!_client) {
-    _client = ovh({
-      endpoint: 'ovh-eu',
-      appKey: process.env.OVH_APP_KEY,
-      appSecret: process.env.OVH_APP_SECRET,
-      consumerKey: process.env.OVH_CONSUMER_KEY,
-    });
+async function ovhTimestamp() {
+  if (timeOffset === null) {
+    const res = await fetch(`${OVH_API}/auth/time`);
+    const serverTime = await res.json();
+    timeOffset = Math.floor(Date.now() / 1000) - serverTime;
   }
-  return _client;
+  return String(Math.floor(Date.now() / 1000) - timeOffset);
 }
 
-function ovhRequest(method, path, body) {
-  return new Promise((resolve, reject) => {
-    getClient().request(method, path, body || {}, (err, result) => {
-      if (err) reject(err);
-      else resolve(result);
-    });
+async function ovhRequest(method, path) {
+  const url = `${OVH_API}${path}`;
+  const body = '';
+  const ts = await ovhTimestamp();
+
+  const sig = '$1$' + createHash('sha1')
+    .update([
+      process.env.OVH_APP_SECRET,
+      process.env.OVH_CONSUMER_KEY,
+      method.toUpperCase(),
+      url,
+      body,
+      ts,
+    ].join('+'))
+    .digest('hex');
+
+  const res = await fetch(url, {
+    method: method.toUpperCase(),
+    headers: {
+      'X-Ovh-Application': process.env.OVH_APP_KEY,
+      'X-Ovh-Consumer': process.env.OVH_CONSUMER_KEY,
+      'X-Ovh-Timestamp': ts,
+      'X-Ovh-Signature': sig,
+    },
   });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`OVH ${method} ${path} → ${res.status}: ${text}`);
+  }
+  return method === 'POST' ? null : res.json();
 }
 
 async function getStatus() {
@@ -86,7 +113,7 @@ async function unshelveIfNeeded() {
 
 async function shelveInstance() {
   const status = await getStatus();
-  if (status !== 'ACTIVE') return; // already shelved or in transition
+  if (status !== 'ACTIVE') return;
   console.log('[lifecycle] Queue idle — shelving Instance-2');
   await ovhRequest(
     'POST',
@@ -124,8 +151,8 @@ function _resetForTesting() {
   cachedStatus = null;
   cacheTime = 0;
   unshelveInFlight = false;
+  timeOffset = null;
   if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-  _client = null;
 }
 
 module.exports = { isEnabled, onJobAdded, onQueueDrained, _resetForTesting };

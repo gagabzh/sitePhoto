@@ -1,24 +1,35 @@
-// Use a plain function (not jest.fn()) so jest.resetAllMocks() does NOT clear the
-// factory — if it were a jest.fn(), resetAllMocks would wipe its implementation
-// and ovh({...}) would return undefined, silently breaking all lifecycle calls.
-let mockRequest;
-jest.mock('ovh', () => function() { return { request: (...args) => mockRequest(...args) }; });
-
 const { isEnabled, onJobAdded, onQueueDrained, _resetForTesting } = require('../instance-lifecycle');
 
 const PROJECT = 'proj-123';
 const INSTANCE_ID = 'inst-456';
+const OVH_TIME_URL = 'https://eu.api.ovh.com/1.0/auth/time';
 
-// Flush microtask queue — needs 4 awaits to drain a 3-level Promise chain
+// Flush microtask queue. Each await in an async chain consumes one tick;
+// the deepest path here is ~15 levels (ovhTimestamp × 2 awaits → ovhRequest
+// × 2 → getStatus → unshelveIfNeeded × 2 → POST path). 30 gives a 2× safety
+// margin — if the chain grows deeper and tests start failing, raise this.
 const flushPromises = async () => {
-  await Promise.resolve(); await Promise.resolve();
-  await Promise.resolve(); await Promise.resolve();
+  for (let i = 0; i < 30; i++) await Promise.resolve();
 };
+
+// Build a minimal fetch mock: time endpoint returns current unix seconds;
+// GET instance returns given status; POST succeeds silently.
+function buildFetchMock(status) {
+  return jest.fn((url, opts) => {
+    const method = (opts && opts.method) || 'GET';
+    if (url === OVH_TIME_URL) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(Math.floor(Date.now() / 1000)) });
+    }
+    if (method === 'GET') {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ status }) });
+    }
+    return Promise.resolve({ ok: true });
+  });
+}
 
 beforeEach(() => {
   // doNotFake nextTick so flushPromises() works while setTimeout is still faked
   jest.useFakeTimers({ doNotFake: ['nextTick'] });
-  mockRequest = jest.fn();
   _resetForTesting();
 
   process.env.OVH_APP_KEY = 'ak';
@@ -32,17 +43,10 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
   jest.resetAllMocks();
+  delete global.fetch;
   ['OVH_APP_KEY', 'OVH_APP_SECRET', 'OVH_CONSUMER_KEY', 'OVH_PROJECT_ID', 'INSTANCE2_ID', 'INSTANCE2_IDLE_MINUTES']
     .forEach(k => delete process.env[k]);
 });
-
-// Helper: mock OVH request — GET returns given status, POST succeeds silently
-function mockStatus(status) {
-  mockRequest.mockImplementation((method, path, body, cb) => {
-    if (method === 'GET') cb(null, { status });
-    else cb(null, {});
-  });
-}
 
 describe('isEnabled()', () => {
   it('returns true when all credentials are set', () => {
@@ -73,94 +77,97 @@ describe('isEnabled()', () => {
 describe('onJobAdded()', () => {
   it('is a no-op when lifecycle is disabled', async () => {
     delete process.env.INSTANCE2_ID;
+    global.fetch = jest.fn();
     onJobAdded();
     await flushPromises();
-    expect(mockRequest).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('does not call unshelve when instance is ACTIVE', async () => {
-    mockStatus('ACTIVE');
+    global.fetch = buildFetchMock('ACTIVE');
     onJobAdded();
     await flushPromises();
-    expect(mockRequest).toHaveBeenCalledTimes(1); // GET only
-    expect(mockRequest).toHaveBeenCalledWith('GET', expect.stringContaining(INSTANCE_ID), expect.anything(), expect.any(Function));
+    const postCalls = global.fetch.mock.calls.filter(([, o]) => o && o.method === 'POST');
+    expect(postCalls).toHaveLength(0);
   });
 
   it('unshelves when instance is SHELVED_OFFLOADED', async () => {
-    mockStatus('SHELVED_OFFLOADED');
+    global.fetch = buildFetchMock('SHELVED_OFFLOADED');
     onJobAdded();
     await flushPromises();
-    expect(mockRequest).toHaveBeenCalledTimes(2); // GET + POST unshelve
-    expect(mockRequest).toHaveBeenCalledWith('POST', expect.stringContaining('/unshelve'), expect.anything(), expect.any(Function));
+    const unshelveCalls = global.fetch.mock.calls.filter(([u, o]) => o && o.method === 'POST' && u.includes('/unshelve'));
+    expect(unshelveCalls).toHaveLength(1);
   });
 
   it('skips unshelve when instance is already UNSHELVING', async () => {
-    mockStatus('UNSHELVING');
+    global.fetch = buildFetchMock('UNSHELVING');
     onJobAdded();
     await flushPromises();
-    expect(mockRequest).toHaveBeenCalledTimes(1); // GET only
+    const postCalls = global.fetch.mock.calls.filter(([, o]) => o && o.method === 'POST');
+    expect(postCalls).toHaveLength(0);
   });
 
   it('fires unshelve only once when two jobs arrive before cache is warm', async () => {
-    mockStatus('SHELVED_OFFLOADED');
-    // Simulate bulk upload: two concurrent onJobAdded() calls before the first
-    // OVH GET completes and warms the cache.
+    global.fetch = buildFetchMock('SHELVED_OFFLOADED');
     onJobAdded();
     onJobAdded();
     await flushPromises();
-    const unshelveCalls = mockRequest.mock.calls.filter(([m, p]) => m === 'POST' && p.includes('/unshelve'));
+    const unshelveCalls = global.fetch.mock.calls.filter(([u, o]) => o && o.method === 'POST' && u.includes('/unshelve'));
     expect(unshelveCalls).toHaveLength(1);
   });
 
   it('cancels pending idle timer when a new job arrives', async () => {
-    mockStatus('ACTIVE');
-    onQueueDrained(); // starts idle timer
-    onJobAdded();     // must cancel the timer
+    global.fetch = buildFetchMock('ACTIVE');
+    onQueueDrained();
+    onJobAdded();
     await flushPromises();
     await jest.runAllTimersAsync();
-    // No shelve POST should have fired
-    const postCalls = mockRequest.mock.calls.filter(([m]) => m === 'POST');
-    const shelveCalls = postCalls.filter(([, p]) => p.includes('/shelve'));
+    const shelveCalls = global.fetch.mock.calls.filter(([u, o]) => o && o.method === 'POST' && u.includes('/shelve'));
     expect(shelveCalls).toHaveLength(0);
   });
 });
 
 describe('onQueueDrained()', () => {
-  it('is a no-op when lifecycle is disabled', () => {
+  it('is a no-op when lifecycle is disabled', async () => {
     delete process.env.INSTANCE2_ID;
+    global.fetch = jest.fn();
     onQueueDrained();
-    jest.runAllTimers();
-    expect(mockRequest).not.toHaveBeenCalled();
+    await jest.runAllTimersAsync();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('shelves instance after idle timeout when instance is ACTIVE', async () => {
-    mockStatus('ACTIVE');
+    global.fetch = buildFetchMock('ACTIVE');
     onQueueDrained();
-    await jest.runAllTimersAsync(); // advance timers and drain resulting promises
-    expect(mockRequest).toHaveBeenCalledWith('POST', expect.stringContaining('/shelve'), expect.anything(), expect.any(Function));
+    await jest.runAllTimersAsync();
+    const shelveCalls = global.fetch.mock.calls.filter(([u, o]) => o && o.method === 'POST' && u.includes('/shelve'));
+    expect(shelveCalls).toHaveLength(1);
   });
 
   it('does not shelve when instance is already SHELVED_OFFLOADED', async () => {
-    mockStatus('SHELVED_OFFLOADED');
+    global.fetch = buildFetchMock('SHELVED_OFFLOADED');
     onQueueDrained();
     await jest.runAllTimersAsync();
-    const postCalls = mockRequest.mock.calls.filter(([m]) => m === 'POST');
+    const postCalls = global.fetch.mock.calls.filter(([, o]) => o && o.method === 'POST');
     expect(postCalls).toHaveLength(0);
   });
 });
 
 describe('error handling', () => {
-  it('swallows OVH API errors in onJobAdded without throwing', async () => {
-    mockRequest.mockImplementation((method, path, body, cb) => cb(new Error('OVH 403')));
+  it('swallows fetch errors in onJobAdded without throwing', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('network error'));
     expect(() => onJobAdded()).not.toThrow();
     await flushPromises();
-    // No unhandled rejection — test passes if we reach this line
   });
 
-  it('swallows OVH API errors in shelveInstance without throwing', async () => {
-    mockRequest.mockImplementation((method, path, body, cb) => cb(new Error('OVH 503')));
+  it('swallows OVH error responses in shelveInstance without throwing', async () => {
+    global.fetch = jest.fn((url) => {
+      if (url === OVH_TIME_URL) return Promise.resolve({ ok: true, json: () => Promise.resolve(Math.floor(Date.now() / 1000)) });
+      if (url.includes('/shelve')) return Promise.resolve({ ok: false, status: 503, text: () => Promise.resolve('service unavailable') });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ACTIVE' }) });
+    });
     onQueueDrained();
     await jest.runAllTimersAsync();
-    // No unhandled rejection
+    // No unhandled rejection — passes if we reach here
   });
 });
