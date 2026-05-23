@@ -1,12 +1,14 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../ollama', () => ({ generate: jest.fn() }));
 jest.mock('../../storage', () => ({ readPhotoBuffer: jest.fn() }));
+jest.mock('../../queue/producer', () => ({ addDescribePersonJob: jest.fn().mockResolvedValue({}) }));
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const { generate } = require('../../ollama');
 const { readPhotoBuffer } = require('../../storage');
+const { addDescribePersonJob } = require('../../queue/producer');
 
 beforeEach(() => jest.resetAllMocks());
 
@@ -196,18 +198,22 @@ describe('POST /api/ai/set-reference', () => {
 });
 
 describe('POST /api/ai/describe-person', () => {
-  it('returns a description from Ollama', async () => {
+  it('enqueues a describe-person job and returns queued:true', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })  // people tag
       .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });     // photos
-    readPhotoBuffer.mockResolvedValue(Buffer.from('img'));
-    generate.mockResolvedValue({ response: '"young woman with red hair, glasses"' });
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
 
     expect(res.status).toBe(200);
-    expect(res.body.description).toBe('young woman with red hair, glasses');
+    expect(res.body.queued).toBe(true);
+    expect(addDescribePersonJob).toHaveBeenCalledWith({
+      tagId: 7,
+      tagName: 'alice',
+      photoFilenames: ['a.jpg'],
+      userId: EDITOR_SESSION.userId,
+    });
   });
 
   it('returns 400 for missing photoIds', async () => {
@@ -229,18 +235,13 @@ describe('POST /api/ai/describe-person', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns 503 when Ollama is unreachable', async () => {
+  it('returns 404 when no photos found', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })
-      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });
-    readPhotoBuffer.mockResolvedValue(Buffer.from('img'));
-    generate.mockRejectedValue(new Error('Ollama unreachable: ECONNREFUSED'));
-
+      .mockResolvedValueOnce({ rows: [] });
     const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
-
-    expect(res.status).toBe(503);
-    expect(res.body.error).toContain('Ollama unreachable');
+      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [99] });
+    expect(res.status).toBe(404);
   });
 
   it('returns 403 when called by a viewer', async () => {

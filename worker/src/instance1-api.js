@@ -18,4 +18,19 @@ async function postIdentificationResult(result) {
   }
 }
 
-module.exports = { postIdentificationResult };
+async function postDescribePersonResult(result) {
+  const res = await fetch(`${BASE_URL}/internal/describe-person-result`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-worker-secret': SECRET,
+    },
+    body: JSON.stringify(result),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Instance-1 API responded ${res.status}: ${text}`);
+  }
+}
+
+module.exports = { postIdentificationResult, postDescribePersonResult };

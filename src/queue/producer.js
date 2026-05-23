@@ -21,4 +21,14 @@ async function addIdentificationJob(payload) {
   return job;
 }
 
-module.exports = { addIdentificationJob };
+// payload: { tagId, tagName, photoFilenames, userId }
+async function addDescribePersonJob(payload) {
+  const job = await identificationQueue.add('describe-person', payload, {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 5000 },
+  });
+  onJobAdded(); // non-blocking: unshelve Instance-2 if needed
+  return job;
+}
+
+module.exports = { addIdentificationJob, addDescribePersonJob };

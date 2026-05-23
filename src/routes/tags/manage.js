@@ -38,7 +38,7 @@ router.get('/manage', requireEditor, wrapAsync(async (req, res) => {
   const html = renderManagePage({ ...data, totalPages, search, kind, sort, pageNum, unused, dupes, PAGE_SIZE })
     + renderManageScript(data.editTag);
 
-  res.send(page('Manage Tags', html, req.session));
+  res.send(page('Manage Tags', html, req.session, true));
 }));
 
 module.exports = router;
