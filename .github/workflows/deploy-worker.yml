@@ -83,9 +83,12 @@ jobs:
           ovh_post "${INSTANCE_PATH}/unshelve"
 
           # Wait for ACTIVE (max 5 min, poll every 10 s)
+          # TODO: remove poll echo once root cause of KeyError is confirmed fixed
           for i in $(seq 1 30); do
-            STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
-            echo "Status: ${STATUS} (${i}/30)"
+            POLL_RESPONSE=$(ovh_get "${INSTANCE_PATH}")
+            echo "Poll response (${i}/30): ${POLL_RESPONSE}"
+            STATUS=$(echo "${POLL_RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            echo "Status: ${STATUS}"
             [ "$STATUS" = "ACTIVE" ] && break
             [ "$i" -eq 30 ] && { echo "Timeout waiting for ACTIVE"; exit 1; }
             sleep 10
