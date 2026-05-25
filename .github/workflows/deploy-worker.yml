@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'worker/**'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,11 +15,69 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Unshelve Instance-2 if needed
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE2_ID: ${{ secrets.INSTANCE2_ID }}
+        run: |
+          ovh_get() {
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
+            local TS
+            TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+            local HASH
+            HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+GET+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+            local SIG='$1$'"${HASH}"
+            curl -s -X GET "$URL" \
+              -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+              -H "X-Ovh-Timestamp: ${TS}" \
+              -H "X-Ovh-Signature: ${SIG}" \
+              -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}"
+          }
+
+          ovh_post() {
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
+            local TS
+            TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+            local HASH
+            HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+POST+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+            local SIG='$1$'"${HASH}"
+            curl -s -X POST "$URL" \
+              -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+              -H "X-Ovh-Timestamp: ${TS}" \
+              -H "X-Ovh-Signature: ${SIG}" \
+              -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+              -H "Content-Type: application/json"
+          }
+
+          INSTANCE_PATH="/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE2_ID}"
+
+          STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          echo "Instance-2 status: ${STATUS}"
+
+          if [ "$STATUS" = "SHELVED_OFFLOADED" ]; then
+            echo "Unshelving Instance-2..."
+            ovh_post "${INSTANCE_PATH}/unshelve"
+          elif [ "$STATUS" = "ACTIVE" ]; then
+            echo "Instance-2 already active"
+          fi
+
+          # Wait for ACTIVE (max 5 min, poll every 10 s)
+          for i in $(seq 1 30); do
+            STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            echo "Status: ${STATUS} (${i}/30)"
+            [ "$STATUS" = "ACTIVE" ] && break
+            [ "$i" -eq 30 ] && { echo "Timeout waiting for ACTIVE"; exit 1; }
+            sleep 10
+          done
+
       - name: Deploy to Instance 2
         uses: appleboy/ssh-action@v1
         with:
-          # Instance-2 has no public inbound port 22 — SSH via Instance-1 as jump host.
-          # INSTANCE2_HOST must be Instance-2's vRack private IP (10.0.0.x).
           host: ${{ secrets.INSTANCE2_HOST }}
           username: ${{ secrets.INSTANCE2_USER }}
           key: ${{ secrets.INSTANCE2_SSH_KEY }}
@@ -29,9 +88,63 @@ jobs:
             set -e
             cd ~/sitephoto
 
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
             docker compose -f worker/docker-compose.yml build
             docker compose -f worker/docker-compose.yml up -d
 
             echo "Worker deploy complete: $(date)"
+
+      - name: Shelve Instance-2 after deploy
+        if: always()
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE2_ID: ${{ secrets.INSTANCE2_ID }}
+        run: |
+          ovh_get() {
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
+            local TS
+            TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+            local HASH
+            HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+GET+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+            local SIG='$1$'"${HASH}"
+            curl -s -X GET "$URL" \
+              -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+              -H "X-Ovh-Timestamp: ${TS}" \
+              -H "X-Ovh-Signature: ${SIG}" \
+              -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}"
+          }
+
+          ovh_post() {
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
+            local TS
+            TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+            local HASH
+            HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+POST+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+            local SIG='$1$'"${HASH}"
+            curl -s -X POST "$URL" \
+              -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+              -H "X-Ovh-Timestamp: ${TS}" \
+              -H "X-Ovh-Signature: ${SIG}" \
+              -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+              -H "Content-Type: application/json"
+          }
+
+          INSTANCE_PATH="/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE2_ID}"
+
+          STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          echo "Instance-2 status: ${STATUS}"
+
+          if [ "$STATUS" = "ACTIVE" ]; then
+            echo "Shelving Instance-2..."
+            ovh_post "${INSTANCE_PATH}/shelve"
+            echo "Shelve requested — instance will shut down shortly"
+          else
+            echo "Instance-2 is ${STATUS}, skipping shelve"
+          fi
