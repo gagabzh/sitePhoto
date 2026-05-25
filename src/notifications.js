@@ -38,11 +38,11 @@ function initSocketIO(httpServer) {
   return io;
 }
 
-function notifyUser(userId, payload) {
+function notifyUser(userId, payload, event = 'identification-complete') {
   const socketIds = userSockets.get(Number(userId));
   if (!socketIds || !io) return;
   for (const sid of socketIds) {
-    io.to(sid).emit('identification-complete', payload);
+    io.to(sid).emit(event, payload);
   }
 }
 

@@ -73,6 +73,20 @@ function renderManageScript(editTag) {
     }
 
     var selectedPhotoIds=[];
+    var pendingDescribeTagId=null;
+
+    // Receive describe-person result (or failure) pushed by Instance-2 via WebSocket
+    document.addEventListener('sp:describe-person-complete',function(ev){
+      var d=ev.detail;
+      if(pendingDescribeTagId===null||d.tagId!==pendingDescribeTagId) return;
+      pendingDescribeTagId=null;
+      var genBtn=document.getElementById('tm-dr-ai-gen');
+      if(genBtn){genBtn.textContent='Generate description';genBtn.disabled=false;}
+      if(d.error){showToast('AI error: '+d.error);return;}
+      var descEl=document.getElementById('tm-dr-desc');
+      if(descEl&&d.description){descEl.value=d.description;showToast('description generated ✓');}
+      else{showToast('AI returned empty — try a clearer photo');}
+    });
 
     var aiPickBtn=document.getElementById('tm-dr-ai-pick');
     if(aiPickBtn){
@@ -128,12 +142,12 @@ function renderManageScript(editTag) {
         aiGenBtn.disabled=true;
         fetch('/api/ai/describe-person',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tagId:parseInt(id),photoIds:selectedPhotoIds})})
           .then(function(r){return r.json();}).then(function(d){
-            aiGenBtn.textContent='Generate description';
-            aiGenBtn.disabled=false;
-            if(d.error){showToast('AI error: '+d.error);return;}
-            var descEl=document.getElementById('tm-dr-desc');
-            if(descEl&&d.description){descEl.value=d.description;showToast('description generated ✓');}
-            else{showToast('AI returned empty — try a clearer photo');console.log('[describe-person] raw Ollama response:',d.rawResponse);}
+            if(d.error){aiGenBtn.textContent='Generate description';aiGenBtn.disabled=false;showToast('AI error: '+d.error);return;}
+            if(d.queued){
+              pendingDescribeTagId=parseInt(id);
+              aiGenBtn.textContent='waiting for Instance-2…';
+              // button stays disabled; sp:describe-person-complete will reset it
+            }
           }).catch(function(){aiGenBtn.textContent='Generate description';aiGenBtn.disabled=false;showToast('network error');});
       });
     }

@@ -3,6 +3,7 @@ const db = require('../db');
 const { generate } = require('../ollama');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { readPhotoBuffer } = require('../storage');
+const { addDescribePersonJob } = require('../queue/producer');
 
 async function readB64(filename) {
   return (await readPhotoBuffer(filename)).toString('base64');
@@ -129,8 +130,9 @@ router.post('/set-reference', requireEditor, wrapAsync(async (req, res) => {
 }));
 
 // ── POST /api/ai/describe-person ──────────────────────────────────────────────
-// Accepts { tagId, photoIds[] }. Sends selected photos to Ollama and returns
-// a short physical description to populate the people tag's description field.
+// Accepts { tagId, photoIds[] }. Enqueues a describe-person job on Instance-2.
+// The worker generates a short physical description and POSTs the result back
+// to /internal/describe-person-result, which notifies the client via WebSocket.
 
 router.post('/describe-person', requireEditor, wrapAsync(async (req, res) => {
   const tagId    = parseInt(req.body.tagId, 10);
@@ -151,23 +153,15 @@ router.post('/describe-person', requireEditor, wrapAsync(async (req, res) => {
   );
   if (!photos.length) return res.status(404).json({ error: 'no photos found' });
 
-  const images = [];
-  for (const p of photos) {
-    try { images.push(await readB64(p.filename)); } catch { /* skip unreadable */ }
-  }
-  if (!images.length) return res.status(500).json({ error: 'could not read photo files' });
+  const photoFilenames = photos.map(p => p.filename);
+  await addDescribePersonJob({
+    tagId,
+    tagName: tags[0].name,
+    photoFilenames,
+    userId: req.session.userId,
+  });
 
-  const prompt = `Describe the physical appearance of the main person in the photo${images.length > 1 ? 's' : ''}: hair color and style, approximate age, and one or two distinctive features.`;
-
-  let ollamaResponse;
-  try {
-    ollamaResponse = await generate({ prompt, images });
-  } catch (err) {
-    return res.status(503).json({ error: err.message });
-  }
-
-  const description = (ollamaResponse.response || '').trim().replace(/^["']|["']$/g, '').slice(0, 500);
-  res.json({ description, rawResponse: ollamaResponse.response });
+  res.json({ queued: true });
 }));
 
 module.exports = router;
