@@ -24,8 +24,8 @@ jobs:
           INSTANCE2_ID: ${{ secrets.INSTANCE2_ID }}
         run: |
           ovh_get() {
-            local PATH="$1"
-            local URL="https://eu.api.ovh.com/1.0${PATH}"
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
             local TS
             TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
             local HASH
@@ -39,8 +39,8 @@ jobs:
           }
 
           ovh_post() {
-            local PATH="$1"
-            local URL="https://eu.api.ovh.com/1.0${PATH}"
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
             local TS
             TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
             local HASH
@@ -106,8 +106,8 @@ jobs:
           INSTANCE2_ID: ${{ secrets.INSTANCE2_ID }}
         run: |
           ovh_get() {
-            local PATH="$1"
-            local URL="https://eu.api.ovh.com/1.0${PATH}"
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
             local TS
             TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
             local HASH
@@ -121,8 +121,8 @@ jobs:
           }
 
           ovh_post() {
-            local PATH="$1"
-            local URL="https://eu.api.ovh.com/1.0${PATH}"
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
             local TS
             TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
             local HASH
