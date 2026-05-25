@@ -15,7 +15,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unshelve Instance-2 if needed
+      - name: Check Instance-2 status
+        id: check-status
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE2_ID: ${{ secrets.INSTANCE2_ID }}
+        run: |
+          URL="https://eu.api.ovh.com/1.0/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE2_ID}"
+          TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+          HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+GET+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+          SIG='$1$'"${HASH}"
+          RESPONSE=$(curl -s -X GET "$URL" \
+            -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+            -H "X-Ovh-Timestamp: ${TS}" \
+            -H "X-Ovh-Signature: ${SIG}" \
+            -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}")
+          STATUS=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          echo "Instance-2 status: ${STATUS}"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+
+      - name: Unshelve Instance-2
+        if: steps.check-status.outputs.status != 'ACTIVE'
         env:
           OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
           OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
@@ -56,23 +79,12 @@ jobs:
 
           INSTANCE_PATH="/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE2_ID}"
 
-          RESPONSE=$(ovh_get "${INSTANCE_PATH}")
-          STATUS=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
-          echo "Instance-2 status: ${STATUS}"
-
-          UNSHELVED=false
-          if [ "$STATUS" = "SHELVED_OFFLOADED" ]; then
-            echo "Unshelving Instance-2..."
-            ovh_post "${INSTANCE_PATH}/unshelve"
-            UNSHELVED=true
-          elif [ "$STATUS" = "ACTIVE" ]; then
-            echo "Instance-2 already active"
-          fi
+          echo "Unshelving Instance-2..."
+          ovh_post "${INSTANCE_PATH}/unshelve"
 
           # Wait for ACTIVE (max 5 min, poll every 10 s)
           for i in $(seq 1 30); do
-            RESPONSE=$(ovh_get "${INSTANCE_PATH}")
-            STATUS=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
             echo "Status: ${STATUS} (${i}/30)"
             [ "$STATUS" = "ACTIVE" ] && break
             [ "$i" -eq 30 ] && { echo "Timeout waiting for ACTIVE"; exit 1; }
@@ -80,10 +92,8 @@ jobs:
           done
 
           # OVH marks ACTIVE at hypervisor level — wait for sshd to finish booting
-          if [ "$UNSHELVED" = "true" ]; then
-            echo "Waiting 60 s for sshd to start..."
-            sleep 60
-          fi
+          echo "Waiting 60 s for sshd to start..."
+          sleep 60
 
       - name: Deploy to Instance 2
         uses: appleboy/ssh-action@v1
@@ -148,9 +158,7 @@ jobs:
 
           INSTANCE_PATH="/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE2_ID}"
 
-          RESPONSE=$(ovh_get "${INSTANCE_PATH}")
-          echo "OVH response: ${RESPONSE}"
-          STATUS=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
           echo "Instance-2 status: ${STATUS}"
 
           if [ "$STATUS" = "ACTIVE" ]; then
