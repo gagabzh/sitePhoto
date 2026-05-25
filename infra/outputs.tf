@@ -86,7 +86,7 @@ output "env_prod_instance1" {
     OVH_APP_KEY=<same-key-as-terraform>
     OVH_APP_SECRET=<same-secret-as-terraform>
     OVH_CONSUMER_KEY=<same-consumer-key-as-terraform>
-    OVH_PROJECT_ID=${openstack_compute_instance_v2.instance2.tenant_id}
+    OVH_PROJECT_ID=${var.ovh_project_id}
     INSTANCE2_ID=${openstack_compute_instance_v2.instance2.id}
     INSTANCE2_IDLE_MINUTES=10
   ENV
