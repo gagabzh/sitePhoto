@@ -2,6 +2,8 @@ node_modules/
 .env
 .env.local
 .env.prod
+infra/env.prod.backup
+infra/env.worker.backup
 worker/node_modules/
 .idea/
 uploads/
