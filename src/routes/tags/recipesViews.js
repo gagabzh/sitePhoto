@@ -174,7 +174,7 @@ function renderAdminPage({ filtered, search }) {
   })();</script>`;
 }
 
-function renderMyRecipesPage({ recipes, sharedWithMe, filtered, pinned, unpinned, search, view, isAdmin }) {
+function renderMyRecipesPage({ recipes: _recipes, sharedWithMe, filtered, pinned, unpinned, search, view, isAdmin }) {
   let pinnedSection = '';
   if (pinned.length) {
     const cards = pinned.map(renderCard).join('') +
