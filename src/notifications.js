@@ -46,4 +46,15 @@ function notifyUser(userId, payload, event = 'identification-complete') {
   }
 }
 
-module.exports = { initSocketIO, notifyUser };
+function _resetForTesting() {
+  io = undefined;
+  userSockets.clear();
+}
+
+// Only for use in tests
+function _registerSocketForTesting(userId, socketId) {
+  if (!userSockets.has(userId)) userSockets.set(userId, new Set());
+  userSockets.get(userId).add(socketId);
+}
+
+module.exports = { initSocketIO, notifyUser, _resetForTesting, _registerSocketForTesting };
