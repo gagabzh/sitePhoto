@@ -11,8 +11,6 @@ let mockUse;
 let mockIoOn;
 let mockToEmit;
 let mockTo;
-let MockServer;
-
 // Build a fresh set of io-level mock fns and re-apply the Server mock impl
 // before every test so resetAllMocks() doesn't leave Server returning undefined.
 function rebuildSocketIOMock() {
@@ -20,11 +18,6 @@ function rebuildSocketIOMock() {
   mockTo = jest.fn(() => ({ emit: mockToEmit }));
   mockUse = jest.fn();
   mockIoOn = jest.fn();
-  MockServer = jest.fn().mockImplementation(() => ({
-    use: mockUse,
-    on: mockIoOn,
-    to: mockTo,
-  }));
   // Re-apply on the already-mocked module reference after resetAllMocks clears it
   require('socket.io').Server.mockImplementation(() => ({
     use: mockUse,
