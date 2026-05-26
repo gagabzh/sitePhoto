@@ -16,7 +16,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
@@ -30,6 +30,14 @@ jobs:
 
       - name: Audit
         run: npm audit --audit-level=high
+
+      - name: Install worker dependencies
+        run: npm ci
+        working-directory: worker
+
+      - name: Audit worker dependencies
+        run: npm audit --audit-level=high
+        working-directory: worker
 
   deploy:
     runs-on: ubuntu-latest
