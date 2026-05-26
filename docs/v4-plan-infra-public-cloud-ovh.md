@@ -1,3 +1,11 @@
+> ⚠️ **SUPERSEDED — DO NOT USE AS REFERENCE**
+>
+> This document describes a NestJS + Nx monorepo architecture that was evaluated but **not built**.
+> The actual V4 implementation uses Express.js with plain JavaScript.
+> See [`docs/v4-summary.md`](v4-summary.md) for the real architecture and [`docs/architecture-v4.md`](architecture-v4.md) for diagrams.
+>
+> This file is kept for historical reference only.
+
 # Plan d'implémentation — Architecture bi-instances Public Cloud OVH avec queue IA
 
 > Site de gestion de photos NestJS — Identification de personnes asynchrone

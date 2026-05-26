@@ -268,7 +268,7 @@ nano .env.worker
 | `REDIS_PORT` | `6379` |
 | `REDIS_PASSWORD` | Same value as Instance-1 `REDIS_PASSWORD` |
 | `WORKER_API_SECRET` | Same value as Instance-1 `WORKER_API_SECRET` |
-| `INTERNAL_API_PORT` | `3001` |
+| `INSTANCE1_API_URL` | `http://<instance1_private_ip>:3001` — get IP from `terraform output instance1_private_ip` |
 | `S3_ENDPOINT` | `terraform output s3_endpoint` |
 | `S3_REGION` | `terraform output s3_region` |
 | `S3_BUCKET` | `terraform output s3_bucket` |
