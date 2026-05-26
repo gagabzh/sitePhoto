@@ -56,12 +56,11 @@ function renderManagePage(data) {
       const kindChip = t.category
         ? `<span class="tm-kchip ${catCls}">${esc(catLbl)}</span>`
         : `<span class="tm-kchip themes">—</span>`;
-      const contribs = (t.contributors || []).slice(0, 3).map((n, i) => {
+      const contribs = (t.contributors || []).slice(0, 3).map((n, _i) => {
         const init = (n || '?')[0].toUpperCase();
         return `<span class="tm-av" title="${esc(n)}">${esc(init)}</span>`;
       }).join('') + (t.contributor_count > 3 ? `<span class="tm-av">+${t.contributor_count - 3}</span>` : '');
       const unusedCls = t.photo_count === 0 ? ' unused' : '';
-      const editUrl   = buildUrl({ edit: t.id, page: pageNum });
       return `<tr data-id="${t.id}"${unusedCls ? ' class="unused"' : ''}>
         <td><input class="tm-ck" type="checkbox" data-id="${t.id}" aria-label="Select ${esc(t.name)}"></td>
         <td>${cover}</td>

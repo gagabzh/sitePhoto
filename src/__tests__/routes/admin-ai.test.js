@@ -98,7 +98,6 @@ describe('POST /admin/ai/delete', () => {
       { id: 1, filename: 'a.jpg', title: 'A' },
       { id: 2, filename: 'b.jpg', title: 'B' },
     ]];
-    const sessionObj = { ...ADMIN_SESSION, duplicateGroups: groups };
     const app = makeApp(ADMIN_SESSION, { duplicateGroups: groups });
     await request(app).post('/admin/ai/delete').send('groupIndex=0&photoId=1');
     // After deletion of photo 1, only photo 2 remains → group removed

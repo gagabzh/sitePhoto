@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../../db');
 const { page, esc } = require('../../layout');
-const { parseState, buildWhere, SECTIONS, DEFAULT_LOGIC, LOGIC_OPTS } = require('../../combinator');
+const { parseState, buildWhere, SECTIONS, DEFAULT_LOGIC } = require('../../combinator');
 const { fetchTagVocabulary, fetchInitialResults } = require('../../repositories/tags');
 const { wrapAsync } = require('../../middleware');
 const { renderSection, renderPills, renderGrid } = require('./combinatorViews');

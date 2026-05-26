@@ -706,7 +706,7 @@ function detailMapView(travel, linkedAlbums, linkedPhotos, travelViewers, sessio
   return page(travel.title, body, session);
 }
 
-function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, session, dateRange) {
+function detailJournalView(travel, linkedAlbums, linkedPhotos, travelViewers, session, _dateRange) {
   const slug = esc(travel.slug);
 
   const byDate = {};

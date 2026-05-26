@@ -59,7 +59,7 @@ const { canModify } = require('./permissions');
 // handlers. Express 4 async handlers that reject without try/catch bypass
 // this — they become unhandled rejections at the Node.js process level.
 // Express 5 wraps async handlers automatically so those reach here too.
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, _next) {
   console.error(err);
   const status = typeof err.status === 'number'     ? err.status
                : typeof err.statusCode === 'number' ? err.statusCode
