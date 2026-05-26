@@ -41,7 +41,7 @@ jest.mock('socket.io', () => ({
 jest.mock('../session', () => jest.fn((req, res, next) => next()));
 
 const { Server } = require('socket.io');
-const { initSocketIO, notifyUser } = require('../notifications');
+const { initSocketIO, notifyUser, _resetForTesting, _registerSocketForTesting } = require('../notifications');
 
 // Each test gets a unique userId base to avoid cross-test userSockets bleed.
 // Start at 1000 and increment so tests never share a userId accidentally.
@@ -257,12 +257,11 @@ describe('notifyUser()', () => {
     expect(mockTo).not.toHaveBeenCalled();
   });
 
-  it('is a no-op (does not throw) when io has not been initialised yet', () => {
-    // notifications.js was already loaded; io was set by a previous initSocketIO call.
-    // To simulate the "before init" case we rely on notifyUser's guard: if the
-    // userId has no registered sockets the function returns early before touching io.
-    // We test with a userId that was never connected.
-    expect(() => notifyUser(uid(), { photoId: 1 })).not.toThrow();
-    expect(mockTo).not.toHaveBeenCalled();
+  it('is a no-op when io is not initialised but sockets are registered (hits !io branch)', () => {
+    const userId = uid();
+    _resetForTesting();                          // io = undefined, userSockets empty
+    _registerSocketForTesting(userId, 'sock-1'); // userSockets has entry, io is still undefined
+    expect(() => notifyUser(userId, { photoId: 1 })).not.toThrow();
+    expect(mockTo).not.toHaveBeenCalled();       // nothing emitted
   });
 });
