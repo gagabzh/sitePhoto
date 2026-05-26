@@ -8,9 +8,33 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Audit
+        run: npm audit --audit-level=high
+
   deploy:
     runs-on: ubuntu-latest
     environment: production
+    needs: test
 
     steps:
       - uses: actions/checkout@v4
