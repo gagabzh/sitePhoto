@@ -1,9 +1,15 @@
 'use strict';
 
 const session = require('express-session');
+const ConnectPgSimple = require('connect-pg-simple')(session);
+const db = require('./db');
 
-// Single session config shared by Express (app.js) and socket.io (notifications.js).
 module.exports = session({
+  store: new ConnectPgSimple({
+    pool: db,
+    pruneSessionInterval: 3600,
+    errorLog: console.error,
+  }),
   secret: process.env.SESSION_SECRET || 'dev-secret',
   resave: false,
   saveUninitialized: false,

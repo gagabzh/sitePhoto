@@ -10,6 +10,11 @@ output "instance1_private_ip" {
   value       = openstack_compute_instance_v2.instance1.network[1].fixed_ip_v4
 }
 
+output "instance1_id" {
+  description = "Instance-1 UUID → INSTANCE1_ID GitHub secret (INF-3 nightly shelve)"
+  value       = openstack_compute_instance_v2.instance1.id
+}
+
 output "instance2_id" {
   description = "Instance-2 UUID → INSTANCE2_ID env var (Phase 11 lifecycle management)"
   value       = openstack_compute_instance_v2.instance2.id

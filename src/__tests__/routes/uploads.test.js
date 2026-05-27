@@ -1,3 +1,10 @@
+jest.mock('connect-pg-simple', () => () => class MockStore {
+  constructor() {}
+  on() {}
+  get(sid, cb) { cb(null, null); }
+  set(sid, sess, cb) { cb(null); }
+  destroy(sid, cb) { cb(null); }
+});
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../storage', () => ({
   uploadPhoto: jest.fn(),
