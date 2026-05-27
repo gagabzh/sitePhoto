@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { wrapAsync } = require('../middleware');
+const { deletePhoto } = require('../storage');
 
 router.get('/', (req, res) => {
   const isAdmin = req.session.role === 'admin';
@@ -130,6 +131,85 @@ router.post('/account/password', wrapAsync(async (req, res) => {
   res.redirect('/account/password?done=1');
 }));
 
+// ── ACC-5: Danger zone — delete own account ───────────────────────────────────
+
+router.get('/account/delete', (req, res) => {
+  const { name } = req.session;
+  const errorMsg = req.query.error === 'last_admin'
+    ? '<p class="msg-error">You are the only admin — assign another admin before deleting your account.</p>'
+    : req.query.error
+      ? '<p class="msg-error">Username did not match — please try again.</p>'
+      : '';
+  const error = errorMsg;
+  res.send(page('Delete my account', `
+    <div class="acc-wrap">
+      <div class="acc-section acc-dz">
+        <div class="acc-section-h">danger zone</div>
+        <div class="acc-section-b">
+          ${error}
+          <p class="acc-dz-label">
+            This will permanently delete your account, all your photos, and all your albums.
+            <strong>This cannot be undone.</strong>
+          </p>
+          <p class="acc-dz-label">Type <strong>${esc(name)}</strong> to confirm:</p>
+          <form class="acc-dz-form" method="POST" action="/account/delete">
+            <input type="text" name="confirm_name" required autocomplete="off" placeholder="${esc(name)}">
+            <div class="row">
+              <button class="btn btn-danger" type="submit">permanently delete my account</button>
+              <a class="btn btn-secondary" href="/account">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `, req.session));
+});
+
+router.post('/account/delete', wrapAsync(async (req, res) => {
+  const { confirm_name } = req.body;
+  if (confirm_name.trim() !== req.session.name.trim()) {
+    return res.redirect('/account/delete?error=1');
+  }
+
+  // Last-admin guard
+  if (req.session.role === 'admin') {
+    const { rows } = await db.query(
+      'SELECT COUNT(*)::int AS n FROM users WHERE role = $1', ['admin']
+    );
+    if (rows[0].n <= 1) {
+      return res.redirect('/account/delete?error=last_admin');
+    }
+  }
+
+  // Atomic DB deletion
+  const client = await db.connect();
+  let s3Keys = [];
+  try {
+    await client.query('BEGIN');
+    const { rows: photoRows } = await client.query(
+      'SELECT s3_key FROM photos WHERE user_id = $1', [req.session.userId]
+    );
+    s3Keys = photoRows.map(r => r.s3_key).filter(Boolean);
+    await client.query('DELETE FROM photos WHERE user_id = $1', [req.session.userId]);
+    await client.query('DELETE FROM users WHERE id = $1', [req.session.userId]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // S3 cleanup fire-and-forget after commit
+  for (const key of s3Keys) {
+    deletePhoto(key).catch(err =>
+      console.warn('[account/delete] S3 cleanup failed for', key, err.message)
+    );
+  }
+
+  req.session.destroy(() => res.redirect('/login'));
+}));
+
 // ── FE-1.4: Account page HTML template ───────────────────────────────────────
 
 function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, albums: _albums }, session) {
@@ -252,6 +332,7 @@ function buildQuickLinks(role) {
     links.push(`<a class="btn btn-secondary" href="/admin/users">Manage users</a>`);
     links.push(`<a class="btn btn-secondary" href="/admin/ai">AI tools</a>`);
   }
+  links.push(`<a class="btn btn-secondary btn-danger-outline" href="/account/delete">Delete account</a>`);
   return `
     <div class="acc-section">
       <div class="acc-section-h">Quick links</div>
