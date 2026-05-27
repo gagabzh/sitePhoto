@@ -35,7 +35,7 @@ ssh_public_key = "ssh-ed25519 AAAA... sitephoto-deploy"
 # ── Instance sizing ───────────────────────────────────────────────────────────
 # Verify flavor availability in your region:
 # OVH Control Panel → Public Cloud → Instances → create → check flavor list
-instance1_flavor = "b3-8"   # 4 vCPU, 8 GB — General Purpose
+instance1_flavor = "b2-7"   # 2 vCPU, 7 GB — General Purpose
 instance2_flavor = "c3-8"   # 4 vCPU, 8 GB — CPU Optimised (use c3-16 for larger models)
 
 # ── Image ─────────────────────────────────────────────────────────────────────

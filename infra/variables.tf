@@ -65,13 +65,13 @@ variable "ssh_public_key" {
 }
 
 # ── Instance sizing ───────────────────────────────────────────────────────────
-# Instance-1 (always on, serves the site): General Purpose b3-8 (4 vCPU, 8 GB)
+# Instance-1 (always on, serves the site): General Purpose b2-7 (2 vCPU, 7 GB)
 # Instance-2 (AI worker, on-demand):        CPU Optimised c3-8 (4 vCPU, 8 GB)
 #   upgrade to c3-16 if llava model is slow or you switch to a larger model
 
 variable "instance1_flavor" {
   type        = string
-  default     = "b3-8"
+  default     = "b2-7"
   description = "Flavor for Instance-1 (site + PostgreSQL + Redis)"
 }
 
