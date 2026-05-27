@@ -89,3 +89,10 @@ CREATE TABLE IF NOT EXISTS travel_access (
   viewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   PRIMARY KEY (travel_id, viewer_id)
 );
+
+CREATE TABLE IF NOT EXISTS session (
+  sid TEXT PRIMARY KEY,
+  sess JSONB NOT NULL,
+  expire TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS session_expire_idx ON session (expire);
