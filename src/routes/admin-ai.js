@@ -7,11 +7,28 @@ const { findDuplicates } = require('../photoHash');
 const { wrapAsync } = require('../middleware');
 
 // ── GET /admin/ai ─────────────────────────────────────────────────────────────
-router.get('/', (req, res) => {
-  const groups = req.session.duplicateGroups || null;
+router.get('/', wrapAsync(async (req, res) => {
+  const storedGroups = req.session.duplicateGroups || null;
   const scanned = req.session.duplicateScannedAt
     ? new Date(req.session.duplicateScannedAt).toLocaleString('en-GB')
     : null;
+
+  let groups = null;
+  if (storedGroups !== null) {
+    // Re-fetch photo data from DB; filter out deleted photos
+    const allIds = storedGroups.flat();
+    let photoMap = {};
+    if (allIds.length > 0) {
+      const { rows } = await db.query(
+        'SELECT id, filename, title FROM photos WHERE id = ANY($1)',
+        [allIds]
+      );
+      photoMap = Object.fromEntries(rows.map(r => [r.id, r]));
+    }
+    groups = storedGroups
+      .map(g => g.map(id => photoMap[id]).filter(Boolean))
+      .filter(g => g.length >= 2);
+  }
 
   const resultsHtml = groups === null ? '' : groups.length === 0
     ? `<p class="msg-ok" style="margin-top:1.5rem">No duplicates found.</p>`
@@ -63,14 +80,15 @@ router.get('/', (req, res) => {
       ${resultsHtml ? `<section><h2 style="font-size:1.1rem">Results</h2>${resultsHtml}</section>` : ''}
     </div>
   `, req.session));
-});
+}));
 
 // ── POST /admin/ai/scan ───────────────────────────────────────────────────────
 router.post('/scan', wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT id, filename, title FROM photos ORDER BY id');
   const groups = await findDuplicates(rows, readPhotoBuffer);
 
-  req.session.duplicateGroups = groups;
+  // Store only IDs to avoid unbounded session payload growth
+  req.session.duplicateGroups = groups.map(g => g.map(p => p.id));
   req.session.duplicateScannedAt = new Date().toISOString();
   res.redirect('/admin/ai');
 }));
@@ -86,8 +104,8 @@ router.post('/delete', wrapAsync(async (req, res) => {
 
   await deletePhotos([photoId]);
 
-  // Remove from session group; drop group if only one photo remains
-  groups[gi] = groups[gi].filter(p => p.id !== photoId);
+  // Groups are arrays of IDs; remove deleted ID, drop group if only one remains
+  groups[gi] = groups[gi].filter(id => id !== photoId);
   if (groups[gi].length < 2) groups.splice(gi, 1);
   req.session.duplicateGroups = groups;
 

@@ -26,6 +26,7 @@ services:
     restart: always
     env_file: .env.prod
     environment:
+      NODE_ENV: production
       # Override REDIS_HOST from .env.prod: the app container reaches Redis via
       # the Docker bridge network using the service name, not the vRack IP.
       # (The vRack IP is only routable from Instance-2 or the host — not from
