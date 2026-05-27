@@ -1,0 +1,154 @@
+name: Lifecycle — Instance 1 (shelve / unshelve)
+
+on:
+  schedule:
+    - cron: '0 22 * * *'   # shelve — 22:00 UTC = midnight CET / 01:00 CEST
+    - cron: '0 5 * * *'    # unshelve — 05:00 UTC = 07:00 CET / 08:00 CEST
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - shelve
+          - unshelve
+
+concurrency:
+  group: instance1-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  shelve:
+    name: Shelve Instance-1
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.schedule == '0 22 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'shelve')
+
+    steps:
+      - name: Check current status
+        id: status
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE1_ID: ${{ secrets.INSTANCE1_ID }}
+        run: |
+          set -eo pipefail
+          OVH_TS=$(curl -sf https://eu.api.ovh.com/1.0/auth/time)
+          METHOD="GET"
+          URL="https://eu.api.ovh.com/1.0/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE1_ID}"
+          BODY=""
+          SIG_INPUT="${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+${METHOD}+${URL}+${BODY}+${OVH_TS}"
+          SIG="\$1\$$(printf '%s' "$SIG_INPUT" | sha1sum | cut -d' ' -f1)"
+
+          STATUS=$(curl -sf \
+            -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+            -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+            -H "X-Ovh-Timestamp: ${OVH_TS}" \
+            -H "X-Ovh-Signature: ${SIG}" \
+            "${URL}" | jq -r '.status')
+
+          echo "Current Instance-1 status: ${STATUS}"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+
+      - name: Shelve Instance-1
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE1_ID: ${{ secrets.INSTANCE1_ID }}
+          CURRENT_STATUS: ${{ steps.status.outputs.status }}
+        run: |
+          set -eo pipefail
+          STATUS="${CURRENT_STATUS}"
+
+          if [ "$STATUS" = "SHELVED_OFFLOADED" ] || [ "$STATUS" = "SHELVING" ]; then
+            echo "Instance-1 is already ${STATUS} — nothing to do."
+            exit 0
+          fi
+
+          OVH_TS=$(curl -sf https://eu.api.ovh.com/1.0/auth/time)
+          METHOD="POST"
+          URL="https://eu.api.ovh.com/1.0/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE1_ID}/shelve"
+          BODY=""
+          SIG_INPUT="${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+${METHOD}+${URL}+${BODY}+${OVH_TS}"
+          SIG="\$1\$$(printf '%s' "$SIG_INPUT" | sha1sum | cut -d' ' -f1)"
+
+          curl -sf -X POST \
+            -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+            -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+            -H "X-Ovh-Timestamp: ${OVH_TS}" \
+            -H "X-Ovh-Signature: ${SIG}" \
+            "${URL}"
+
+          echo "Shelve requested for Instance-1 (was ${STATUS})."
+
+  unshelve:
+    name: Unshelve Instance-1
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.schedule == '0 5 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
+
+    steps:
+      - name: Check current status
+        id: status
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE1_ID: ${{ secrets.INSTANCE1_ID }}
+        run: |
+          set -eo pipefail
+          OVH_TS=$(curl -sf https://eu.api.ovh.com/1.0/auth/time)
+          METHOD="GET"
+          URL="https://eu.api.ovh.com/1.0/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE1_ID}"
+          BODY=""
+          SIG_INPUT="${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+${METHOD}+${URL}+${BODY}+${OVH_TS}"
+          SIG="\$1\$$(printf '%s' "$SIG_INPUT" | sha1sum | cut -d' ' -f1)"
+
+          STATUS=$(curl -sf \
+            -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+            -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+            -H "X-Ovh-Timestamp: ${OVH_TS}" \
+            -H "X-Ovh-Signature: ${SIG}" \
+            "${URL}" | jq -r '.status')
+
+          echo "Current Instance-1 status: ${STATUS}"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+
+      - name: Unshelve Instance-1
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE1_ID: ${{ secrets.INSTANCE1_ID }}
+          CURRENT_STATUS: ${{ steps.status.outputs.status }}
+        run: |
+          set -eo pipefail
+          STATUS="${CURRENT_STATUS}"
+
+          if [ "$STATUS" = "ACTIVE" ] || [ "$STATUS" = "UNSHELVING" ]; then
+            echo "Instance-1 is already ${STATUS} — nothing to do."
+            exit 0
+          fi
+
+          OVH_TS=$(curl -sf https://eu.api.ovh.com/1.0/auth/time)
+          METHOD="POST"
+          URL="https://eu.api.ovh.com/1.0/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE1_ID}/unshelve"
+          BODY=""
+          SIG_INPUT="${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+${METHOD}+${URL}+${BODY}+${OVH_TS}"
+          SIG="\$1\$$(printf '%s' "$SIG_INPUT" | sha1sum | cut -d' ' -f1)"
+
+          curl -sf -X POST \
+            -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+            -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+            -H "X-Ovh-Timestamp: ${OVH_TS}" \
+            -H "X-Ovh-Signature: ${SIG}" \
+            "${URL}"
+
+          echo "Unshelve requested for Instance-1 (was ${STATUS}). Boot takes ~3 minutes."

@@ -319,6 +319,8 @@ redis-cli -h 10.0.0.x -p 6379 -a <REDIS_PASSWORD> ping
 
 In the GitHub repository → **Settings → Secrets and variables → Actions**, add:
 
+### Deploy secrets (required for `deploy-site.yml` and `deploy-worker.yml`)
+
 | Secret | Value |
 |---|---|
 | `INSTANCE1_HOST` | `terraform output -raw instance1_public_ip` |
@@ -330,6 +332,39 @@ In the GitHub repository → **Settings → Secrets and variables → Actions**,
 
 > `INSTANCE2_HOST` must be the **vRack private IP** (10.0.0.x), not the public IP.  
 > The deploy-worker workflow SSHes to it via Instance-1 as a jump host.
+
+### Lifecycle secrets (required for `lifecycle-instance1.yml` — INF-3)
+
+| Secret | Value | How to obtain |
+|---|---|---|
+| `OVH_APP_KEY` | OVH API application key | Created at https://www.ovh.com/auth/api/createToken (see below) |
+| `OVH_APP_SECRET` | OVH API application secret | Same token creation page |
+| `OVH_CONSUMER_KEY` | OVH API consumer key | Same token creation page |
+| `OVH_PROJECT_ID` | OVH Public Cloud project ID | URL in OVH Manager: `.../projects/<PROJECT_ID>/` |
+| `INSTANCE1_ID` | Instance-1 UUID | `terraform output -raw instance1_id` |
+
+**Recommended OVH token rights for the lifecycle token** (least-privilege — do not reuse the Terraform token):
+
+Create a dedicated token at **https://www.ovh.com/auth/api/createToken** with only:
+
+| Method | Path |
+|---|---|
+| GET  | `/cloud/project/*/instance/*` |
+| POST | `/cloud/project/*/instance/*/shelve` |
+| POST | `/cloud/project/*/instance/*/unshelve` |
+
+This limits the token to reading instance state and issuing shelve/unshelve actions only. It cannot create, delete, or modify any other resource.
+
+**DST note**: the cron schedules use fixed UTC times. The local-time equivalent shifts by ±1 hour between CET (UTC+1, winter) and CEST (UTC+2, summer). Specifically:
+- `0 22 * * *` = midnight CET in winter, 01:00 CEST in summer (still late enough)
+- `0 5 * * *` = 07:00 CET in winter, 08:00 CEST in summer (still before morning use)
+
+This is intentional — the window is wide enough that the ±1 h DST shift does not affect usability.
+
+**Failure mode — deploy while Instance-1 is shelved**: if a push to `main` triggers `deploy-site.yml` while Instance-1 is shelved, the SSH step will fail with a connection timeout. Recovery:
+1. Go to **Actions → Lifecycle — Instance 1 → Run workflow**, select `unshelve`.
+2. Wait ~3 minutes for Instance-1 to finish booting.
+3. Re-run the failed deploy workflow from the Actions UI.
 
 ---
 
