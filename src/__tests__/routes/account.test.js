@@ -212,6 +212,14 @@ describe('GET /account', () => {
     const res = await request(makeApp(USER_SESSION)).get('/account');
     expect(res.status).toBe(500);
   });
+
+  it('shows Delete account link for all roles', async () => {
+    mockAccountQueries();
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Delete account');
+    expect(res.text).toContain('/account/delete');
+  });
 });
 
 // ── POST /account/sessions/:sid/revoke ────────────────────────────────────────
