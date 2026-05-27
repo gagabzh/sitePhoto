@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { wrapAsync } = require('../middleware');
+const { deletePhotos } = require('../uploadHelpers');
 
 router.get('/', (req, res) => {
   const isAdmin = req.session.role === 'admin';
@@ -130,6 +131,52 @@ router.post('/account/password', wrapAsync(async (req, res) => {
   res.redirect('/account/password?done=1');
 }));
 
+// ── ACC-5: Danger zone — delete own account ───────────────────────────────────
+
+router.get('/account/delete', (req, res) => {
+  const { name } = req.session;
+  const error = req.query.error
+    ? '<p class="msg-error">Username did not match — please try again.</p>'
+    : '';
+  res.send(page('Delete my account', `
+    <div class="acc-wrap">
+      <div class="acc-section acc-dz">
+        <div class="acc-section-h">danger zone</div>
+        <div class="acc-section-b">
+          ${error}
+          <p class="acc-dz-label">
+            This will permanently delete your account, all your photos, and all your albums.
+            <strong>This cannot be undone.</strong>
+          </p>
+          <p class="acc-dz-label">Type <strong>${esc(name)}</strong> to confirm:</p>
+          <form class="acc-dz-form" method="POST" action="/account/delete">
+            <input type="text" name="confirm_name" required autocomplete="off" placeholder="${esc(name)}">
+            <div class="row">
+              <button class="btn btn-danger" type="submit">permanently delete my account</button>
+              <a class="btn btn-secondary" href="/account">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `, req.session));
+});
+
+router.post('/account/delete', wrapAsync(async (req, res) => {
+  const { confirm_name } = req.body;
+  if (confirm_name !== req.session.name) {
+    return res.redirect('/account/delete?error=1');
+  }
+  const { rows: photoRows } = await db.query(
+    'SELECT id FROM photos WHERE user_id = $1',
+    [req.session.userId]
+  );
+  const photoIds = photoRows.map(r => r.id);
+  await deletePhotos(photoIds);
+  await db.query('DELETE FROM users WHERE id = $1', [req.session.userId]);
+  req.session.destroy(() => res.redirect('/login'));
+}));
+
 // ── FE-1.4: Account page HTML template ───────────────────────────────────────
 
 function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, albums: _albums }, session) {
@@ -252,6 +299,7 @@ function buildQuickLinks(role) {
     links.push(`<a class="btn btn-secondary" href="/admin/users">Manage users</a>`);
     links.push(`<a class="btn btn-secondary" href="/admin/ai">AI tools</a>`);
   }
+  links.push(`<a class="btn btn-secondary" style="color:var(--danger);border-color:var(--danger)" href="/account/delete">Delete account</a>`);
   return `
     <div class="acc-section">
       <div class="acc-section-h">Quick links</div>

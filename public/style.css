@@ -1813,3 +1813,9 @@ tr:hover .tm-row-actions { opacity:1; }
 .acc-session-row:last-child { border-bottom: none; }
 .acc-session-exp { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--ink-soft); flex: 1; }
 .acc-links { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+/* ── ACC-5: Danger zone ── */
+.acc-dz { border: 1.5px solid var(--danger); }
+.acc-dz .acc-section-h { border-bottom-color: var(--danger); color: var(--danger); }
+.acc-dz-form { display: flex; flex-direction: column; gap: 0.75rem; }
+.acc-dz-label { font-family: 'Kalam', cursive; font-size: 0.9rem; }
