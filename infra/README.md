@@ -349,10 +349,11 @@ Create a dedicated token at **https://www.ovh.com/auth/api/createToken** with on
 
 | Method | Path |
 |---|---|
-| GET | `/cloud/project/*/instance/*` |
-| POST | `/cloud/project/*/instance/*` |
+| GET  | `/cloud/project/*/instance/*` |
+| POST | `/cloud/project/*/instance/*/shelve` |
+| POST | `/cloud/project/*/instance/*/unshelve` |
 
-This limits the token to reading and acting on instances in your project. It cannot create, delete, or modify any other resource.
+This limits the token to reading instance state and issuing shelve/unshelve actions only. It cannot create, delete, or modify any other resource.
 
 **DST note**: the cron schedules use fixed UTC times. The local-time equivalent shifts by ±1 hour between CET (UTC+1, winter) and CEST (UTC+2, summer). Specifically:
 - `0 22 * * *` = midnight CET in winter, 01:00 CEST in summer (still late enough)
