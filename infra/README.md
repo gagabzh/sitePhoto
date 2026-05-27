@@ -156,7 +156,7 @@ Terraform will create:
 - Security groups for both instances
 - Object Storage container `photo-storage`
 - Dedicated S3 user + access/secret keys
-- Instance-1 (`b3-8`, Ubuntu 24.04, public IP + vRack)
+- Instance-1 (`b2-7`, Ubuntu 24.04, public IP + vRack)
 - Instance-2 (`c3-8`, Ubuntu 24.04, public IP for outbound + vRack, no public inbound)
 - SSH keypair
 
