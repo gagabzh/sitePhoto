@@ -330,4 +330,4 @@ As a developer, running `docker compose up` locally starts a MinIO container (S3
 As a developer, Instance-2 starts automatically when a job enters the queue and shuts down (shelved, not billed) after a configurable period of inactivity — so compute cost is proportional to actual usage.
 
 **INF-1 — Instance-1 right-sizing**
-As an admin, Instance-1 is resized from b3-8 to b3-4 (2 vCPU, 4 GB RAM), cutting the monthly compute bill by approximately half — with no user-visible change and a tested DB migration procedure to preserve all data across the Terraform-driven recreation.
+As an admin, Instance-1 is resized from b3-8 to b2-7 (2 vCPU, 7 GB RAM), cutting the monthly compute bill — with no user-visible change and a tested DB migration procedure to preserve all data across the Terraform-driven recreation.

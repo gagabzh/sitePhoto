@@ -89,7 +89,7 @@ node src/migrate.js
 
 Two OVH Public Cloud instances + one S3-compatible Object Storage bucket, connected over a private vRack (`10.0.0.0/24`):
 
-- **Instance-1** (`b3-8`, always on) — Express app + PostgreSQL + Redis + Caddy. Ports 80/443 public; 6379 and 3001 on vRack only.
+- **Instance-1** (`b2-7`, 2 vCPU / 7 GB, always on) — Express app + PostgreSQL + Redis + Caddy. Ports 80/443 public; 6379 and 3001 on vRack only.
 - **Instance-2** (`c3-8`, shelved when idle) — Node.js worker + Ollama (llava). No public ports; SSH only via Instance-1 jump host.
 - **OVH Object Storage** — S3-compatible bucket; both instances access it directly (no file transit over vRack).
 

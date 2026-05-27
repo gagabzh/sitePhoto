@@ -96,7 +96,7 @@ sitephoto/
 - Create a private vRack network (`10.0.0.0/24`, DHCP).
 - Create an Object Storage bucket (`photo-storage`, region GRA, private).
 - Generate S3 credentials (OVH user with ObjectStore operator role).
-- Provision Instance-1 (`b3-8`: 4 vCores, 8 GB RAM) and Instance-2 (`c3-8` or `c3-16`).
+- Provision Instance-1 (`b2-7`: 2 vCores, 7 GB RAM) and Instance-2 (`c3-8` or `c3-16`).
 - Configure Security Groups: Instance-1 exposes 80/443 publicly and 6379/3001 on vRack only. Instance-2 has no public ports.
 - Generate `WORKER_API_SECRET` (64-char shared token).
 - Install Docker on both instances.
