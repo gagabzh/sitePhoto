@@ -132,7 +132,7 @@ router.post('/account/password', wrapAsync(async (req, res) => {
 
 // ── FE-1.4: Account page HTML template ───────────────────────────────────────
 
-function renderAccountPage({ stats, sessions, recentUploads, albums }, session) {
+function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, albums: _albums }, session) {
   const { role, name } = session;
   const initial = esc((name || '?')[0].toUpperCase());
 

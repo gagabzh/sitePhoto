@@ -22,7 +22,7 @@ function makeApp(sessionData, sessionID = 'test-sid') {
   });
   app.use(require('../../routes/account'));
   // Error handler required so wrapAsync-caught errors produce a 500 response
-  app.use((err, req, res, next) => res.status(500).send(err.message));
+  app.use((err, req, res, _next) => res.status(500).send(err.message));
   return app;
 }
 

@@ -3,7 +3,6 @@ jest.mock('../../db', () => ({ query: jest.fn() }));
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
-const { requireAuth } = require('../../middleware');
 
 beforeEach(() => jest.resetAllMocks());
 
