@@ -34,12 +34,12 @@ Self-hosted photo gallery with albums, tags, timeline, GPS map, Nextcloud integr
 | `db.js` | PostgreSQL pool (`pg`) — exported as `db.query()` |
 | `migrate.js` | Runs `migrations/v*.sql` in order on startup |
 | `storage.js` | S3 wrapper (`@aws-sdk/client-s3`) — `uploadPhoto`, `downloadPhoto`, `deletePhoto` |
-| `notifications.js` | socket.io gateway — `initSocketIO(httpServer)` + `notifyUser(socketId, payload)` |
+| `notifications.js` | socket.io gateway — `initSocketIO(httpServer)` + `notifyUser(userId, payload)` |
 | `uploadHelpers.js` | multer `memoryStorage` + S3 upload + `addIdentificationJob()` |
 | `instance-lifecycle.js` | OVH API — unshelve/shelve Instance-2 automatically |
 | `middleware.js` | `requireAuth`, `requireAdmin`, `requireEditor`, `wrapAsync` |
 | `permissions.js` | Album sharing / viewer permission checks |
-| `queue/producer.js` | BullMQ `addIdentificationJob({ photoId, userId, photoS3Key, socketId })` |
+| `queue/producer.js` | BullMQ `addIdentificationJob({ photoId, userId, photoS3Key })` |
 | `queue/events.js` | BullMQ queue events (triggers instance lifecycle) |
 | `routes/internal.js` | `POST /internal/identification-result` and `POST /internal/describe-person-result` — worker callback, guarded by `requireWorkerSecret` |
 | `routes/photos.js` | Photo CRUD, upload, delete |
@@ -128,10 +128,10 @@ See `infra/README.md` for full deployment runbook and `docs/architecture-v4.md` 
 
 - **Internal API auth** — The worker authenticates to Instance-1 via the `x-worker-secret` HTTP header. Both sides must share the same `WORKER_API_SECRET` env var. Missing or wrong secret returns 403.
 - **Worker uses `INSTANCE1_API_URL`** — full URL including host and port (e.g. `http://10.0.0.x:3001`). The variable `INTERNAL_API_PORT` appears only in Instance-1's `.env`; the worker does not read it.
-- **socket.io on the same Express server** — `initSocketIO` attaches to the `http.Server` returned by `server.js`. The client passes its `socket.id` in the upload request; this ID travels with the BullMQ job and is used by the callback to route the push notification.
+- **socket.io on the same Express server** — `initSocketIO` attaches to the `http.Server` returned by `server.js`. The server-side `userSockets` Map in `notifications.js` maps `userId → Set<socketId>`; it is populated when a client connects via socket.io. When the worker posts its result to `/internal/identification-result`, it sends `userId`, and `notifyUser(userId, ...)` fans out to all active socket connections for that user. No `socketId` is ever passed in the upload request or stored in the BullMQ job payload.
 - **Redis bound to vRack IP only** — `REDIS_BIND_IP` controls which network interface Redis binds to in production. Never expose Redis on the public interface.
 - **Instance-2 is shelved when idle** — OVH bills shelved instances for storage only. `src/instance-lifecycle.js` handles automatic unshelve on job enqueue and shelve after idle timeout (`INSTANCE2_IDLE_MINUTES`).
-- **S3 key convention** — `photos/{userId}/{uuid}/{filename}`. All photo references in the DB use `s3_key`; there are no local file paths after V4.
+- **S3 key convention** — `{uuid}{ext}` (e.g. `3f2a1b4c-1234-5678-abcd-ef0123456789.jpg`). There is no `photos/` prefix and no `userId` subdirectory — the UUID itself is the full key. All photo references in the DB use `s3_key`; there are no local file paths after V4.
 - **`forcePathStyle: true`** required for both OVH Object Storage and local MinIO.
 - **Test mocks** — use `jest.resetAllMocks()` (not `clearAllMocks`) to prevent stale `mockResolvedValueOnce` bleed between tests. When mocking `Promise.all`, comment the expected execution order of the mock queue.
 - **Deprecated plan** — `docs/v4-plan-infra-public-cloud-ovh.md` describes a NestJS + Nx architecture that was evaluated but never built. Ignore it; the real architecture uses Express + plain JavaScript.
