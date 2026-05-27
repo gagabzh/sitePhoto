@@ -25,7 +25,7 @@ function page(title, body, session, socket = false) {
         <div class="nav-avatar-wrap">
           <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>
           <div class="nav-menu" role="menu">
-            <a href="/account/password" role="menuitem">Account</a>
+            <a href="/account" role="menuitem">Account</a>
             <a href="/tags/recipes" role="menuitem">My Recipes</a>
             ${session.role === 'admin' ? `<hr class="nav-menu-sep">
             <span class="nav-menu-section">ADMIN</span>

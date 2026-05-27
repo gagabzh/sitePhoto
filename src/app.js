@@ -77,6 +77,7 @@ app.use('/tags', require('./routes/tags'));
 app.use('/timeline', require('./routes/timeline'));
 app.use('/map', require('./routes/map'));
 app.use('/travels', require('./routes/travels'));
+app.use('/api/me', require('./routes/apiMe'));
 app.use('/api', require('./routes/api'));
 app.use('/admin/ai', requireAdmin, require('./routes/admin-ai'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
