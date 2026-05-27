@@ -12,7 +12,7 @@ graph TB
     GHA([GitHub Actions])
 
     subgraph OVH["OVH Public Cloud — GRA"]
-        subgraph I1["Instance-1 — b3-8 · 4 vCPU / 8 GB · always on"]
+        subgraph I1["Instance-1 — b2-7 · 2 vCPU / 7 GB · always on"]
             Caddy["Caddy\n:80 / :443"]
             App["Node.js / Express\n:3000"]
             PG[("PostgreSQL\n:5432")]
