@@ -21,6 +21,20 @@ const sessionRevokeLimiter = rateLimit({
   },
 });
 
+// ── HRD-7: Rate limiter for PATCH /account (10 req/min) ──────────────────────
+
+const profilePatchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip in test env — in-memory store would accumulate across test cases
+  skip: () => process.env.NODE_ENV === 'test',
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests — try again later.' });
+  },
+});
+
 router.get('/', (req, res) => {
   const isAdmin = req.session.role === 'admin';
   res.send(page('Home', `
@@ -133,7 +147,7 @@ router.get('/account', wrapAsync(async (req, res) => {
 
 // ── ACC-2: Inline profile editing ─────────────────────────────────────────────
 
-router.patch('/account', wrapAsync(async (req, res) => {
+router.patch('/account', profilePatchLimiter, wrapAsync(async (req, res) => {
   const { userId } = req.session;
   const { name, email, language, theme, notif_enabled } = req.body;
 
@@ -145,8 +159,11 @@ router.patch('/account', wrapAsync(async (req, res) => {
 
   if (name !== undefined) {
     const trimmed = String(name).trim();
-    if (!trimmed || trimmed.length > 100) {
+    if (!trimmed) {
       return res.status(422).json({ error: 'Name is required' });
+    }
+    if (trimmed.length > 100) {
+      return res.status(422).json({ error: 'Name must be 1–100 characters' });
     }
   }
 
@@ -208,8 +225,11 @@ router.patch('/account', wrapAsync(async (req, res) => {
       prefUpdates.push(`theme = EXCLUDED.theme`);
     }
     if (notif_enabled !== undefined) {
+      if (typeof notif_enabled !== 'boolean') {
+        return res.status(422).json({ error: 'notif_enabled must be a boolean' });
+      }
       prefCols.push('notif_enabled');
-      prefVals.push(Boolean(notif_enabled));
+      prefVals.push(notif_enabled);
       prefUpdates.push(`notif_enabled = EXCLUDED.notif_enabled`);
     }
 
@@ -293,7 +313,7 @@ router.post('/account/avatar', (req, res, next) => {
     );
   }
 
-  res.json({ ok: true, key: newKey });
+  res.json({ ok: true });
 }));
 
 // ── ACC-3: Avatar removal ──────────────────────────────────────────────────────
@@ -605,7 +625,7 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
         <div class="acc-field-row">
           <span class="acc-field-label">Notifications</span>
           <span class="acc-field-val" data-field="notif_enabled" data-type="toggle"
-                data-current="${profile.notif_enabled}">${profile.notif_enabled ? 'On' : 'Off'}</span>
+                data-current="${esc(profile.notif_enabled)}">${profile.notif_enabled ? 'On' : 'Off'}</span>
         </div>
       </div>
     </div>` : '';
@@ -688,7 +708,7 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
     cancelBtn.className = 'btn-cancel btn btn-sm btn-secondary';
     cancelBtn.type = 'button';
     cancelBtn.setAttribute('aria-label', 'Cancel');
-    cancelBtn.textContent = '✕';
+    cancelBtn.textContent = '✗';
 
     wrap.appendChild(saveBtn);
     wrap.appendChild(cancelBtn);

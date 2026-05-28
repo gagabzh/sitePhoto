@@ -621,13 +621,36 @@ describe('PATCH /account (ACC-2)', () => {
     expect(db.query).not.toHaveBeenCalled();
   });
 
-  it('returns 422 for name longer than 100 chars', async () => {
+  it('returns 422 for name longer than 100 chars — distinct message from empty name', async () => {
     const res = await request(makeApp(USER_SESSION))
       .patch('/account')
       .set('Content-Type', 'application/json')
       .send({ name: 'a'.repeat(101) });
     expect(res.status).toBe(422);
-    expect(res.body.error).toMatch(/Name is required/);
+    // HRD-2: too-long case has its own message, distinct from "Name is required"
+    expect(res.body.error).toBe('Name must be 1–100 characters');
+  });
+
+  it('returns 422 for notif_enabled sent as string "false" — boolean coercion guard', async () => {
+    // HRD-3: string "false" must not silently coerce to true
+    const res = await request(makeApp(USER_SESSION))
+      .patch('/account')
+      .set('Content-Type', 'application/json')
+      .send({ notif_enabled: 'false' });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/notif_enabled must be a boolean/);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 for notif_enabled sent as string "true" — boolean coercion guard', async () => {
+    // HRD-3: string "true" must also be rejected
+    const res = await request(makeApp(USER_SESSION))
+      .patch('/account')
+      .set('Content-Type', 'application/json')
+      .send({ notif_enabled: 'true' });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/notif_enabled must be a boolean/);
+    expect(db.query).not.toHaveBeenCalled();
   });
 
   it('accepts name of exactly 100 chars — returns 200', async () => {
@@ -832,7 +855,7 @@ describe('POST /account/avatar (ACC-3)', () => {
     expect(res.body.ok).toBe(true);
   });
 
-  it('uploads JPEG successfully — returns 200 with key', async () => {
+  it('uploads JPEG successfully — returns 200 with ok:true (no key field)', async () => {
     // db.query mock order: [0] SELECT avatar_s3_key (no old key), [1] UPDATE users SET avatar_s3_key
     db.query
       .mockResolvedValueOnce({ rows: [{ avatar_s3_key: null }] })  // SELECT old key
@@ -845,12 +868,33 @@ describe('POST /account/avatar (ACC-3)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
-    expect(res.body.key).toBe('test-uuid.jpg');
+    // HRD-6: S3 key must not be exposed in the response
+    expect(res.body.key).toBeUndefined();
     expect(uploadPhoto).toHaveBeenCalledWith('test-uuid.jpg', expect.any(Buffer), 'image/jpeg');
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE users SET avatar_s3_key'),
       ['test-uuid.jpg', USER_SESSION.userId]
     );
+  });
+
+  it('returns 500 when sharp throws on corrupt image input', async () => {
+    // HRD-5: sharp failure path — toBuffer rejects with an error
+    const chain = {
+      resize: jest.fn().mockReturnThis(),
+      jpeg:   jest.fn().mockReturnThis(),
+      toBuffer: jest.fn().mockRejectedValue(new Error('corrupt image data')),
+    };
+    sharp.mockReturnValue(chain);
+
+    const res = await request(makeApp(USER_SESSION))
+      .post('/account/avatar')
+      .attach('avatar', JPEG_BUFFER, { filename: 'test.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toMatch(/Upload failed/);
+    // Neither S3 nor DB should be touched after sharp failure
+    expect(uploadPhoto).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
   });
 
   it('deletes old S3 key when user already has an avatar', async () => {
