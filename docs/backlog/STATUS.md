@@ -1,0 +1,113 @@
+# Backlog Status
+
+One row per story. Update `Status` and `PR / Notes` when work begins or lands.
+
+Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
+
+| ID | Title | Domain | Status | PR / Notes |
+|---|---|---|---|---|
+| DS-1 | Avatar dropdown navigation | Design System | Done | design system implemented in early V5 work |
+| DS-2 | Family Wall photo list | Design System | Done | design system implemented in early V5 work |
+| DS-3 | Photo Books album list | Design System | Done | design system implemented in early V5 work |
+| DS-4 | Inside an Album | Design System | Done | design system implemented in early V5 work |
+| DS-5 | Access Vault | Design System | Done | design system implemented in early V5 work |
+| DS-6 | Map First | Design System | Done | design system implemented in early V5 work |
+| DS-7 | Timeline Story | Design System | Done | design system implemented in early V5 work |
+| DS-8 | The Ledger | Design System | Done | design system implemented in early V5 work |
+| DS-9 | Responsive mobile layout | Design System | Done | design system implemented in early V5 work |
+| DS-10 | Tag page design | Design System | Done | design system implemented in early V5 work |
+| DS-11 | Travel pages redesign + interactions | Design System | Done | design system implemented in early V5 work |
+| DS-12 | Tag combinator redesign + interactions | Design System | Done | design system implemented in early V5 work |
+| DS-13 | Photo selection redesign + interactions | Design System | Done | design system implemented in early V5 work |
+| US-1 | View user list | User Management | Done | user management implemented |
+| US-2 | Create a user | User Management | Done | user management implemented |
+| US-3 | Edit a user | User Management | Done | user management implemented |
+| US-4 | Delete a user | User Management | Done | user management implemented |
+| US-5 | Reset a user's password (admin side) | User Management | Done | user management implemented |
+| US-6 | Change my own password | User Management | Done | user management implemented |
+| ACC-1 | Role-aware identity card | Account | Done | #78 |
+| ACC-2 | Inline profile editing | Account | Done | #81 |
+| ACC-3 | Avatar upload and removal | Account | Done | #81 |
+| ACC-4 | Session management | Account | Done | #82 |
+| ACC-5 | Danger zone | Account | Done | #80 |
+| US-P1 | Upload a photo | Photos | Done | — |
+| US-P2 | Tag a photo | Photos | Done | — |
+| US-P3 | Edit a photo | Photos | Done | — |
+| US-P4 | Delete a photo | Photos | Done | — |
+| IMP-1 | Date taken from EXIF | Photos | Done | — |
+| IMP-2 | Batch upload | Photos | Done | — |
+| IMP-3 | Back buttons at the top of pages | Photos | Done | — |
+| IMP-4 | Select all | Photos | Done | — |
+| LB-1 | Lightbox / fullscreen viewer in album | Photos | Backlog | — |
+| US-A1 | Create an album | Albums | Done | — |
+| US-A2 | Add / remove photos from an album | Albums | Done | — |
+| US-A3 | Edit / delete an album | Albums | Done | — |
+| IMP-5 | One album per photo | Albums | Done | — |
+| MA-1 | A photo can belong to multiple albums | Albums | Backlog | — |
+| MA-2 | Photo detail shows album memberships | Albums | Backlog | — |
+| MA-3 | Manage album memberships from the edit form | Albums | Backlog | — |
+| ALB-1 | Click-to-edit in album, explicit lightbox button | Albums | Backlog | — |
+| ALB-2 | Context-aware back button on photo detail and edit pages | Albums | Backlog | — |
+| RA-1 | Create a snapshot album from a tag recipe | Albums | Backlog | — |
+| US-AC1 | Grant viewer access to an album | Access Control | Done | — |
+| US-AC2 | Revoke viewer access | Access Control | Done | — |
+| US-V1 | Browse albums | Browsing | Done | — |
+| US-V2 | View album content | Browsing | Done | — |
+| US-V3 | Browse by tag | Browsing | Done | — |
+| US-V4 | Access denied | Browsing | Done | — |
+| TG-1 | Multi-tag filter | Tags | Backlog | — |
+| TG-2 | Tag autocomplete | Tags | Backlog | — |
+| US-GPS1 | Add GPS coordinates to a photo | Map & GPS | Done | — |
+| US-GPS2 | View a photo's location | Map & GPS | Done | — |
+| US-GPS3 | Browse photos on a map | Map & GPS | Done | — |
+| US-GPS4 | Filter map by album or tag | Map & GPS | Done | — |
+| MAP-1 | Search by location and radius | Map & GPS | Backlog | — |
+| US-TL1 | View photos in a timeline | Timeline | Done | — |
+| US-TL2 | Filter timeline by album or tag | Timeline | Done | — |
+| US-TL3 | Photo date | Timeline | Done | — |
+| TL-4 | Filter by date range | Timeline | Done | — |
+| TL-5 | Drill into a group from "+X more" | Timeline | Backlog | — |
+| TL-6 | Choose grouping interval | Timeline | Backlog | — |
+| TR-1 | Create a travel | Travel | Backlog | — |
+| TR-2 | Link content to a travel | Travel | Backlog | — |
+| TR-3 | View a travel | Travel | Backlog | — |
+| TR-4 | Share a travel | Travel | Backlog | — |
+| TR-5 | Edit / delete a travel | Travel | Backlog | — |
+| US-NC1 | Link a photo to Nextcloud | Nextcloud | Backlog | — |
+| US-NC2 | Download original from photo page | Nextcloud | Backlog | — |
+| US-NC3 | Manage Nextcloud link | Nextcloud | Backlog | — |
+| US-NC4 | Import a Nextcloud shared folder | Nextcloud | Backlog | — |
+| US-NC5 | Import progress feedback | Nextcloud | Backlog | — |
+| AI-1 | Duplicate photo detection | Local AI | Done | admin-ai.js |
+| AI-2 | People identification and tagging | Local AI | Done | worker.js |
+| AI-3 | Manual person tagging | Local AI | Backlog | — |
+| AI-4 | AI learns from manual tags | Local AI | Backlog | — |
+| IQ-1 | Application security hardening | Infrastructure | Backlog | — |
+| IQ-2 | Dependency CVE monitoring | Infrastructure | Backlog | — |
+| IQ-3 | Linter | Infrastructure | Done | package.json |
+| IQ-4 | Code quality metrics | Infrastructure | Backlog | — |
+| IQ-5 | VPS hardening | Infrastructure | Done | — |
+| S3-1 | Photos stored in Object Storage | Infrastructure | Done | — |
+| S3-2 | Transparent experience for viewers | Infrastructure | Done | — |
+| S3-3 | Photo deletion removes S3 object | Infrastructure | Done | — |
+| Q-1 | Upload returns immediately | Infrastructure | Done | — |
+| Q-2 | Real-time identification notification | Infrastructure | Done | — |
+| Q-3 | Identification resilience | Infrastructure | Done | — |
+| IV4-1 | Two-instance private architecture | Infrastructure | Done | — |
+| IV4-2 | Local development with MinIO and Redis | Infrastructure | Done | — |
+| IV4-3 | Worker instance on-demand lifecycle | Infrastructure | Done | — |
+| INF-1 | Instance-1 right-sizing | Infrastructure | Done | #73 |
+| INF-2 | Persist sessions in PostgreSQL | Infrastructure | Done | #76 |
+| INF-3 | Nightly shelve/unshelve of Instance-1 via GitHub Actions | Infrastructure | Done | #79 |
+| HRD-1 | Normalise cancel-button unicode character | Hardening | Done | #84 |
+| HRD-2 | Improve PATCH /account name validation error message | Hardening | Done | #84 |
+| HRD-3 | Fix boolean coercion for notif_enabled in PATCH /account | Hardening | Done | #84 |
+| HRD-4 | Apply esc() to data-current attribute for notif_enabled | Hardening | Done | #84 |
+| HRD-5 | Add test for sharp failure path on corrupt image input | Hardening | Done | #84 |
+| HRD-6 | Remove S3 key from POST /account/avatar JSON response | Hardening | Done | #84 |
+| HRD-7 | Rate-limit PATCH /account to prevent email enumeration | Hardening | Done | #84 |
+| HRD-8 | Extract session TTL to a shared constant | Hardening | Backlog | follow-up from PR #82 |
+| HRD-9 | Add CSRF 403 tests for session revoke endpoints | Hardening | Backlog | follow-up from PR #82 |
+| HRD-10 | Unit-test parseUserAgent and relativeTime helpers | Hardening | Backlog | follow-up from PR #82 |
+| HRD-11 | Add 500 error path test for individual session revoke | Hardening | Backlog | follow-up from PR #82 |
+| HRD-12 | Mock express-rate-limit in account.test.js | Hardening | Backlog | follow-up from PR #82 |

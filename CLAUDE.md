@@ -12,7 +12,10 @@ Self-hosted photo gallery with albums, tags, timeline, GPS map, Nextcloud integr
 | `worker/` | Standalone Node.js BullMQ worker (Instance-2) |
 | `infra/` | Terraform configs for OVH Public Cloud provisioning |
 | `migrations/` | SQL schema migrations — source of truth for the DB schema |
-| `docs/` | Architecture docs, V4 summary, historical plans |
+| `docs/backlog/` | Backlog stories split by domain + STATUS.md tracking table |
+| `docs/architecture/` | Architecture diagrams and design notes |
+| `docs/history/` | Historical plans (V2, V3, V4 summary) |
+| `docs/archive/` | Deprecated documents (kept for reference only) |
 | `.claude/agents/` | Specialized agent system prompts |
 | `docker-compose.yml` | Local dev: app + db + Redis + MinIO + worker |
 | `docker-compose.prod.yml` | Production Instance-1: app + db + Redis (no MinIO) |
@@ -95,7 +98,7 @@ Two OVH Public Cloud instances + one S3-compatible Object Storage bucket, connec
 
 Worker callback flow: worker POSTs result to `Instance-1:3001/internal/identification-result` over the vRack. Instance-1 updates the DB and pushes a `identification-complete` WebSocket event to the browser.
 
-See `infra/README.md` for full deployment runbook and `docs/architecture-v4.md` for diagrams.
+See `infra/README.md` for full deployment runbook and `docs/architecture/architecture-v4.md` for diagrams.
 
 ---
 
@@ -134,4 +137,4 @@ See `infra/README.md` for full deployment runbook and `docs/architecture-v4.md` 
 - **S3 key convention** — `{uuid}{ext}` (e.g. `3f2a1b4c-1234-5678-abcd-ef0123456789.jpg`). There is no `photos/` prefix and no `userId` subdirectory — the UUID itself is the full key. All photo references in the DB use `s3_key`; there are no local file paths after V4.
 - **`forcePathStyle: true`** required for both OVH Object Storage and local MinIO.
 - **Test mocks** — use `jest.resetAllMocks()` (not `clearAllMocks`) to prevent stale `mockResolvedValueOnce` bleed between tests. When mocking `Promise.all`, comment the expected execution order of the mock queue.
-- **Deprecated plan** — `docs/v4-plan-infra-public-cloud-ovh.md` describes a NestJS + Nx architecture that was evaluated but never built. Ignore it; the real architecture uses Express + plain JavaScript.
+- **Deprecated plan** — `docs/archive/v4-plan-infra-public-cloud-ovh.md` describes a NestJS + Nx architecture that was evaluated but never built. Ignore it; the real architecture uses Express + plain JavaScript.
