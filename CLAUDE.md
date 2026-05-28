@@ -98,7 +98,7 @@ Two OVH Public Cloud instances + one S3-compatible Object Storage bucket, connec
 
 Worker callback flow: worker POSTs result to `Instance-1:3001/internal/identification-result` over the vRack. Instance-1 updates the DB and pushes a `identification-complete` WebSocket event to the browser.
 
-See `infra/README.md` for full deployment runbook and `docs/architecture/architecture-v4.md` for diagrams.
+See `infra/README.md` for full deployment runbook and `docs/architecture/architecture.md` for diagrams.
 
 ---
 

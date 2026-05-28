@@ -257,3 +257,464 @@ As a logged-in user, I can see the list of my active sessions (browser, device, 
 
 **[DONE] ACC-5 — Danger zone**
 As a logged-in user, I can delete my own account from the danger zone with a two-step confirmation (typed username required) — so the action cannot be done by accident.
+
+---
+
+## Account Page Design Alignment (DS-ACC)
+
+Gap analysis performed 2026-05-28 against:
+- Design handoff: `sitephoto-design/design_handoff_user_personal_page/README.md`
+- Current implementation: `src/routes/account.js` (`renderAccountPage` function) + `public/style.css` (lines 1797–1953)
+
+### Summary of gaps
+
+| Area | Current state | Design requires |
+|---|---|---|
+| Page layout | Single flex-column, max-width 800px | Two-column grid (1.3fr / 1fr), 24px gap, 32px side gutters |
+| Header block | Flex row: 64px avatar + name + role badge + 3-stat strip | 3-column: 130px avatar circle with "↻ change" tab + greeting/badge/email + 5-KPI stats strip with vertical rules |
+| Stats strip | 3 KPIs (uploads, albums, recipes), Caveat 1.5rem, no vertical rules | 5 KPIs (uploads, albums, favourites, comments, recipes), Caveat 30px, vertical 1.5px ink rules between tiles, `—` muted variant for viewer N/A stats |
+| Permission strip | Generic card titled "Permissions" with flat pills; no washi-tape, no kicker copy, no role-aware cant-pills with strikethrough | Full-width card: left kicker "YOUR RIGHTS · ROLE ·" + right flex-wrap of green can-pills (✓) and strikethrough can't-pills (✗) with washi-tape decoration |
+| Role badge | `.role-badge`, mono 0.65rem, uppercase, 1.5px ink border, admin gets `var(--accent)` background; no glyph prefix, no rotation, no role colours | Mono 11px / 700, letter-spacing 2.5px, rotated -1.5°; role-specific border + bg colours (admin red, editor blue, viewer green); glyph prefixes: ★ admin, ✎ editor, ◎ viewer |
+| Avatar | 64px circle in header flex row; "↻ change" is an SVG icon button positioned bottom-right | 130px circle, 2.5px solid ink border, diagonal hatch bg, Caveat 76px initial; "↻ change" is a hanging tab rotated -2° clipped to bottom edge |
+| Left column — admin/editor | Details section + "Quick links" list | Details card + Recent uploads mosaic (6-col, first cell 2×2 span) + Tag recipes rows |
+| Left column — viewer | Same as above (no role differentiation) | Details card + Favourites grid (8-col tighter) + Activity log (last 14 days) |
+| Right column — admin | Admin tools hidden; just sessions + quick links + danger zone | Albums grid (2×2, 4 tiles + "N more →") + Admin tools tile grid (5 tools) + Sessions + Danger zone |
+| Right column — editor | No shared-with section | Albums grid + Shared-with list (people + revoke) + Sessions + Danger zone |
+| Right column — viewer | No role-specific cards | Tag recipes (prominent, "YOUR THING" badge) + "What you can't do here" card + Sessions + Danger zone |
+| Design tokens | Missing `--paper-3`, `--accent-2`, `--accent-3` from `:root` | All 3 tokens must be declared |
+| Card chrome | Cards use `border: 1.5px solid var(--ink)` and `border-radius` varies | All account cards: `border-radius: 0` (square), `1.5px solid var(--ink)`, optional `.d1-tape` washi-tape decoration |
+| Page background | Solid `var(--paper)` | Double dot-pattern to simulate dotted notebook paper |
+| Nav — viewer | Viewer sees same nav as editor (no "Photos" link but no READ-ONLY label) | Viewer nav replaces `+ upload` button with `READ-ONLY` mono label |
+| Viewer stats | Uploads/albums stats show real counts (accessible photos/albums) | Uploads and albums stats show `—` (muted, `var(--ink-faint)`) for viewer |
+| Favourites/Comments stats | No favourites or comments stats anywhere | Stats strip needs `favourites` and `comments` counts (requires DB tables — see notes) |
+| Quick links section | Present as a separate card with `<a>` buttons | Replaced by contextual in-column navigation (Admin tools tile grid, Albums grid, etc.) — "Quick links" card removed |
+
+---
+
+**DS-ACC-1 — Implement two-column layout and card shell**
+As a logged-in user, I can view my account page in a two-column layout that matches the paper aesthetic, so all sections are organised and visually consistent with the rest of the site.
+
+**Acceptance criteria:**
+
+1. `GET /account` renders inside a `.acc-body` wrapper that uses `display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; padding: 18px 32px 22px; max-width: none` — replacing the current `.acc-wrap` single-column flex layout. The outer max-width constraint is removed; the 32px side gutters are applied via `padding`.
+2. The left column has class `.acc-col-left`; the right column has class `.acc-col-right`. Each column is a vertical stack of cards with `display: flex; flex-direction: column; gap: 16px`.
+3. Every card on the account page uses CSS class `.acc-card-block` with: `border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper); padding: 16px 18px`. No `box-shadow`. No `border-radius` other than 0.
+4. Card title (`h3` inside `.acc-card-block`) uses class `.acc-card-title` with: `font-family: 'Caveat', cursive; font-size: 26px; font-weight: 700; margin: 0 0 12px`. Optional mono count appears after the title text. Optional "N more →" link uses class `.acc-card-more` aligned to the right of the title row, styled in `var(--accent)`, Kalam 13px.
+5. Cards that have the washi-tape decoration use a `.d1-tape` pseudo-element: `56×12px rectangle; background: rgba(217,169,99,0.55); border: 1px dashed rgba(217,169,99,0.9); border-radius: 2px; position: absolute; top: -6px; left: 12px; transform: rotate(-2deg)`. The card must have `position: relative; overflow: visible`. Tape color variants: `.d1-tape--cool` (blue: `rgba(99,149,217,0.55)`), `.d1-tape--green` (sage: `rgba(99,180,130,0.55)`), `.d1-tape--red` (rose: `rgba(217,99,99,0.55)`).
+6. The header block (avatar + greeting + stats) spans the full width above the two-column body. It uses class `.acc-header` with `display: grid; grid-template-columns: auto 1fr auto; gap: 24px; align-items: start; padding: 18px 32px 0; margin-bottom: 16px`.
+7. The right column always contains the Sessions card and Danger Zone card as its final two items (in that order), regardless of role. Other right-column cards appear above them.
+8. On viewport ≥ 900px: two-column layout applies. On viewport < 900px: single-column stacked layout — left-column cards appear first, then right-column cards. Breakpoint lives in a `@media (max-width: 900px)` rule that sets `.acc-body { grid-template-columns: 1fr }`.
+9. The page background uses the dotted notebook paper texture:
+   ```css
+   background-image:
+     radial-gradient(rgba(26,24,20,0.04) 1px, transparent 1px),
+     radial-gradient(rgba(26,24,20,0.03) 1px, transparent 1px);
+   background-size: 22px 22px, 11px 11px;
+   background-position: 0 0, 6px 6px;
+   ```
+   Applied to `body` (or the `.acc-page-bg` wrapper) only on the `/account` route to avoid affecting other pages.
+10. The existing `.acc-section` / `.acc-section-h` / `.acc-section-b` classes are deprecated on this page; all cards switch to `.acc-card-block` + `.acc-card-title`. The old classes remain in CSS for the `/account/delete` and `/account/password` sub-pages which still use them.
+11. The "Quick links" section (`buildQuickLinks`) is removed from `renderAccountPage`. Its links are replaced by contextual navigation inside role-specific cards (Admin tools, Albums grid, etc.).
+
+**Edge cases:**
+- User with no albums/uploads: columns still render; cards show empty-state copy (see role-specific card stories for exact copy).
+- Viewport exactly 900px: mobile layout applies (breakpoint is `max-width: 900px`).
+- Account page accessed on very narrow viewport (320px): cards fill full width, no horizontal scroll.
+
+**Access control:** All logged-in roles (admin, editor, viewer) see this two-column layout; the specific cards that appear in each column are role-gated (see DS-ACC-4 and DS-ACC-5).
+
+**Test data:** Test with admin, editor, and viewer accounts. Test at viewports 320px, 600px, 899px, 900px, 1280px, 1440px.
+
+**Browser/device support:** Desktop (Chrome, Firefox, Safari) and mobile (iOS Safari, Android Chrome). CSS Grid is the layout mechanism.
+
+> **Technical notes:**
+>
+> Modify `renderAccountPage` in `src/routes/account.js`. The function currently builds a single `.acc-wrap` flex column. Refactor it to output:
+> ```html
+> <div class="acc-page-bg">
+>   <div class="acc-header">...</div>
+>   <div class="acc-body">
+>     <div class="acc-col-left">...</div>
+>     <div class="acc-col-right">...</div>
+>   </div>
+> </div>
+> ```
+> Add the new CSS classes to `public/style.css` in the `/* ── Account page ── */` section. Keep old `.acc-section` classes for the `/account/delete` and `/account/password` pages which are separate routes.
+
+---
+
+**DS-ACC-2 — Header block: 130px avatar, greeting, and 5-KPI stats strip**
+As a logged-in user, I can see a large avatar, my name with role badge, and a strip of 5 key stats at the top of my account page, so I get a full identity summary at a glance.
+
+**Acceptance criteria:**
+
+1. The header block uses a 3-column grid: column 1 = avatar circle, column 2 = identity text, column 3 = stats strip. Each column is `align-self: start`.
+2. The avatar circle is 130×130px (up from current 64px). CSS: `width: 130px; height: 130px; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--paper-2); flex-shrink: 0; position: relative`. Background uses diagonal hatch pattern: `repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(26,24,20,0.06) 4px, rgba(26,24,20,0.06) 5px)` over `var(--paper-2)`.
+3. The initial letter inside the avatar uses class `.acc-avatar-initial`: `font-family: 'Caveat', cursive; font-size: 76px; font-weight: 700; color: var(--ink); line-height: 1`. When an avatar image is set, the `<img>` replaces the initial letter; the `<img>` has `object-fit: cover; width: 100%; height: 100%; border-radius: 50%`.
+4. The "↻ change" tab is a `<button>` with class `.acc-avatar-tab`: positioned absolute at `bottom: -14px; left: 50%; transform: translateX(-50%) rotate(-2deg)`. Styled: `background: var(--paper); border: 1.5px solid var(--ink); border-radius: 0; font-family: 'Caveat', cursive; font-size: 13px; padding: 2px 10px; cursor: pointer; white-space: nowrap`. Text: `↻ change`. On mobile the tap target is extended via `::before { content: ''; position: absolute; inset: -8px }` (min 44px total).
+5. The identity text column contains (top to bottom): greeting `<h2>` ("Hello, [name]"), role badge `<span>`, email `<p>`. The `<h2>` uses `font-family: 'Caveat', cursive; font-size: 32px; font-weight: 700; margin: 0 0 6px`. Email uses `font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); margin: 6px 0 0`.
+6. The role badge (class `.acc-role-badge`) has: `font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; transform: rotate(-1.5deg); display: inline-block; padding: 2px 8px`. Role-specific styles:
+   - Admin (`.acc-role-badge--admin`): `border: 1.5px solid oklch(55% 0.20 25); background: oklch(96% 0.02 25); color: oklch(55% 0.20 25)`. Text: `★ ADMIN`.
+   - Editor (`.acc-role-badge--editor`): `border: 1.5px solid var(--accent-2); background: oklch(96% 0.02 220); color: var(--accent-2)`. Text: `✎ EDITOR`.
+   - Viewer (`.acc-role-badge--viewer`): `border: 1.5px solid var(--accent-3); background: oklch(96% 0.02 140); color: var(--accent-3)`. Text: `◎ VIEWER`.
+7. The stats strip (column 3) contains 5 tiles separated by thin vertical rules. Tiles from left to right: **uploads · albums · favourites · comments · recipes**. Each tile:
+   - Class `.acc-stat-tile`: `text-align: right; padding: 0 12px; position: relative`.
+   - Number: class `.acc-stat-num`, `font-family: 'Caveat', cursive; font-size: 30px; font-weight: 700; line-height: 1`.
+   - Label: class `.acc-stat-label`, `font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint)`.
+   - Vertical separator: `border-left: 1.5px solid var(--ink)` on all tiles except the first.
+8. Viewer muted stats: for viewer role, the **uploads** and **albums** stat tiles show `—` (em-dash) as the number and use `color: var(--ink-faint)` on the number. These tiles get class `.acc-stat-tile--muted`. The `stats.uploads` and `stats.albums` values are not fetched/displayed for viewer on the stats strip (the existing DB query that counts accessible photos/albums is removed from this context; those numbers appear nowhere on the viewer's stats strip).
+9. The 2 new stats KPIs (favourites, comments) require new DB queries in `GET /account`. Until the `photo_likes` and `comments` tables exist, the `favourites` and `comments` counts are fetched as `0` with a `/* TODO: DS-ACC-2 — favourites/comments tables not yet implemented */` comment. The story is not blocked on those tables existing.
+10. The existing `.acc-stats` / `.acc-stat-n` / `.acc-stat-l` classes are replaced by the new `.acc-stat-tile` / `.acc-stat-num` / `.acc-stat-label` classes on the account page only.
+11. The greeting `<h2>` is the user's display name. After an inline name edit (ACC-2), `document.querySelector('.acc-greeting-name')` is updated in the same JS handler that already updates `.acc-name`.
+
+**Edge cases:**
+- User with 0 for all stats: show `0` (not `—`) for admin/editor; show `—` for viewer uploads/albums, `0` for viewer favourites/comments/recipes.
+- Name with 1 character: initial letter renders correctly at 76px without clipping.
+- Very long name (100 chars): heading does not overflow the header grid; `overflow-wrap: break-word` on the `<h2>`.
+- Very long email address: truncate with `text-overflow: ellipsis; overflow: hidden; max-width: 240px` on the email `<p>`.
+
+**Access control:** All roles see the header. Viewer stats strip shows `—` for uploads/albums (not zero — the semantic difference matters: `—` means "not applicable", `0` means "zero of something you can have").
+
+**Test data:** Create accounts for each role. For admin/editor: accounts with 0 uploads, 1 upload, 50 uploads. For viewer: account with shared albums. Verify the `—` displays on viewer row.
+
+**Browser/device support:** Desktop + mobile. On viewport < 900px, the 3-column header collapses: avatar and identity text stack vertically (column 1 + 2 merge to full width), stats strip moves below them as a horizontal flex row.
+
+> **Technical notes:**
+>
+> Modify `renderAccountPage` in `src/routes/account.js`. The identity card currently outputs `.acc-card` / `.acc-avatar` / `.acc-name` / `.acc-stats`. Replace the header rendering with the new 3-column header.
+>
+> New design tokens to add to `public/style.css` `:root` (required for DS-ACC-2 role badge colors):
+> ```css
+> --accent-2:  oklch(62% 0.14 220);  /* cool blue — editor */
+> --accent-3:  oklch(64% 0.13 140);  /* sage green — viewer */
+> --paper-3:   #e3ddcb;              /* used in some card backgrounds */
+> ```
+>
+> Stats queries to add in `Promise.all` inside `GET /account` handler:
+> ```js
+> // [N] favourites count — placeholder until photo_likes table exists
+> Promise.resolve({ rows: [{ n: 0 }] }),  // TODO: DS-ACC-2
+> // [N] comments count — placeholder until comments table exists
+> Promise.resolve({ rows: [{ n: 0 }] }),  // TODO: DS-ACC-2
+> ```
+>
+> The existing `.acc-avatar` 64px circle CSS (line 1799 in `style.css`) is superseded. Keep it for the nav avatar fallback but add the new `.acc-avatar-hero` class at 130px for the header.
+>
+> The `.acc-avatar-tab` replaces the current `#js-avatar-change` SVG icon button. The JS `avatarChange.addEventListener('click', ...)` handler remains unchanged; only the element's class and HTML change.
+
+---
+
+**DS-ACC-3 — Permission strip with role-aware can/can't pills**
+As a logged-in user, I can see a full-width permission strip below the header that shows exactly what my role allows and forbids, so I understand my access rights at a glance without reading documentation.
+
+**Acceptance criteria:**
+
+1. The permission strip renders as a full-width card (class `.acc-perms-strip`) spanning across both body columns. It sits between the header block and the two-column body. CSS: `border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper); padding: 10px 14px; display: flex; align-items: flex-start; gap: 16px; position: relative; overflow: visible; margin: 0 32px 16px`.
+2. The washi-tape decoration appears on the permission strip using `.d1-tape` (same pseudo-element spec as DS-ACC-1 criterion 5). The tape appears at `top: -6px; left: 12px` and uses the default ochre color.
+3. The left kicker uses class `.acc-perms-kicker`: `font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; padding-top: 2px`. Text content (role-aware):
+   - Admin: `YOUR RIGHTS · ADMIN ·`
+   - Editor: `YOUR RIGHTS · EDITOR ·`
+   - Viewer: `YOUR RIGHTS · VIEWER ·`
+4. The right section is a flex-wrap row of pill chips (class `.acc-perms-pills`): `display: flex; flex-wrap: wrap; gap: 6px; flex: 1`.
+5. Can-pill (class `.acc-pill-can`): `border: 1.5px solid var(--accent-3); background: oklch(96% 0.02 140); color: var(--ink); border-radius: 999px; font-family: 'Kalam', cursive; font-size: 12px; padding: 2px 10px; display: inline-flex; align-items: center; gap: 4px`. Prefix glyph: `✓`.
+6. Can't-pill (class `.acc-pill-cant`): `border: 1.5px solid var(--ink-faint); background: transparent; color: var(--ink-faint); border-radius: 999px; font-family: 'Kalam', cursive; font-size: 12px; padding: 2px 10px; display: inline-flex; align-items: center; gap: 4px; text-decoration: line-through`. Prefix glyph: `✗`.
+7. Permission sets per role (all strings exact):
+
+   **Admin** can-pills: `✓ view photos`, `✓ upload photos`, `✓ manage own albums`, `✓ share albums`, `✓ tag photos`, `✓ make tag recipes`, `✓ manage all tags`, `✓ manage users`, `✓ access AI tools`
+   Admin has no can't-pills.
+
+   **Editor** can-pills: `✓ view photos`, `✓ upload photos`, `✓ manage own albums`, `✓ share albums`, `✓ tag photos`, `✓ make tag recipes`
+   Editor can't-pills: `✗ manage all tags`, `✗ manage users`, `✗ access AI tools`
+
+   **Viewer** can-pills: `✓ view photos`, `✓ favourite photos`, `✓ comment on photos`, `✓ tag photos`, `✓ make tag recipes`
+   Viewer can't-pills: `✗ upload photos`, `✗ create albums`, `✗ share albums`, `✗ manage users`
+
+8. The existing `buildPermsPills(role)` function in `account.js` is replaced. The current `permsSection` block (titled "Permissions", class `.acc-section`) is removed and replaced by `.acc-perms-strip` rendered between the header and the `.acc-body` grid.
+9. On mobile (viewport < 900px): the strip stacks vertically — kicker on top, pills below. `flex-direction: column`.
+
+**Edge cases:**
+- Admin with no pills to deny: the right section contains only can-pills; no empty space.
+- Very long pill list on narrow viewport: pills wrap naturally (flex-wrap); no horizontal overflow.
+- Role value not recognised (defensive): show a single pill `✗ unknown role` in the can't-pills section and log a warning server-side.
+
+**Access control:** Strip is always shown for all roles. The server generates it based on `req.session.role`; the content is not user-controllable.
+
+**Test data:** Test with admin, editor, and viewer accounts. Confirm pill counts: admin 9 can / 0 cant, editor 6 can / 3 cant, viewer 5 can / 4 cant.
+
+**Browser/device support:** Desktop + mobile.
+
+> **Technical notes:**
+>
+> Replace `buildPermsPills(role)` in `src/routes/account.js` with a new function `buildPermsStrip(role)` that returns the full strip HTML. Update the call site in `renderAccountPage` to render the strip between the header and the body grid.
+>
+> The current CSS classes `.acc-perms` and `.acc-perm` / `.acc-perm.yes` (style.css lines 1810–1812) are superseded. Add the new `.acc-perms-strip`, `.acc-perms-kicker`, `.acc-perms-pills`, `.acc-pill-can`, `.acc-pill-cant` classes to `public/style.css`.
+>
+> Requires `--accent-3` token to be defined (see DS-ACC-2 technical notes).
+
+---
+
+**DS-ACC-4 — Role-specific left column cards (uploads mosaic, favourites grid, activity log)**
+As a logged-in user, I can see role-appropriate content in the left column of my account page (recent uploads for admin/editor, favourites and activity for viewer), so the page shows information relevant to what my role lets me do.
+
+**Acceptance criteria:**
+
+1. The left column always shows "Your details" as its first card for all roles. This is the existing inline-editable profile section (ACC-2), restyled with `.acc-card-block` + `.acc-card-title` (per DS-ACC-1).
+
+2. **Admin and editor — Recent uploads mosaic card** (class `.acc-uploads-card`):
+   - Card title: `h3.acc-card-title` with text `your recent uploads` + a mono count in `var(--ink-faint)` showing total upload count, e.g. `your recent uploads  <span class="acc-card-count">42</span>`.
+   - Card has `.d1-tape` washi-tape decoration (ochre, default).
+   - The mosaic grid uses class `.acc-uploads-mosaic`: `display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 70px; gap: 4px`.
+   - The first cell spans `grid-column: span 2; grid-row: span 2`.
+   - Up to 10 photos are shown (the existing `recentUploads` query, `LIMIT 10`). Each cell is a `<a href="/photos/[id]">` containing a `<img src="/photos/[id]/thumb">` with `object-fit: cover; width: 100%; height: 100%`.
+   - If no uploads exist: show a single-cell placeholder with class `.acc-mosaic-empty` containing text `no uploads yet` in Kalam 13px `var(--ink-faint)`.
+   - Photo placeholder (before real thumbnails exist): `background: var(--paper-2); border: 1px dashed var(--ink-faint)` with diagonal hatch (same as avatar background). Use this as `<img>` fallback on `onerror`.
+   - Editor-only: a hint line below the mosaic: `<p class="acc-uploads-hint">you're free to delete or re-tag any of yours</p>`, Kalam 11px, `var(--ink-faint)`.
+   - Admin sees no hint line.
+
+3. **Admin and editor — Tag recipes card** (class `.acc-recipes-card`):
+   - Card title: `your tag recipes` + count span + `"new +"` link in `var(--accent)` aligned right via `acc-card-more`.
+   - Shows up to 3 recipe rows (for admin) or 2 (for editor) from the `tag_recipes` table for this user, ordered by `created_at DESC`. The existing `statsRecipes` count query already covers the total.
+   - A new DB query is needed: `SELECT id, name, query_json FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC LIMIT 3` (admin) / `LIMIT 2` (editor). Add this to the `Promise.all` in `GET /account`.
+   - Each recipe row uses class `.acc-recipe-row`: `display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--ink-faint)`. Last row: `border-bottom: none`.
+   - Recipe name: `font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700`.
+   - Photo count from `query_json` is not computed on this page; show `—` for now with a `/* TODO */` comment.
+   - Row is `<a href="/tags/recipes/[id]">` linking to the recipe editor.
+   - If no recipes exist: show `no recipes yet — <a href="/tags/recipes/new">create one</a>` in Kalam 13px.
+   - Card has `.d1-tape--cool` (blue tape) for admin; `.d1-tape--green` (sage tape) for editor.
+
+4. **Viewer — Favourites grid card** (class `.acc-favourites-card`):
+   - Replaces the "recent uploads" card entirely for viewer role.
+   - Card title: `your favourites` + count span.
+   - Requires a `photo_likes` (or `favourites`) table to exist. Until it does, the card body shows: `<p class="acc-fav-empty">nothing starred yet</p>` in Kalam 13px. Add a `/* TODO: DS-ACC-4 — photo_likes table not yet implemented */` comment in the query.
+   - When the table exists: grid of up to 8 thumbnails using class `.acc-favs-mosaic`: `display: grid; grid-template-columns: repeat(8, 1fr); grid-auto-rows: 55px; gap: 3px`. No large-spanning cells (uniform grid).
+   - Card has `.d1-tape--green` (sage tape).
+
+5. **Viewer — Activity log card** (class `.acc-activity-card`):
+   - Appears below the favourites card in the viewer's left column.
+   - Card title: `your activity` with subtitle `last 14 days` in `var(--ink-faint)` Kalam 11px.
+   - Requires an `activity_log` or `user_activity` table. Until it exists, card body shows: `<p class="acc-activity-empty">no activity recorded yet</p>`. Add `/* TODO: DS-ACC-4 — activity_log table not yet implemented */`.
+   - When the table exists: list of up to 14 rows. Each row: icon glyph + action description + relative timestamp.
+   - Card has no tape decoration.
+
+6. Role gating is enforced server-side: viewer receives the `acc-favourites-card` and `acc-activity-card` HTML; admin/editor receive `acc-uploads-card` and `acc-recipes-card` HTML. The server never sends the wrong cards to the wrong role.
+
+7. The existing `_recentUploads` data is already fetched in `GET /account` (variable currently prefixed with `_` meaning unused in the template). Wire it into the new mosaic card HTML (admin/editor only). For viewer, the query continues to return `[]`.
+
+**Edge cases:**
+- Admin with 0 uploads: mosaic shows empty-state copy.
+- Editor with exactly 1 upload: mosaic shows 1 cell (no layout breakage with partial fill).
+- Editor with 10 uploads: mosaic shows all 10.
+- Admin with 0 recipes: show "no recipes yet" link.
+- Viewer with favourites table but 0 starred photos: show "nothing starred yet".
+- Viewer with 8+ starred photos: show exactly 8 cells.
+
+**Access control:** Admin and editor see uploads mosaic and recipes card. Viewer sees favourites and activity. No cross-role leakage.
+
+**Test data:** Admin/editor accounts with 0, 1, 6, 10 uploads. Admin/editor with 0, 1, 3 recipes. For viewer: create `photo_likes` stub data once the table exists.
+
+**Browser/device support:** Desktop + mobile. On mobile (< 900px), the mosaic cells shrink gracefully; minimum cell size enforced by `min-height: 50px` on `.acc-uploads-mosaic`.
+
+> **Technical notes:**
+>
+> In `renderAccountPage`, replace the `_recentUploads` ignored variable with actual mosaic HTML generation. Refactor `buildLeftColumn(role, data)` helper function.
+>
+> New query to add in `GET /account` Promise.all:
+> ```js
+> // [N] tag recipes for display in card (not just count)
+> db.query(
+>   `SELECT id, name, query_json FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC LIMIT 3`,
+>   [userId]
+> )
+> ```
+>
+> Photo thumbnail serving: the existing `GET /photos/:id/thumb` endpoint (or equivalent) must be used for mosaic cells. If no thumbnail endpoint exists, use the full-size photo with `object-fit: cover`. Check `src/routes/photos.js` for the correct thumbnail URL pattern.
+>
+> Favourites and activity queries are deferred to when those tables exist. Use `Promise.resolve({ rows: [] })` as placeholders.
+
+---
+
+**DS-ACC-5 — Role-specific right column cards (albums grid, admin tools, shared-with, "what you can't do")**
+As a logged-in user, I can see role-appropriate action cards in the right column of my account page, so I have quick access to the things my role lets me manage.
+
+**Acceptance criteria:**
+
+1. **Admin and editor — Albums grid card** (class `.acc-albums-card`):
+   - Card title: `your albums` + count span (total album count) + `"N more →"` link to `/albums` using `.acc-card-more` if count > 4.
+   - Shows up to 4 album tiles in a 2×2 grid (class `.acc-albums-grid`): `display: grid; grid-template-columns: 1fr 1fr; gap: 8px`.
+   - Each tile (class `.acc-album-tile`): `border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper-2); padding: 10px 12px; cursor: pointer; transition: transform 0.1s`. Hover: `transform: translate(-1px, -1px); box-shadow: 2px 2px 0 var(--ink)`.
+   - Tile content: album title in `font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700`. Below it: a photo count or creation date in Kalam 11px `var(--ink-faint)`.
+   - Tile is an `<a href="/albums/[id]">` linking to the album detail page.
+   - If no albums exist: single `.acc-albums-empty` cell with text `no albums yet — <a href="/albums/new">create one</a>`.
+   - Card has `.d1-tape` (ochre) for admin; `.d1-tape--cool` for editor.
+   - The `_albums` data (currently prefixed with `_` in `renderAccountPage`) is wired into this card (admin/editor only). The existing DB query already fetches `id, title` — extend it to also fetch `created_at` and a photo count:
+     ```sql
+     SELECT a.id, a.title, a.created_at,
+            COUNT(ap.photo_id)::int AS photo_count
+     FROM albums a
+     LEFT JOIN album_photos ap ON ap.album_id = a.id
+     WHERE a.user_id = $1
+     GROUP BY a.id
+     ORDER BY a.created_at DESC
+     LIMIT 4
+     ```
+     (For the viewer route, keep the existing `album_access` join but `LIMIT 4`.)
+
+2. **Admin only — Admin tools card** (class `.acc-admin-tools-card`):
+   - Only rendered when `role === 'admin'`.
+   - Card has a `.d1-tape--red` (rose tape) decoration.
+   - A badge `ADMIN ONLY` appears in the card title row: mono 9px, letter-spacing 1.5px, `color: oklch(55% 0.20 25); border: 1px solid oklch(55% 0.20 25)`, positioned right.
+   - Tools rendered as a 2-column grid (class `.acc-tools-grid`): `display: grid; grid-template-columns: 1fr 1fr; gap: 8px`. The storage tile spans full width (`.acc-tool-tile.full { grid-column: span 2 }`).
+   - Five tool tiles (class `.acc-tool-tile`), each is an `<a href="[url]">`:
+     - Users → `/admin/users`: title `users`, count = total user count from DB.
+     - Manage tags → `/tags/manage`: title `manage tags`, count = total tag count.
+     - All albums → `/albums?scope=all`: title `all albums`, count = total album count across all users.
+     - All recipes → `/tags/recipes?scope=all`: title `all recipes`, count = total recipe count.
+     - Storage → `/admin/storage` (or `#` if not yet implemented): title `storage`, value = storage usage percentage. Full-width tile.
+   - Each tile CSS: `border: 1.5px solid var(--ink); border-radius: 0; background: var(--paper); padding: 10px 12px; text-decoration: none; display: block`. Hover: `transform: translate(-1px, -1px); box-shadow: 2px 2px 0 var(--ink)`.
+   - Tile title: `font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700`.
+   - Tile count/value: `font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent); float: right`.
+   - Tile description: `font-family: 'Kalam', cursive; font-size: 12px; color: var(--ink-soft); margin-top: 4px`.
+   - Admin tool counts require 4 new DB queries in `GET /account` (only executed when `role === 'admin'`):
+     ```js
+     role === 'admin' ? db.query('SELECT COUNT(*)::int AS n FROM users') : null,
+     role === 'admin' ? db.query('SELECT COUNT(*)::int AS n FROM tags') : null,
+     role === 'admin' ? db.query('SELECT COUNT(*)::int AS n FROM albums') : null,
+     role === 'admin' ? db.query('SELECT COUNT(*)::int AS n FROM tag_recipes') : null,
+     ```
+     Use `Promise.resolve(null)` for non-admin roles; check for `null` before rendering.
+   - Storage percentage: defer to `/* TODO: DS-ACC-5 storage tile */`; show `–%` for now.
+
+3. **Editor only — Shared-with card** (class `.acc-shared-card`):
+   - Only rendered when `role === 'editor'`.
+   - Card title: `shared with`.
+   - Shows a list of users the editor has explicitly shared albums with. Requires query:
+     ```sql
+     SELECT DISTINCT u.id, u.name, u.avatar_s3_key,
+            COUNT(DISTINCT aa.album_id)::int AS album_count
+     FROM album_access aa
+     JOIN albums a ON a.id = aa.album_id AND a.user_id = $1
+     JOIN users u ON u.id = aa.viewer_id
+     GROUP BY u.id
+     ORDER BY u.name ASC
+     ```
+   - Each row (class `.acc-shared-row`): mini avatar circle (24px) + user name (Kalam 14px) + `X albums` count (mono 10px `var(--ink-faint)`) + `revoke` button.
+   - The `revoke` button sends `DELETE /albums/access?viewer_id=[id]` (or equivalent endpoint — confirm with albums route). On success, the row is removed from the list without page reload.
+   - If no shares exist: `<p class="acc-shared-empty">not sharing with anyone yet</p>`.
+   - Card has `.d1-tape--cool` (blue tape).
+   - If the revoke endpoint does not yet exist, render the button as disabled with `/* TODO: DS-ACC-5 revoke endpoint */` comment.
+
+4. **Viewer only — Tag recipes card (prominent)** (class `.acc-viewer-recipes-card`):
+   - Only rendered when `role === 'viewer'`.
+   - Card title: `your tag recipes` with a `YOUR THING` badge: `background: oklch(96% 0.02 140); border: 1.5px solid var(--accent-3); color: var(--accent-3); font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; vertical-align: middle; margin-left: 8px`.
+   - Shows up to 4 recipe rows using the same `.acc-recipe-row` spec from DS-ACC-4 criterion 3.
+   - Footer row: `<a href="/tags/recipes/new" class="acc-pill-can">+ new recipe</a>` + `<a href="/tags/recipes?scope=community" class="acc-pill-cant" style="text-decoration:none">browse community recipes</a>`.
+   - Card has `.d1-tape--green` (sage tape).
+
+5. **Viewer only — "What you can't do here" card** (class `.acc-viewer-limits-card`):
+   - Only rendered when `role === 'viewer'`.
+   - Card background is light green tint: `background: oklch(97% 0.02 140); border: 1.5px solid var(--accent-3)`.
+   - Card title: `what you can't do here` in `var(--accent-3)`.
+   - Shows 4 muted pills (same `.acc-pill-cant` style): `upload photos`, `create albums`, `share albums`, `manage users`.
+   - Below the pills, a call to action: `<p class="acc-limits-cta">→ ask [admin_name] for editor rights</p>`. `[admin_name]` is fetched from DB: `SELECT name FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1`. The `→ ask ...` text is a `mailto:` link to the admin's email (fetched alongside their name).
+   - If no admin is found: show `→ contact the site owner for editor rights` (plain text).
+   - Card has no tape decoration.
+
+6. Role gating is enforced server-side for all cards in this story. Server only sends HTML for cards the current role is entitled to see. No client-side show/hide.
+
+7. The existing `buildQuickLinks` function and its rendered card are removed from `renderAccountPage`. Its functionality is absorbed into the role-specific cards (Albums grid links to `/albums`, Admin tools link to management pages, etc.). The "Change password" quick link moves into the "Your details" card footer as a plain `<a>` link: `<a href="/account/password" class="acc-details-pw-link">change password →</a>` in Caveat 14px `var(--accent)`.
+
+**Edge cases:**
+- Admin with 0 of everything: all tool counts show `0`. Storage shows `–%`.
+- Editor with 0 albums: albums card shows empty-state.
+- Editor shared with 0 people: shared-with card shows empty-state.
+- Viewer with 0 recipes: viewer recipes card shows "no recipes yet" with "+ new recipe" link.
+- Site with 0 admins (edge): viewer's "ask admin" card shows plain-text fallback.
+- Album count > 4: "N more →" link appears; only first 4 tiles render.
+
+**Access control:**
+- Admin tools card: rendered only for `role === 'admin'`; server enforces this.
+- Shared-with card: rendered only for `role === 'editor'`; server enforces this.
+- Viewer limit card: rendered only for `role === 'viewer'`; server enforces this.
+- The admin tool counts must not be exposed to non-admin roles (no data leakage via API).
+
+**Test data:**
+- Admin with 1, 4, 5+ albums; editor with 0, 4, 5+ albums.
+- Editor who has shared with 0, 1, 3+ users.
+- Viewer with 0 and 4+ recipes.
+- Site with a real admin to verify the "ask [name]" affordance.
+
+**Browser/device support:** Desktop + mobile. Tool tiles and album tiles reflow to 1 column on mobile.
+
+> **Technical notes:**
+>
+> Refactor `renderAccountPage` to use `buildRightColumn(role, data)` helper.
+>
+> Admin tool count queries must only run when `role === 'admin'`. Wrap in conditional inside `Promise.all`:
+> ```js
+> role === 'admin' ? db.query('SELECT COUNT(*)::int AS n FROM users') : Promise.resolve({ rows: [{ n: 0 }] }),
+> ```
+>
+> Shared-with query runs only for `role === 'editor'`. The `album_access` table already exists (used by permissions.js).
+>
+> Viewer admin-name query: run only when `role === 'viewer'`. Fetches `name` and `email` from `users WHERE role = 'admin' ORDER BY id ASC LIMIT 1`.
+>
+> `_albums` is already fetched in the existing `Promise.all` (currently unused). Wire it into the albums grid card. Extend the query with `photo_count` aggregate (see criterion 1 SQL above) and change `LIMIT` to 4.
+>
+> `/albums/access` (revoke) endpoint: check `src/routes/albums.js` for whether a `DELETE` endpoint for individual access grants exists. If not, mark with `/* TODO */` and disable the revoke button.
+
+---
+
+**DS-ACC-6 — Design token alignment and missing CSS**
+As a developer, the account page CSS must declare all required design tokens and card-chrome classes precisely matching the design handoff, so all account page components render with the correct paper aesthetic.
+
+**Acceptance criteria:**
+
+1. The following design tokens are added to the `:root` block in `public/style.css` (currently only `--paper`, `--paper-2`, `--ink`, `--ink-soft`, `--ink-faint`, `--ink-ghost`, `--accent`, `--accent-cool`, `--danger` exist):
+   ```css
+   --accent-2:  oklch(62% 0.14 220);  /* cool blue — editor badge, editor tape */
+   --accent-3:  oklch(64% 0.13 140);  /* sage green — viewer badge, can-pills */
+   --paper-3:   #e3ddcb;              /* darker paper — some card accents */
+   ```
+   Note: `--accent-cool` already exists and equals `oklch(62% 0.14 220)`. Add `--accent-2` as an alias pointing to the same value so the design system names match the handoff vocabulary without breaking existing `--accent-cool` usages.
+
+2. All account page cards (`.acc-card-block`) have `border-radius: 0` explicitly declared. Verify no inherited `border-radius` from global `.card` styles applies.
+
+3. The `.role-badge` class (line 1801 in `style.css`) is updated to add `letter-spacing: 2px`. A new modifier `.role-badge.admin` is updated to remove the solid accent background (was `background: var(--accent)`) and instead use `color: oklch(55% 0.20 25); border-color: oklch(55% 0.20 25); background: oklch(96% 0.02 25)` matching the design. New modifiers are added:
+   - `.role-badge.editor { border-color: var(--accent-2); background: oklch(96% 0.02 220); color: var(--accent-2) }`
+   - `.role-badge.viewer { border-color: var(--accent-3); background: oklch(96% 0.02 140); color: var(--accent-3) }`
+
+4. Permission strip can-pill and can't-pill styles (DS-ACC-3) are added. The existing `.acc-perm` / `.acc-perm.yes` classes remain for backward compatibility but are no longer used on the account page.
+
+5. The `.acc-stat-tile` (DS-ACC-2) and its child classes `.acc-stat-num` / `.acc-stat-label` / `.acc-stat-tile--muted` are added to `style.css` with the exact values specified in DS-ACC-2.
+
+6. The `.acc-tool-tile` class (DS-ACC-5) includes the hard-edge ink shadow on hover: `transform: translate(-1px, -1px); box-shadow: 2px 2px 0 var(--ink)`. No `border-radius`. No soft `box-shadow`.
+
+7. No `border-radius` is ever applied to `.acc-card-block`, `.acc-tool-tile`, `.acc-album-tile`, or `.acc-recipe-row`. Pills (`.acc-pill-can`, `.acc-pill-cant`) use `border-radius: 999px`. Avatar uses `border-radius: 50%`. Those are the only border-radius values permitted on the account page.
+
+8. The `field-row` label (`.acc-field-label`) currently uses `font-size: 0.8rem`. Change to `font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase` to match the handoff spec for mono kicker labels (min-width stays 100px, but the handoff calls for `min-width: 100px` exactly).
+
+9. The page body for `/account` should apply the dotted paper background (criterion 9 from DS-ACC-1) without affecting other routes. This can be done by adding class `.acc-page` to the `<body>` tag via a route-level CSS addition, or by scoping the background to `.acc-page-bg` wrapper. Preferred approach: add `class="acc-page"` to a wrapper `<div>` wrapping the entire account page body, not to `<body>`.
+
+10. No soft Gaussian `box-shadow` is used anywhere on the account page. The only shadow permitted is the hard-edge `2px 2px 0 var(--ink)` on tool-tile and album-tile hover states.
+
+11. No emoji are used. The only glyphs used in the account page are: `★ ✎ ◎ ↻ ✓ ✗ →` (from the existing Unicode set already in use on the site).
+
+**Edge cases:**
+- `--accent-2` alias must not break existing usages of `--accent-cool` (different name, same value; both declarations coexist).
+- If a future browser does not support `oklch()`, the fallback is the nearest hex approximation. Document this as a known limitation (no polyfill required for V1).
+
+**Access control:** CSS-only story; no access control concerns.
+
+**Test data:** Visual review with admin, editor, and viewer accounts. Check: role badge colors, can/can't pill colors, stat tile layout, card borders (no border-radius).
+
+**Browser/device support:** Desktop (Chrome, Firefox, Safari) and mobile. `oklch()` is supported in all modern browsers (Chrome 111+, Firefox 113+, Safari 15.4+).
+
+> **Technical notes:**
+>
+> All CSS changes in `public/style.css`. Group under a `/* ── Account page design alignment (DS-ACC) ── */` comment block. Keep existing `.acc-section`, `.acc-perm`, `.acc-field-*` classes intact (used by sub-pages and for backward compat during transition).
+>
+> The `--accent-cool` → `--accent-2` alias: add `--accent-2: var(--accent-cool)` to `:root` so the handoff naming works without a search-replace.
+>
+> Check for any `border-radius` on global `.card` class (style.css line 99) — the `.acc-card-block` class must explicitly override it with `border-radius: 0`.
+>
+> QA visual checklist (screenshot comparison targets): header 3-column grid, 130px avatar with hatch, role badge rotation, stats strip with vertical rules, permission strip with washi-tape, two-column body layout, tool-tile hover shadow, recipe row layout.
