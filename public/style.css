@@ -1820,3 +1820,134 @@ tr:hover .tm-row-actions { opacity:1; }
 .acc-dz .acc-section-h { border-bottom-color: var(--danger); color: var(--danger); }
 .acc-dz-form { display: flex; flex-direction: column; gap: 0.75rem; }
 .acc-dz-label { font-family: 'Kalam', cursive; font-size: 0.9rem; }
+
+/* ── ACC-2/3: Editable profile fields ─────────────────────────────────── */
+.acc-field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed var(--ink);
+  min-height: 44px;
+}
+.acc-field-row:last-child { border-bottom: none; }
+
+.acc-field-label {
+  width: 120px;
+  flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--ink);
+  opacity: 0.7;
+}
+
+.acc-field-val {
+  flex: 1;
+  cursor: pointer;
+  border-bottom: 1.5px dashed transparent;
+  transition: border-color 0.15s;
+  padding: 2px 4px;
+  font-family: 'Kalam', cursive;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.acc-field-val:hover { border-bottom-color: var(--ink); }
+
+.acc-field-editing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+.acc-field-editing input,
+.acc-field-editing select {
+  flex: 1;
+  font-family: 'Kalam', cursive;
+  font-size: 1rem;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 4px 8px;
+  min-height: 44px;
+}
+.acc-field-editing .btn-save,
+.acc-field-editing .btn-cancel {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 8px;
+}
+
+.acc-field-error {
+  font-size: 0.82rem;
+  color: var(--danger);
+  margin-top: 2px;
+  display: block;
+}
+
+.acc-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+.acc-toggle input[type="checkbox"] {
+  width: 2.5rem;
+  height: 1.4rem;
+  cursor: pointer;
+  accent-color: var(--ink);
+}
+
+/* ── ACC-3: Avatar wrapper ─────────────────────────────────────────────── */
+.acc-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.acc-avatar-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  object-fit: cover;
+  display: block;
+}
+.acc-avatar-change,
+.acc-avatar-remove {
+  position: absolute;
+  bottom: -6px;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  border-radius: 50%;
+  padding: 3px;
+  min-width: 28px;
+  min-height: 28px;
+  cursor: pointer;
+}
+/* Expand touch target to ≥ 44×44 px without changing visual size (ACC-3 mobile) */
+.acc-avatar-change::before,
+.acc-avatar-remove::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.acc-avatar-change { right: -6px; }
+.acc-avatar-remove { left: -6px; }
+.acc-avatar-error {
+  font-size: 0.8rem;
+  color: var(--danger);
+  margin-top: 4px;
+}
+
+/* ── Nav avatar image ──────────────────────────────────────────────────── */
+.nav-avatar-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  object-fit: cover;
+  cursor: pointer;
+  vertical-align: middle;
+}

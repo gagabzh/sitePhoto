@@ -23,7 +23,10 @@ function page(title, body, session, socket = false) {
         ${session.role !== 'viewer' ? '<a href="/travels">Travels</a>' : ''}
         <a href="/map">Map</a>
         <div class="nav-avatar-wrap">
-          <span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>
+          ${session.avatarS3Key
+  ? `<img src="/account/avatar" class="nav-avatar nav-avatar-img" role="button" aria-label="Account menu" alt="">`
+  : `<span class="nav-avatar" role="button" aria-label="Account menu">${initial}</span>`
+}
           <div class="nav-menu" role="menu">
             <a href="/account" role="menuitem">Account</a>
             <a href="/tags/recipes" role="menuitem">My Recipes</a>
