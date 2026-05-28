@@ -25,9 +25,9 @@ const { v4: uuidv4 } = require('uuid');
 
 beforeEach(() => jest.resetAllMocks());
 
-const USER_SESSION   = { userId: 10, name: 'Saev',  role: 'editor' };
-const ADMIN_SESSION  = { userId: 1,  name: 'Admin', role: 'admin' };
-const VIEWER_SESSION = { userId: 20, name: 'Bob',   role: 'viewer' };
+const USER_SESSION   = { userId: 10, name: 'Saev',  role: 'editor', csrf: 'test-csrf' };
+const ADMIN_SESSION  = { userId: 1,  name: 'Admin', role: 'admin',  csrf: 'test-csrf' };
+const VIEWER_SESSION = { userId: 20, name: 'Bob',   role: 'viewer', csrf: 'test-csrf' };
 
 function makeApp(sessionData, sessionID = 'test-sid') {
   const app = express();
@@ -130,7 +130,7 @@ describe('GET /account', () => {
   // [0] db.query → uploads stat  (SELECT COUNT FROM photos WHERE user_id)
   // [1] db.query → albums stat   (SELECT COUNT FROM albums WHERE user_id)
   // [2] db.query → recipes stat  (SELECT COUNT FROM tag_recipes WHERE user_id)
-  // [3] db.query → sessions      (SELECT sid, expire FROM session WHERE userId)
+  // [3] db.query → sessions      (SELECT sid, sess, expire FROM session WHERE userId)
   // [4] db.query → recent uploads (SELECT ... FROM photos ORDER BY created_at LIMIT 10)
   // [5] db.query → albums list   (SELECT id, title FROM albums WHERE user_id)
   // [6] db.query → profile + prefs (SELECT u.name, u.email, u.avatar_s3_key, ... FROM users JOIN user_prefs)
@@ -140,7 +140,7 @@ describe('GET /account', () => {
   // [0] db.query → uploads stat  (via album_access JOIN)
   // [1] db.query → albums stat   (SELECT COUNT FROM album_access WHERE viewer_id)
   // [2] db.query → recipes stat  (SELECT COUNT FROM tag_recipes WHERE user_id)
-  // [3] db.query → sessions      (SELECT sid, expire FROM session WHERE userId)
+  // [3] db.query → sessions      (SELECT sid, sess, expire FROM session WHERE userId)
   // [4] Promise.resolve          — skips db.query entirely
   // [5] db.query → albums list   (SELECT ... FROM albums JOIN album_access WHERE viewer_id)
   // [6] db.query → profile + prefs
@@ -156,7 +156,7 @@ describe('GET /account', () => {
       .mockResolvedValueOnce({ rows: [{ n: albums }] })
       // [2] stats: recipes count
       .mockResolvedValueOnce({ rows: [{ n: recipes }] })
-      // [3] sessions
+      // [3] sessions (ACC-4: rows include sess blob)
       .mockResolvedValueOnce({ rows: sessions })
       // [4] recent uploads
       .mockResolvedValueOnce({ rows: recentUploads })
@@ -173,25 +173,111 @@ describe('GET /account', () => {
     expect(res.text).toContain('Saev');
   });
 
-  it('shows sessions section when user has multiple active sessions', async () => {
+  it('shows sessions section with current session when only one session exists', async () => {
+    // ACC-4: sessions section is always rendered, even with just 1 session
     mockAccountQueries({
       sessions: [
-        { sid: 'test-sid',  expire: new Date('2026-06-01') },
-        { sid: 'other-sid', expire: new Date('2026-06-01') },
+        { sid: 'test-sid', sess: { userId: '10', userAgent: 'Chrome/120', loginIp: '1.2.3.4' }, expire: new Date('2026-06-01') },
       ],
     });
     const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
     expect(res.status).toBe(200);
     expect(res.text).toContain('Active sessions');
+    expect(res.text).toContain('current session');
   });
 
-  it('does not show sessions section when only one session exists', async () => {
+  it('shows sessions section when user has multiple active sessions', async () => {
     mockAccountQueries({
-      sessions: [{ sid: 'test-sid', expire: new Date('2026-06-01') }],
+      sessions: [
+        { sid: 'test-sid',  sess: { userId: '10', userAgent: 'Chrome/120', loginIp: '1.2.3.4' }, expire: new Date('2026-06-01') },
+        { sid: 'other-sid', sess: { userId: '10', userAgent: 'Firefox/90', loginIp: '1.2.3.5' }, expire: new Date('2026-06-01') },
+      ],
     });
     const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
     expect(res.status).toBe(200);
-    expect(res.text).not.toContain('Active sessions');
+    expect(res.text).toContain('Active sessions');
+    expect(res.text).toContain('current session');
+    expect(res.text).toContain('Revoke');
+  });
+
+  it('shows "No other active sessions" bulk button when only one session', async () => {
+    mockAccountQueries({
+      sessions: [
+        { sid: 'test-sid', sess: { userId: '10', userAgent: null, loginIp: null }, expire: new Date('2026-06-01') },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('No other active sessions');
+  });
+
+  it('shows "Sign out all other devices" when other sessions exist', async () => {
+    mockAccountQueries({
+      sessions: [
+        { sid: 'test-sid',  sess: { userId: '10', userAgent: null, loginIp: null }, expire: new Date('2026-06-01') },
+        { sid: 'other-sid', sess: { userId: '10', userAgent: null, loginIp: null }, expire: new Date('2026-06-01') },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Sign out all other devices');
+  });
+
+  it('displays UA label for known browser', async () => {
+    mockAccountQueries({
+      sessions: [
+        {
+          sid: 'test-sid',
+          sess: { userId: '10', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', loginIp: '1.2.3.4' },
+          expire: new Date('2026-06-01'),
+        },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Chrome on macOS');
+  });
+
+  it('shows "Unknown device" for session without userAgent', async () => {
+    mockAccountQueries({
+      sessions: [
+        { sid: 'test-sid', sess: { userId: '10' }, expire: new Date('2026-06-01') },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Unknown device');
+  });
+
+  it('shows IP address in session row', async () => {
+    mockAccountQueries({
+      sessions: [
+        { sid: 'test-sid', sess: { userId: '10', userAgent: null, loginIp: '192.168.1.1' }, expire: new Date('2026-06-01') },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('192.168.1.1');
+  });
+
+  it('shows "Unknown location" when no loginIp stored', async () => {
+    mockAccountQueries({
+      sessions: [
+        { sid: 'test-sid', sess: { userId: '10', userAgent: null, loginIp: null }, expire: new Date('2026-06-01') },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Unknown location');
+  });
+
+  it('sessions query uses string userId comparison', async () => {
+    mockAccountQueries({ sessions: [] });
+    await request(makeApp(USER_SESSION, 'test-sid')).get('/account');
+    // The sessions query is the 4th call (index 3)
+    const sessionCall = db.query.mock.calls[3];
+    expect(sessionCall[0]).toMatch(/sess->>'userId'\s*=\s*\$1/);
+    expect(sessionCall[1]).toEqual([String(USER_SESSION.userId)]);
   });
 
   it('admin sees admin quick links', async () => {
@@ -278,7 +364,164 @@ describe('GET /account', () => {
   });
 });
 
-// ── POST /account/sessions/:sid/revoke ────────────────────────────────────────
+// ── ACC-4: DELETE /account/sessions/:sid — individual revoke ──────────────────
+
+describe('DELETE /account/sessions/:sid', () => {
+  it('returns 200 JSON { ok: true } on successful revoke', async () => {
+    db.query.mockResolvedValueOnce({ rowCount: 1 });
+
+    const res = await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions/other-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+  });
+
+  it('uses correct parameterized SQL with ownership and not-current guards', async () => {
+    db.query.mockResolvedValueOnce({ rowCount: 1 });
+
+    await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions/other-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    const [sql, params] = db.query.mock.calls[0];
+    // Must use $1 for target sid, $2 for userId (string), $3 for current sessionID
+    expect(sql).toMatch(/DELETE FROM session/);
+    expect(sql).toMatch(/\$1/);
+    expect(sql).toMatch(/\$2/);
+    expect(sql).toMatch(/\$3/);
+    expect(params[0]).toBe('other-sid');
+    expect(params[1]).toBe(String(USER_SESSION.userId));
+    expect(params[2]).toBe('current-sid');
+  });
+
+  it('returns 403 when trying to revoke own current session', async () => {
+    const res = await request(makeApp(USER_SESSION, 'my-sid'))
+      .delete('/account/sessions/my-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/current session/i);
+    // No db.query call since guard fires before DB
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when session not found or wrong owner', async () => {
+    // rowCount === 0 means DELETE matched nothing (wrong owner or already gone)
+    db.query.mockResolvedValueOnce({ rowCount: 0 });
+
+    const res = await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions/nonexistent-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it('returns 401 when session has no userId (unauthenticated)', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => {
+      // No userId — simulates unauthenticated state
+      req.session   = { csrf: 'test-csrf' };
+      req.sessionID = 'anon-sid';
+      next();
+    });
+    app.use(require('../../routes/account'));
+    app.use((err, req, res, _next) => res.status(500).send(err.message));
+
+    const res = await request(app)
+      .delete('/account/sessions/some-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(401);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('SQL uses string cast for userId', async () => {
+    db.query.mockResolvedValueOnce({ rowCount: 1 });
+
+    await request(makeApp({ ...USER_SESSION, userId: 42 }, 'current-sid'))
+      .delete('/account/sessions/other-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    const params = db.query.mock.calls[0][1];
+    expect(params[1]).toBe('42');
+  });
+});
+
+// ── ACC-4: DELETE /account/sessions — bulk revoke ─────────────────────────────
+
+describe('DELETE /account/sessions (bulk)', () => {
+  it('returns 200 JSON { revoked: N } on success', async () => {
+    db.query.mockResolvedValueOnce({ rowCount: 3 });
+
+    const res = await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ revoked: 3 });
+  });
+
+  it('returns { revoked: 0 } when no other sessions exist', async () => {
+    db.query.mockResolvedValueOnce({ rowCount: 0 });
+
+    const res = await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ revoked: 0 });
+  });
+
+  it('uses correct parameterized SQL excluding current session', async () => {
+    db.query.mockResolvedValueOnce({ rowCount: 2 });
+
+    await request(makeApp(USER_SESSION, 'keep-this-sid'))
+      .delete('/account/sessions')
+      .set('x-csrf-token', 'test-csrf');
+
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toMatch(/DELETE FROM session/);
+    expect(sql).toMatch(/sess->>'userId'\s*=\s*\$1/);
+    expect(sql).toMatch(/sid != \$2/);
+    expect(params[0]).toBe(String(USER_SESSION.userId));
+    expect(params[1]).toBe('keep-this-sid');
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => {
+      req.session   = { csrf: 'test-csrf' };
+      req.sessionID = 'anon-sid';
+      next();
+    });
+    app.use(require('../../routes/account'));
+    app.use((err, req, res, _next) => res.status(500).send(err.message));
+
+    const res = await request(app)
+      .delete('/account/sessions')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(401);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when db.query rejects', async () => {
+    db.query.mockRejectedValueOnce(new Error('db error'));
+
+    const res = await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(500);
+  });
+});
+
+// ── Legacy POST /account/sessions/:sid/revoke ─────────────────────────────────
 
 describe('POST /account/sessions/:sid/revoke', () => {
   it('deletes the specified session and redirects to /account', async () => {
@@ -307,8 +550,8 @@ describe('POST /account/sessions/:sid/revoke', () => {
   });
 
   it('allows revoking the current session (self-logout)', async () => {
-    // The implementation issues a DELETE regardless of whether :sid === req.sessionID.
-    // Self-revocation is allowed by design; a guard can be added later if desired.
+    // The legacy implementation issues a DELETE regardless of whether :sid === req.sessionID.
+    // Self-revocation is allowed by design in the legacy form endpoint.
     db.query.mockResolvedValueOnce({ rows: [] });
     const res = await request(makeApp(USER_SESSION, 'test-sid'))
       .post('/account/sessions/test-sid/revoke');
@@ -321,7 +564,7 @@ describe('POST /account/sessions/:sid/revoke', () => {
   });
 });
 
-// ── POST /account/sessions/revoke-others ─────────────────────────────────────
+// ── Legacy POST /account/sessions/revoke-others ───────────────────────────────
 
 describe('POST /account/sessions/revoke-others', () => {
   it('deletes all sessions except current and redirects to /account', async () => {
