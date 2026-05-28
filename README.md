@@ -1,15 +1,66 @@
 # sitephoto
 
-A self-hosted photo gallery with albums, tags, timeline, GPS map, Nextcloud integration, and local AI features (duplicate detection, people identification).
+A self-hosted photo gallery built with Express.js and PostgreSQL. It supports albums, tags, GPS map, timeline, access-controlled sharing, and async AI features (duplicate detection, people identification). Photos are stored in S3-compatible object storage. The app runs on two OVH Public Cloud instances connected over a private vRack: one always-on instance for the web app, one shelved-when-idle instance for the AI worker.
 
 ---
 
-## Requirements
+## Features
 
-- A Linux VPS (Ubuntu 22.04 or later recommended)
+**Account** — profile editing, avatar upload/removal, session management (list and revoke), account self-deletion with typed confirmation, role-aware identity card (admin / editor / viewer)
+
+**User management (admin)** — create, edit, delete users; reset passwords
+
+**Photos** — single and batch upload, tagging, edit, delete, EXIF date extraction, select-all for bulk operations
+
+**Albums** — create, edit, delete albums; add/remove photos; grant/revoke per-album viewer access
+
+**Browsing** — browse albums, filter by tag, access-denied handling for protected content
+
+**Map & GPS** — add coordinates to photos, view location, browse and filter photos on a map
+
+**Timeline** — chronological view with album/tag/date-range filters
+
+**Infrastructure** — S3-compatible object storage, async BullMQ queue (upload returns immediately), real-time WebSocket notifications (socket.io), on-demand worker lifecycle (unshelve on job / shelve after idle), PostgreSQL session persistence, nightly instance scheduling via GitHub Actions
+
+---
+
+## Architecture
+
+Instance-1 (always on) runs the Express app, PostgreSQL, Redis, and Caddy. Instance-2 (shelved when idle) runs the BullMQ worker and Ollama. Both instances share an OVH Object Storage bucket over the public internet; internal traffic (Redis, worker callbacks) stays on the private vRack (`10.0.0.0/24`). The worker POSTs results back to Instance-1's internal API, which then pushes a WebSocket notification to the browser.
+
+See [docs/architecture/architecture-v4.md](docs/architecture/architecture-v4.md) for diagrams and full design notes.
+
+---
+
+## Development setup
+
+### Full local stack (recommended)
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+# App at http://localhost, MinIO at http://localhost:9001
+```
+
+### Without Docker
+
+```bash
+npm install
+npm run dev     # nodemon, port 3000
+npm test        # Jest test suite
+npm run lint    # ESLint
+```
+
+A PostgreSQL instance must be running and `DATABASE_URL` must be set in `.env`.
+
+---
+
+## Requirements (production)
+
+- Linux VPS — Ubuntu 22.04 or later
 - Docker and Docker Compose v2
-- A domain name with an A record pointing to the server
-- Ports 80 and 443 open on the firewall
+- Domain name with an A record pointing to the server
+- Ports 80 and 443 open
 
 ---
 
@@ -17,14 +68,12 @@ A self-hosted photo gallery with albums, tags, timeline, GPS map, Nextcloud inte
 
 ### 1 — Point your domain to the server
 
-In your DNS zone, add:
-
 ```
 A   @    <VPS_IP>
 A   www  <VPS_IP>   (optional)
 ```
 
-Wait for propagation (a few minutes to 1 hour) before starting the app, otherwise Let's Encrypt certificate issuance will fail.
+Wait for DNS propagation before starting — Let's Encrypt certificate issuance will fail if the domain does not resolve yet.
 
 ### 2 — Install Docker
 
@@ -48,16 +97,7 @@ cp .env.example .env
 nano .env
 ```
 
-| Variable | Description |
-|---|---|
-| `DOMAIN` | Your domain name (e.g. `photos.example.com`) |
-| `DB_PASSWORD` | PostgreSQL password — use a strong random value |
-| `SESSION_SECRET` | Secret used to sign sessions — use a strong random value |
-| `SEED_NAME` | Name of the first admin account |
-| `SEED_EMAIL` | Email of the first admin account |
-| `SEED_PASS` | Password of the first admin account |
-
-Generate strong secrets with:
+See the environment variables table below. Generate secrets with:
 
 ```bash
 openssl rand -base64 32
@@ -69,13 +109,46 @@ openssl rand -base64 32
 docker compose up -d --build
 ```
 
-Caddy automatically obtains a TLS certificate from Let's Encrypt on the first request. The site will be available at `https://<DOMAIN>`.
-
-Check that everything started correctly:
+Caddy obtains a TLS certificate automatically on the first request. Check logs with:
 
 ```bash
 docker compose logs -f
 ```
+
+---
+
+## Environment variables
+
+| Variable | Description |
+|---|---|
+| `DOMAIN` | Domain name (e.g. `photos.example.com`). Use `localhost` for local dev. |
+| `DB_PASSWORD` | PostgreSQL password — use a strong random value |
+| `DATABASE_URL` | Full PostgreSQL connection string — replace `<DB_PASSWORD>` with the value above |
+| `SESSION_SECRET` | Secret used to sign sessions — use a strong random value |
+| `SEED_NAME` | Display name for the first admin account |
+| `SEED_EMAIL` | Email for the first admin account |
+| `SEED_PASS` | Password for the first admin account |
+| `OLLAMA_HOST` | Host where Ollama is reachable (default: `host-gateway` for Docker) |
+| `OLLAMA_PORT` | Ollama port (default: `11434`) |
+| `OLLAMA_MODEL` | Vision model name (e.g. `llava` or `moondream`) |
+| `REDIS_BIND_IP` | vRack private IP of Instance-1 — Redis binds to loopback + this IP |
+| `REDIS_HOST` | Redis host used by the worker (Instance-2); app uses Docker service name |
+| `REDIS_PORT` | Redis port (default: `6379`) |
+| `REDIS_PASSWORD` | Redis password |
+| `WORKER_API_SECRET` | Shared secret between Instance-1 and the worker — generate with `openssl rand -hex 32` |
+| `INTERNAL_API_PORT` | Port for the internal API that the worker posts results to (Instance-1 only) |
+| `S3_ENDPOINT` | S3-compatible endpoint URL (e.g. `https://s3.gra.cloud.ovh.net`) |
+| `S3_REGION` | S3 region (e.g. `gra`) |
+| `S3_BUCKET` | S3 bucket name |
+| `S3_ACCESS_KEY` | S3 access key |
+| `S3_SECRET_KEY` | S3 secret key |
+| `OVH_APP_KEY` | OVH API application key (for Instance-2 lifecycle management) |
+| `OVH_APP_SECRET` | OVH API application secret |
+| `OVH_CONSUMER_KEY` | OVH API consumer key |
+| `OVH_PROJECT_ID` | OVH Public Cloud project ID |
+| `INSTANCE2_ID` | UUID of Instance-2 (AI worker) |
+| `INSTANCE2_IDLE_MINUTES` | Minutes of inactivity before Instance-2 is shelved (default: `10`) |
+| `INSTANCE1_ID` | UUID of Instance-1 (used by the nightly shelve/unshelve GitHub Action) |
 
 ---
 
@@ -114,101 +187,37 @@ docker compose down -v
 
 ## Backup
 
-### Database
-
 ```bash
+# Database
 docker compose exec db pg_dump -U sitephoto sitephoto > backup_$(date +%Y%m%d).sql
-```
 
-### Uploaded photos
-
-The `uploads/` directory on the host contains all photo files. Copy it to a safe location:
-
-```bash
-tar -czf uploads_$(date +%Y%m%d).tar.gz uploads/
+# Photos (stored in S3 — back up via your object storage provider or use rclone)
 ```
 
 ---
 
 ## AI features (optional)
 
-Two AI features are available under **Admin → AI Tools**:
+Two AI features are available under **Admin -> AI Tools**:
 
-- **Duplicate detection** — perceptual hash (dHash) scan over all photos; groups near-identical images so you can delete unwanted copies. Works with no extra setup.
-- **People identification** — sends a photo to a local vision model and matches faces against your existing *people* tags. Requires Ollama (see below).
+- **Duplicate detection** — perceptual hash (dHash) scan over all photos; groups near-identical images for review. No extra setup required.
+- **People identification** — sends photos to a local vision model (Ollama) and matches faces against existing people tags. Requires Ollama running on the host.
+
+If Ollama is not running, duplicate detection still works and people identification returns a graceful error.
 
 ### Installing Ollama
 
-Ollama runs on the **host machine**, outside Docker.
-
 ```bash
-# 1. Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
-
-# 2. Pull a vision model
-ollama pull llava          # ~4 GB, best quality, requires a GPU
-# or a lighter alternative:
-ollama pull moondream      # ~1.7 GB, works on CPU (slower)
+ollama pull llava       # ~4 GB, requires GPU
+# or: ollama pull moondream  (~1.7 GB, CPU-friendly)
 ```
 
-### Allow Docker to reach Ollama
-
-By default Ollama binds only to `127.0.0.1`, which Docker containers cannot reach.
-You must configure it to listen on all interfaces **before** starting it:
-
-```bash
-# If Ollama runs as a systemd service (default on Linux):
-sudo mkdir -p /etc/systemd/system/ollama.service.d
-sudo tee /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
-[Service]
-Environment="OLLAMA_HOST=0.0.0.0"
-EOF
-sudo systemctl daemon-reload
-sudo systemctl restart ollama
-
-# Verify it's reachable from the Docker bridge IP:
-curl http://172.17.0.1:11434/api/tags
-```
-
-> **Quick test (no systemd change):** stop the service and run manually:
-> ```bash
-> sudo systemctl stop ollama
-> OLLAMA_HOST=0.0.0.0 ollama serve
-> ```
-
-### Connecting the Docker container
-
-`docker-compose.yml` already includes the required settings (no change needed):
-
-```yaml
-# app service — already present in docker-compose.yml
-extra_hosts:
-  - "host-gateway:host-gateway"
-environment:
-  OLLAMA_HOST: host-gateway
-  OLLAMA_PORT: 11434
-```
-
-If Ollama is not running, duplicate detection still works (pHash only) and people identification returns a graceful error — the app never crashes.
+Ollama must listen on all interfaces so Docker can reach it — set `OLLAMA_HOST=0.0.0.0` in the Ollama systemd override or run it manually with `OLLAMA_HOST=0.0.0.0 ollama serve`.
 
 ---
 
-## Development
+## Documentation
 
-### With Docker
-
-```bash
-cp .env.example .env   # DOMAIN=localhost is the default
-docker compose up -d --build
-# App available at http://localhost
-```
-
-### Without Docker
-
-```bash
-npm install
-npm run dev     # starts the server with nodemon on port 3000
-npm test        # runs the test suite
-```
-
-A local PostgreSQL instance must be running and accessible via the `DATABASE_URL` environment variable.
+- Feature backlog and status: [docs/backlog/STATUS.md](docs/backlog/STATUS.md)
+- Architecture diagrams and design notes: [docs/architecture/architecture-v4.md](docs/architecture/architecture-v4.md)
