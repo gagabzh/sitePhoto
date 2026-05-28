@@ -28,7 +28,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | ACC-1 | Role-aware identity card | Account | Done | #78 |
 | ACC-2 | Inline profile editing | Account | Done | #81 |
 | ACC-3 | Avatar upload and removal | Account | Done | #81 |
-| ACC-4 | Session management | Account | Done | #82 (pending merge) |
+| ACC-4 | Session management | Account | Done | #82 |
 | ACC-5 | Danger zone | Account | Done | #80 |
 | US-P1 | Upload a photo | Photos | Done | — |
 | US-P2 | Tag a photo | Photos | Done | — |
@@ -78,13 +78,13 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-NC3 | Manage Nextcloud link | Nextcloud | Backlog | — |
 | US-NC4 | Import a Nextcloud shared folder | Nextcloud | Backlog | — |
 | US-NC5 | Import progress feedback | Nextcloud | Backlog | — |
-| AI-1 | Duplicate photo detection | Local AI | Backlog | — |
-| AI-2 | People identification and tagging | Local AI | Backlog | — |
+| AI-1 | Duplicate photo detection | Local AI | Done | admin-ai.js |
+| AI-2 | People identification and tagging | Local AI | Done | worker.js |
 | AI-3 | Manual person tagging | Local AI | Backlog | — |
 | AI-4 | AI learns from manual tags | Local AI | Backlog | — |
 | IQ-1 | Application security hardening | Infrastructure | Backlog | — |
 | IQ-2 | Dependency CVE monitoring | Infrastructure | Backlog | — |
-| IQ-3 | Linter | Infrastructure | Backlog | — |
+| IQ-3 | Linter | Infrastructure | Done | package.json |
 | IQ-4 | Code quality metrics | Infrastructure | Backlog | — |
 | IQ-5 | VPS hardening | Infrastructure | Done | — |
 | S3-1 | Photos stored in Object Storage | Infrastructure | Done | — |
@@ -99,13 +99,13 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | INF-1 | Instance-1 right-sizing | Infrastructure | Done | #73 |
 | INF-2 | Persist sessions in PostgreSQL | Infrastructure | Done | #76 |
 | INF-3 | Nightly shelve/unshelve of Instance-1 via GitHub Actions | Infrastructure | Done | #79 |
-| HRD-1 | Normalise cancel-button unicode character | Hardening | Backlog | follow-up from PR #81 |
-| HRD-2 | Improve PATCH /account name validation error message | Hardening | Backlog | follow-up from PR #81 |
-| HRD-3 | Fix boolean coercion for notif_enabled in PATCH /account | Hardening | Backlog | follow-up from PR #81 |
-| HRD-4 | Apply esc() to data-current attribute for notif_enabled | Hardening | Backlog | follow-up from PR #81 |
-| HRD-5 | Add test for sharp failure path on corrupt image input | Hardening | Backlog | follow-up from PR #81 |
-| HRD-6 | Remove S3 key from POST /account/avatar JSON response | Hardening | Backlog | follow-up from PR #81 |
-| HRD-7 | Rate-limit PATCH /account to prevent email enumeration | Hardening | Backlog | follow-up from PR #81 |
+| HRD-1 | Normalise cancel-button unicode character | Hardening | Done | #84 |
+| HRD-2 | Improve PATCH /account name validation error message | Hardening | Done | #84 |
+| HRD-3 | Fix boolean coercion for notif_enabled in PATCH /account | Hardening | Done | #84 |
+| HRD-4 | Apply esc() to data-current attribute for notif_enabled | Hardening | Done | #84 |
+| HRD-5 | Add test for sharp failure path on corrupt image input | Hardening | Done | #84 |
+| HRD-6 | Remove S3 key from POST /account/avatar JSON response | Hardening | Done | #84 |
+| HRD-7 | Rate-limit PATCH /account to prevent email enumeration | Hardening | Done | #84 |
 | HRD-8 | Extract session TTL to a shared constant | Hardening | Backlog | follow-up from PR #82 |
 | HRD-9 | Add CSRF 403 tests for session revoke endpoints | Hardening | Backlog | follow-up from PR #82 |
 | HRD-10 | Unit-test parseUserAgent and relativeTime helpers | Hardening | Backlog | follow-up from PR #82 |
