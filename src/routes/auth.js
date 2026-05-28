@@ -39,9 +39,11 @@ router.post('/login', loginLimiter, wrapAsync(async (req, res) => {
     const returnTo = req.session.returnTo;
     req.session.regenerate((err) => {
       if (err) return res.redirect('/login?error=1');
-      req.session.userId = user.id;
-      req.session.name = user.name;
-      req.session.role = user.role;
+      req.session.userId    = user.id;
+      req.session.name      = user.name;
+      req.session.role      = user.role;
+      req.session.userAgent = req.headers['user-agent'] || null;
+      req.session.loginIp   = req.ip || null;
       res.redirect(returnTo || (user.role === 'viewer' ? '/albums' : '/photos'));
     });
   } else {

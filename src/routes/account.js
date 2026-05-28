@@ -3,10 +3,23 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
+const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { page, esc } = require('../layout');
 const { wrapAsync } = require('../middleware');
 const { deletePhoto, uploadPhoto, streamPhoto } = require('../storage');
+
+// ── ACC-4: Rate limiter for session revoke endpoints ──────────────────────────
+
+const sessionRevokeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({ error: 'Too many requests — try again later.' });
+  },
+});
 
 router.get('/', (req, res) => {
   const isAdmin = req.session.role === 'admin';
@@ -20,7 +33,7 @@ router.get('/', (req, res) => {
   `, req.session));
 });
 
-// ── FE-1.3: Account dashboard ─────────────────────────────────────────────────
+// ── FE-1.3 / ACC-4: Account dashboard ────────────────────────────────────────
 
 router.get('/account', wrapAsync(async (req, res) => {
   const { userId, role } = req.session;
@@ -47,10 +60,14 @@ router.get('/account', wrapAsync(async (req, res) => {
       : db.query('SELECT COUNT(*)::int AS n FROM albums WHERE user_id = $1', [userId]),
     // [2] stats: recipes count
     db.query('SELECT COUNT(*)::int AS n FROM tag_recipes WHERE user_id = $1', [userId]),
-    // [3] active sessions for this user
+    // active sessions for this user — ACC-4: fetch full sess blob for UA/IP/last-seen
     db.query(
-      `SELECT sid, expire FROM session WHERE (sess->>'userId')::int = $1 ORDER BY expire DESC`,
-      [userId]
+      `SELECT sid, sess, expire
+       FROM session
+       WHERE sess->>'userId' = $1
+         AND expire > NOW()
+       ORDER BY expire DESC`,
+      [String(userId)]
     ),
     // [4] recent uploads (viewers have no uploads)
     isViewer
@@ -84,11 +101,24 @@ router.get('/account', wrapAsync(async (req, res) => {
     albums:  statsAlbums.rows[0].n,
     recipes: statsRecipes.rows[0].n,
   };
-  const sessions = sessionsResult.rows.map(r => ({
-    sid:       r.sid,
-    expire:    r.expire,
-    isCurrent: r.sid === req.sessionID,
-  }));
+
+  // ACC-4: enrich each session row with parsed UA, IP, last-seen
+  const sessions = sessionsResult.rows.map(r => {
+    const sess = r.sess || {};
+    const userAgent = sess.userAgent || null;
+    const loginIp   = sess.loginIp   || null;
+    // Last seen = expire minus rolling TTL (7 days)
+    const lastSeen  = r.expire ? new Date(r.expire.getTime() - 7 * 24 * 60 * 60 * 1000) : null;
+    return {
+      sid:       r.sid,
+      expire:    r.expire,
+      userAgent,
+      loginIp,
+      lastSeen,
+      uaLabel:   parseUserAgent(userAgent),
+      isCurrent: r.sid === req.sessionID,
+    };
+  });
 
   const profile = profileResult.rows[0];
 
@@ -307,7 +337,57 @@ router.get('/account/avatar', wrapAsync(async (req, res) => {
   stream.pipe(res);
 }));
 
-// ── FE-1.3: Revoke a single session ──────────────────────────────────────────
+// ── ACC-4: DELETE /account/sessions/:sid — individual revoke ──────────────────
+// requireAuth is applied globally in app.js, but we return 401 JSON here
+// because this is a JSON API endpoint (not a page redirect).
+
+router.delete('/account/sessions/:sid', sessionRevokeLimiter, wrapAsync(async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+
+  const { sid } = req.params;
+
+  // Reject attempts to revoke the caller's own current session
+  if (sid === req.sessionID) {
+    return res.status(403).json({ error: 'Cannot revoke your current session.' });
+  }
+
+  const result = await db.query(
+    `DELETE FROM session
+     WHERE sid = $1
+       AND sess->>'userId' = $2
+       AND sid != $3`,
+    [sid, String(req.session.userId), req.sessionID]
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: 'Session not found.' });
+  }
+
+  res.json({ ok: true });
+}));
+
+// ── ACC-4: DELETE /account/sessions — bulk revoke all other sessions ──────────
+
+router.delete('/account/sessions', sessionRevokeLimiter, wrapAsync(async (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+
+  const result = await db.query(
+    `DELETE FROM session
+     WHERE sess->>'userId' = $1
+       AND sid != $2`,
+    [String(req.session.userId), req.sessionID]
+  );
+
+  res.json({ revoked: result.rowCount });
+}));
+
+// ── Legacy form-based revoke endpoints (kept for backward compat, no-op guard) ─
+// These are superseded by the DELETE endpoints above but remain to avoid
+// breaking any bookmarked forms from before ACC-4.
 
 router.post('/account/sessions/:sid/revoke', wrapAsync(async (req, res) => {
   await db.query(
@@ -316,8 +396,6 @@ router.post('/account/sessions/:sid/revoke', wrapAsync(async (req, res) => {
   );
   res.redirect('/account');
 }));
-
-// ── FE-1.3: Revoke all other sessions ────────────────────────────────────────
 
 router.post('/account/sessions/revoke-others', wrapAsync(async (req, res) => {
   await db.query(
@@ -437,7 +515,7 @@ router.post('/account/delete', wrapAsync(async (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 }));
 
-// ── FE-1.4: Account page HTML template ───────────────────────────────────────
+// ── FE-1.4 / ACC-4: Account page HTML template ───────────────────────────────
 
 function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, albums: _albums, profile }, session) {
   const { role, name } = session;
@@ -542,8 +620,8 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
       </div>
     </div>`;
 
-  // Sessions section — only shown when there is more than one active session
-  const sessionsSection = sessions.length > 1 ? buildSessionsSection(sessions) : '';
+  // Sessions section — ACC-4: always shown (even with just 1 session)
+  const sessionsSection = buildSessionsSection(sessions);
 
   // Quick links
   const linksSection = buildQuickLinks(role);
@@ -825,37 +903,193 @@ function buildPermsPills(role) {
   return perms.map(p => `<span class="acc-perm${p.yes ? ' yes' : ''}">${p.yes ? '✓' : '⊘'} ${esc(p.label)}</span>`).join('');
 }
 
+// ── ACC-4: Inline user-agent parser — no new npm packages ────────────────────
+// Returns a short human-readable label ("Chrome on macOS", "Safari on iPhone", etc.)
+
+function parseUserAgent(ua) {
+  if (!ua) return 'Unknown device';
+
+  // Mobile OS detection
+  const isIPhone  = /iPhone/i.test(ua);
+  const isIPad    = /iPad/i.test(ua);
+  const isAndroid = /Android/i.test(ua);
+  const isMobile  = isIPhone || isIPad || isAndroid;
+
+  let os;
+  if (isIPhone)       os = 'iPhone';
+  else if (isIPad)    os = 'iPad';
+  else if (isAndroid) os = 'Android';
+  else if (/Windows/i.test(ua))  os = 'Windows';
+  else if (/Macintosh|Mac OS X/i.test(ua)) os = 'macOS';
+  else if (/Linux/i.test(ua))    os = 'Linux';
+  else                           os = null;
+
+  // Browser detection — order matters: Edge before Chrome, Mobile Safari before Safari
+  let browser;
+  if (/Edg\//i.test(ua))                         browser = 'Edge';
+  else if (/Firefox\//i.test(ua))                 browser = 'Firefox';
+  else if (isMobile && /Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Mobile Safari';
+  else if (/Chrome\//i.test(ua))                  browser = 'Chrome';
+  else if (/Safari\//i.test(ua))                  browser = 'Safari';
+  else                                             browser = null;
+
+  if (browser && os)  return `${browser} on ${os}`;
+  if (browser)        return browser;
+  if (os)             return `Unknown browser on ${os}`;
+  // Final fallback: truncate raw UA to 60 chars
+  return ua.length > 60 ? ua.slice(0, 60) + '…' : ua;
+}
+
+// ── ACC-4: Relative time helper ───────────────────────────────────────────────
+
+function relativeTime(date) {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) return null;
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffSec  = Math.floor(diffMs / 1000);
+  const diffMin  = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay  = Math.floor(diffHour / 24);
+
+  if (diffSec < 60)   return 'just now';
+  if (diffMin < 60)   return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
+  if (diffHour < 24)  return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
+  if (diffDay < 30)   return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+  const diffMonth = Math.floor(diffDay / 30);
+  if (diffMonth < 12) return `${diffMonth} month${diffMonth !== 1 ? 's' : ''} ago`;
+  const diffYear = Math.floor(diffDay / 365);
+  return `${diffYear} year${diffYear !== 1 ? 's' : ''} ago`;
+}
+
+// ── ACC-4: Sessions section HTML ──────────────────────────────────────────────
+
 function buildSessionsSection(sessions) {
+  const hasOthers = sessions.some(s => !s.isCurrent);
+
   const rows = sessions.map(s => {
-    const expireStr = esc(new Date(s.expire).toISOString().replace('T', ' ').slice(0, 16));
+    const uaLabel   = esc(s.uaLabel || 'Unknown device');
+    const ipLabel   = s.loginIp ? esc(s.loginIp) : 'Unknown location';
+    const lastSeenLabel = s.lastSeen
+      ? (relativeTime(s.lastSeen) || esc(s.lastSeen.toISOString().slice(0, 16).replace('T', ' ')))
+      : (s.expire ? esc(new Date(s.expire).toISOString().slice(0, 16).replace('T', ' ')) : '—');
+
     if (s.isCurrent) {
       return `
-        <div class="acc-session-row">
-          <span class="acc-session-exp">${expireStr}</span>
-          <span class="role-badge">current</span>
+        <div class="acc-session-row" data-sid="${esc(s.sid)}">
+          <div class="acc-session-info">
+            <span class="acc-session-ua">${uaLabel}</span>
+            <span class="acc-session-meta">${ipLabel} &middot; ${lastSeenLabel}</span>
+          </div>
+          <span class="role-badge">current session</span>
         </div>`;
     }
     return `
-      <div class="acc-session-row">
-        <span class="acc-session-exp">${expireStr}</span>
-        <form method="POST" action="/account/sessions/${esc(s.sid)}/revoke">
-          <button class="btn" type="submit" style="font-size:0.72rem;padding:2px 8px">Revoke</button>
-        </form>
+      <div class="acc-session-row" id="session-row-${esc(s.sid)}" data-sid="${esc(s.sid)}">
+        <div class="acc-session-info">
+          <span class="acc-session-ua">${uaLabel}</span>
+          <span class="acc-session-meta">${ipLabel} &middot; ${lastSeenLabel}</span>
+        </div>
+        <button class="btn acc-session-revoke-btn"
+                data-sid="${esc(s.sid)}"
+                type="button"
+                aria-label="Revoke session for ${uaLabel}">Revoke</button>
+        <p class="acc-session-err" id="session-err-${esc(s.sid)}" style="display:none;color:var(--acc,red);font-size:0.8rem;margin:0"></p>
       </div>`;
   }).join('');
 
+  const bulkDisabled = !hasOthers ? ' disabled' : '';
+  const bulkLabel = !hasOthers ? 'No other active sessions' : 'Sign out all other devices';
+
   return `
-    <div class="acc-section">
+    <div class="acc-section" id="acc-sessions-section">
       <div class="acc-section-h">Active sessions</div>
       <div class="acc-section-b">
-        ${rows}
+        <div id="acc-sessions-list">
+          ${rows}
+        </div>
+        <p id="acc-sessions-bulk-err" style="display:none;color:var(--acc,red);font-size:0.8rem;margin:0.5rem 0 0"></p>
         <div style="margin-top:1rem">
-          <form method="POST" action="/account/sessions/revoke-others">
-            <button class="btn" type="submit">Sign out all other devices</button>
-          </form>
+          <button class="btn" type="button" id="acc-sessions-revoke-all"${bulkDisabled}>${bulkLabel}</button>
         </div>
       </div>
-    </div>`;
+    </div>
+    <script>
+    (function () {
+      var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+      function removeRow(sid) {
+        var row = document.getElementById('session-row-' + sid);
+        if (row) row.remove();
+        // If no non-current rows remain, disable the bulk button
+        var remaining = document.querySelectorAll('#acc-sessions-list .acc-session-revoke-btn');
+        var bulkBtn = document.getElementById('acc-sessions-revoke-all');
+        if (bulkBtn && remaining.length === 0) {
+          bulkBtn.disabled = true;
+          bulkBtn.textContent = 'No other active sessions';
+        }
+      }
+
+      // Individual revoke
+      document.querySelectorAll('.acc-session-revoke-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var sid = btn.getAttribute('data-sid');
+          var errEl = document.getElementById('session-err-' + sid);
+          btn.disabled = true;
+          fetch('/account/sessions/' + encodeURIComponent(sid), {
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': csrf },
+          })
+            .then(function (r) {
+              if (r.ok || r.status === 404) {
+                // 404 = already gone — remove silently
+                removeRow(sid);
+              } else {
+                btn.disabled = false;
+                if (errEl) { errEl.textContent = 'Could not revoke session — try again.'; errEl.style.display = ''; }
+                if (r.status === 429 && errEl) { errEl.textContent = 'Too many requests — wait a moment.'; }
+              }
+            })
+            .catch(function () {
+              btn.disabled = false;
+              if (errEl) { errEl.textContent = 'Could not revoke session — try again.'; errEl.style.display = ''; }
+            });
+        });
+      });
+
+      // Bulk revoke
+      var bulkBtn = document.getElementById('acc-sessions-revoke-all');
+      var bulkErr = document.getElementById('acc-sessions-bulk-err');
+      if (bulkBtn) {
+        bulkBtn.addEventListener('click', function () {
+          bulkBtn.disabled = true;
+          fetch('/account/sessions', {
+            method: 'DELETE',
+            headers: { 'X-CSRF-Token': csrf },
+          })
+            .then(function (r) {
+              if (r.ok) {
+                document.querySelectorAll('.acc-session-revoke-btn').forEach(function (b) {
+                  removeRow(b.getAttribute('data-sid'));
+                });
+                bulkBtn.textContent = 'No other active sessions';
+              } else {
+                bulkBtn.disabled = false;
+                if (bulkErr) {
+                  bulkErr.textContent = r.status === 429
+                    ? 'Too many requests — wait a moment.'
+                    : 'Could not sign out other devices — try again.';
+                  bulkErr.style.display = '';
+                }
+              }
+            })
+            .catch(function () {
+              bulkBtn.disabled = false;
+              if (bulkErr) { bulkErr.textContent = 'Could not sign out other devices — try again.'; bulkErr.style.display = ''; }
+            });
+        });
+      }
+    })();
+    </script>`;
 }
 
 function buildQuickLinks(role) {

@@ -81,6 +81,111 @@ As a logged-in user, I can upload a profile photo via a "↻ change" button on m
 **ACC-4 — Session management**
 As a logged-in user, I can see the list of my active sessions (browser, device, last seen) and revoke any of them individually or all others at once — so I can sign out of forgotten devices.
 
+**Acceptance criteria:**
+
+1. On `GET /account`, a "Sessions" section appears below the avatar section and above the Danger Zone. It lists every row in the `session` table where `sess->>'userId' = req.session.userId` and `expire > NOW()`.
+2. Each session row displays:
+   - **Browser / OS label** — derived from the stored `userAgent` string (e.g. "Chrome on macOS", "Safari on iPhone"). If no `userAgent` is stored (legacy session), show "Unknown device".
+   - **IP address** — stored at login time (e.g. "192.168.1.42"). If absent, show "Unknown location".
+   - **Last seen** — the `expire` timestamp minus the session `maxAge` (7 days) gives the creation/last-refresh time. Display as a relative time (e.g. "3 hours ago", "2 days ago"). If the value cannot be computed, show the raw `expire` date.
+   - **"Current" badge** — the row for `req.sessionID` is visually marked "(current session)" and its revoke button is hidden (the current session cannot be self-revoked from this list).
+3. A "Revoke" button on each non-current session row sends `DELETE /account/sessions/:sid`. On success (200), the row is removed from the list without a full page reload.
+4. A "Sign out all other devices" button at the bottom of the section sends `DELETE /account/sessions` (bulk). On success (200), all non-current session rows are removed from the list without a full page reload. If there are no other sessions, the button is shown but clicking it is a no-op (returns 200, no rows change).
+5. `DELETE /account/sessions/:sid` — the server deletes the row from the `session` table only if `sess->>'userId' = req.session.userId`. Attempting to revoke a session belonging to another user returns HTTP 403. Attempting to revoke the caller's own current session (matching `req.sessionID`) returns HTTP 403. Attempting to revoke a `sid` that does not exist or has already expired returns HTTP 404.
+6. `DELETE /account/sessions` (bulk) — the server deletes all rows in the `session` table where `sess->>'userId' = req.session.userId` AND `sid != req.sessionID`. Returns HTTP 200 with `{ "revoked": N }` where N is the count of deleted rows. Returns 200 with `{ "revoked": 0 }` if there were no other sessions.
+7. Both endpoints are protected by `requireAuth`. Unauthenticated requests return HTTP 401.
+8. Both endpoints validate CSRF via the `X-CSRF-Token` header. Invalid or missing token returns HTTP 403.
+9. Both endpoints use `wrapAsync` (no unhandled-promise crashes).
+10. At login time (`POST /login`), the handler enriches the session with two new fields before saving:
+    - `req.session.userAgent = req.headers['user-agent'] || null`
+    - `req.session.loginIp = req.ip || null`
+    These fields are persisted in the `sess` JSON blob by `connect-pg-simple` on the first save.
+11. A rate limiter (`express-rate-limit`) protects the revoke endpoints: max 30 requests per 15 minutes per IP. Exceeding returns HTTP 429 with `{ "error": "Too many requests — try again later." }`.
+12. If the sessions list is empty (only the current session exists), the list area shows the single current-session row with the "(current)" badge and no Revoke button. The "Sign out all other devices" button is still visible but grayed out (disabled attribute) with label "No other active sessions".
+13. The sessions list is rendered server-side on the initial `GET /account` page load (no separate `GET /account/sessions` API call required). The client only calls the API for revoke actions.
+14. On mobile (viewport < 600 px), session rows stack vertically; the Revoke button appears below the session metadata as a full-width button with a minimum tap target of 44×44 px. The "Sign out all other devices" button is full-width.
+
+**Error states:**
+- Network timeout or 5xx on revoke: show "Could not revoke session — try again." inline below the session row. The row is not removed.
+- 403 on individual revoke (e.g. attempting to revoke current session via direct API call): show "You cannot revoke your current session from this page."
+- 404 on individual revoke (session already expired or already revoked): remove the row silently (treat as success — the goal is achieved).
+- 429 (rate limit): show "Too many requests — wait a moment before trying again." beneath the sessions section.
+- Network timeout or 5xx on bulk revoke: show "Could not sign out other devices — try again." beneath the button. No rows are removed.
+
+**Edge cases:**
+- User has only one session (current): list shows one row, "Sign out all other devices" is disabled. No revoke buttons shown.
+- User has exactly 2 sessions: after revoking the non-current one, the list shows only the current session row and the bulk button becomes disabled.
+- A session expires between page load and revoke click: `DELETE /account/sessions/:sid` returns 404; the UI removes the row silently (see error states).
+- Two tabs open simultaneously: if tab A bulk-revokes and tab B then attempts an individual revoke, tab B gets 404 and removes the row silently.
+- Legacy sessions (created before `userAgent`/`loginIp` enrichment): display "Unknown device" and "Unknown location" per criterion 2.
+- `req.ip` behind a reverse proxy: the Express app must have `app.set('trust proxy', 1)` set so `req.ip` resolves to the client IP, not `127.0.0.1`. If not set, `loginIp` will show `::1`/`127.0.0.1` — acceptable for V1 (document as a known limitation).
+
+**Access control:**
+- Any logged-in user (viewer, editor, admin) can view and revoke their own sessions.
+- No user can view or revoke another user's sessions; the endpoints enforce ownership via `sess->>'userId' = req.session.userId`.
+- Admin users have no special privileges on this endpoint (no "revoke any user's sessions" capability in this story).
+
+**Test data:**
+- Create a test user and log in from two different browsers (or use separate private/incognito windows) to generate at least two active sessions.
+- Use a third browser to generate a third session, then close it without logging out (to simulate an abandoned session that is still within the 7-day window).
+- Confirm that `SELECT * FROM session WHERE sess->>'userId' = '<id>'` shows the correct rows before and after revoke.
+- Test a user with only one active session (the current one).
+- To test legacy sessions: manually insert a `session` row with a `sess` blob that lacks `userAgent` and `loginIp` fields.
+
+**Browser/device support:** Desktop (Chrome, Firefox, Safari) and mobile (iOS Safari, Android Chrome). The revoke and bulk-revoke actions use `fetch` + `X-CSRF-Token` (same pattern as ACC-2/3); no framework required.
+
+> **Technical notes:**
+>
+> **No schema migration required.** The `session` table is created by `connect-pg-simple` (migration `v10.sql`). The `sess` JSON blob already accepts arbitrary keys — adding `userAgent` and `loginIp` at login time requires no `ALTER TABLE`.
+>
+> **Reading sessions from the DB:** Query directly:
+> ```sql
+> SELECT sid, sess, expire
+> FROM session
+> WHERE sess->>'userId' = $1
+>   AND expire > NOW()
+> ORDER BY expire DESC;
+> ```
+> `$1` is `String(req.session.userId)` — `sess` stores userId as a string in JSON.
+>
+> **Deriving "last seen":** `expire - INTERVAL '7 days'` gives the approximate session creation/last-activity time (because `rolling: true` resets `expire` to `NOW() + 7d` on every request). Compute this in JS: `new Date(expire.getTime() - 7 * 24 * 60 * 60 * 1000)`.
+>
+> **Parsing user agent:** Use a lightweight inline parser or a small utility (`useragent` or `ua-parser-js`). If no new package is added, a regex covering the most common browsers is acceptable: detect Chrome, Firefox, Safari, Edge by string matching `req.headers['user-agent']`. Fallback: show the raw user-agent string truncated to 60 characters.
+>
+> **Individual revoke (`DELETE /account/sessions/:sid`):**
+> ```sql
+> DELETE FROM session
+> WHERE sid = $1
+>   AND sess->>'userId' = $2
+>   AND sid != $3;
+> -- $1 = req.params.sid, $2 = String(req.session.userId), $3 = req.sessionID
+> ```
+> If `rowCount === 0`, return 404 (not found or forbidden ownership — do not distinguish to avoid enumeration).
+>
+> **Bulk revoke (`DELETE /account/sessions`):**
+> ```sql
+> DELETE FROM session
+> WHERE sess->>'userId' = $1
+>   AND sid != $2;
+> -- $1 = String(req.session.userId), $2 = req.sessionID
+> ```
+> Return `{ "revoked": result.rowCount }`.
+>
+> **Login enrichment** — add to the existing `POST /login` success handler in `src/routes/auth.js` (or wherever login sets `req.session.userId`):
+> ```js
+> req.session.userAgent = req.headers['user-agent'] || null;
+> req.session.loginIp   = req.ip || null;
+> ```
+> These lines go before the `req.session.save()` call (or before `res.redirect`).
+>
+> **`trust proxy`:** Add `app.set('trust proxy', 1)` in `src/app.js` if not already present, so `req.ip` reflects the real client IP when behind Caddy.
+>
+> **Rate limiting:** Reuse the `express-rate-limit` pattern from `avatarLimiter` in `account.js`. Create a `sessionRevokeLimiter` with `{ windowMs: 15 * 60 * 1000, max: 30 }` and apply it to both `DELETE /account/sessions` and `DELETE /account/sessions/:sid`.
+>
+> **Out of scope:** Showing the geographic location from IP (no GeoIP lookup). Showing all sessions to admins (no admin session overview). Session device icons. Forcing re-authentication before revoking (not required for V1). WebSocket push when another tab's session is revoked remotely.
+
+---
+
 **ACC-5 — Danger zone**
 As a logged-in user, I can delete my own account from the danger zone with a two-step confirmation (typed username required) — so the action cannot be done by accident.
 
@@ -331,3 +436,94 @@ As a developer, Instance-2 starts automatically when a job enters the queue and 
 
 **INF-1 — Instance-1 right-sizing**
 As an admin, Instance-1 is resized from b3-8 to b2-7 (2 vCPU, 7 GB RAM), cutting the monthly compute bill — with no user-visible change and a tested DB migration procedure to preserve all data across the Terraform-driven recreation.
+
+**INF-2 — Persist sessions in PostgreSQL**
+As a logged-in user, I want my session to survive Instance-1 restarts and deployments so that I am not silently logged out mid-browse.
+
+*Acceptance criteria:* (1) After `docker compose restart app`, an authenticated user stays logged in — no redirect to `/login`. (2) After a push-to-main deploy, sessions survive. (3) A `session` table (`sid`, `sess`, `expire`) exists in PostgreSQL after the migration runs. (4) On a fresh DB, the table is created automatically before the app accepts its first request. (5) App fails fast with a clear error if the DB is unreachable at startup. (6) Cookie behavior unchanged: `httpOnly: true`, `secure: true`, `sameSite: lax`. (7) Stale sessions are pruned automatically (`pruneSessionInterval: 3600`). (8) `npm test` passes with no new failures.
+
+*Technical notes:* Install `connect-pg-simple`; configure in `src/session.js` using the existing `db` pool. Add `migrations/v10.sql` with `CREATE TABLE IF NOT EXISTS "session"` DDL. Update `init-db.sql`. Add `INSTANCE1_ID` to `.env.example` and `instance1_id` output to `infra/outputs.tf` (prerequisite for INF-3).
+
+*Blocks INF-3.*
+
+**INF-3 — Nightly shelve/unshelve of Instance-1 via GitHub Actions**
+As an admin, I want Instance-1 shelved automatically at 23:00 CET and unshelved at 06:00 CET every day so that OVH compute costs are reduced during overnight hours (~€10/month saved).
+
+*Acceptance criteria:* (1) `.github/workflows/shelve-instance1.yml` has two scheduled jobs: `shelve` at 22:00 UTC and `unshelve` at 05:00 UTC, plus `workflow_dispatch` on both. (2) Each job calls the OVH API (`POST /cloud/project/{PROJECT_ID}/instance/{INSTANCE1_ID}/shelve|unshelve`) using the HMAC-SHA1 scheme from `src/instance-lifecycle.js`, implemented in shell with `curl` + `openssl dgst -sha1`. (3) Non-2xx OVH response → job fails and prints the error body. (4) If Instance-1 is already shelved/active when the corresponding job runs → log "skipping" and exit 0. (5) `deploy-site.yml` documents the "deploy fails while shelved" failure mode and recovery procedure. (6) DST trade-off documented in workflow comments (fixed UTC times; shelve is at midnight CEST in summer).
+
+*Technical notes:* Credentials from GitHub secrets: `OVH_APP_KEY`, `OVH_APP_SECRET`, `OVH_CONSUMER_KEY`, `OVH_PROJECT_ID`, `INSTANCE1_ID`. Use `GET /instance/{ID}` + `jq` to check current status before acting (idempotency). OVH token scoped to Instance-1 shelve/unshelve only. Update `infra/README.md` with new secret, required token rights, and DST note.
+
+*Requires INF-2 merged first.*
+
+---
+
+## Code Quality & Hardening (ACC-2/ACC-3 follow-up)
+
+The following items were identified as non-blocking observations during the tech-lead review of PR #81 (`feat/acc-2-3-profile-avatar`). All are low-priority cleanup or hardening tasks.
+
+**HRD-1 — Normalise cancel-button unicode character**
+As a developer, I want the cancel button in inline profile editing to use the project-standard unicode character so that the UI is visually consistent.
+
+*Technical note:* The cancel button in the account page inline-edit widget currently uses `✕` (U+2715 MULTIPLICATION X). Replace with `✗` (U+2717 BALLOT X) to match the convention used elsewhere in the project. Single character change in the relevant template or `page.js` helper.
+
+**HRD-2 — Improve PATCH /account name validation error message**
+As a logged-in user, when I submit a name that is too long, I receive a clear error message explaining the constraint, so I know exactly what to fix.
+
+*Technical note:* `PATCH /account` currently returns `"Name is required"` for both an empty name and a name longer than 100 characters. The message should be `"Name must be 1–100 characters"` to cover both failure modes with a single accurate string. Update the validation block in `src/routes/account.js`.
+
+**HRD-3 — Fix boolean coercion for notif_enabled in PATCH /account**
+As a developer, I want the server to reject a string `"false"` for `notif_enabled` rather than silently coercing it to `true`, so client-side bugs surface immediately rather than corrupting user preferences.
+
+*Technical note:* `Boolean(notif_enabled)` coerces the string `"false"` to `true` because any non-empty string is truthy. Replace with an explicit type check: `if (typeof notif_enabled !== 'boolean') return res.status(422).json({ error: 'notif_enabled must be a boolean' })`. The endpoint already receives JSON, so a well-behaved client always sends a native boolean.
+
+**HRD-4 — Apply esc() to data-current attribute for notif_enabled**
+As a developer, I want `data-current="${profile.notif_enabled}"` in `page.js` to pass through `esc()` like every other interpolated value, so the escaping pattern is consistent and future values cannot accidentally break it.
+
+*Technical note:* No XSS risk exists today (the value is always `true` or `false`), but the omission breaks the consistent escaping convention used for all other dynamic attributes in the same file. Add `esc()` around the interpolation so a code reader does not have to reason about why this one attribute is different.
+
+**HRD-5 — Add test for sharp failure path on corrupt image input**
+As a developer, I want a test that exercises the `catch` block on `sharp(...).toBuffer()` in `POST /account/avatar`, so the error response for a corrupt image is verified and the branch cannot silently regress.
+
+*Technical note:* The `catch` block that returns HTTP 500 `"Image processing failed"` is currently unreachable under the existing mock setup because `sharp` is not mocked to throw. Add a test case that mocks `sharp(...).toBuffer()` to reject with an error, and assert that the route returns 500 with the expected error body.
+
+**HRD-6 — Remove S3 key from POST /account/avatar JSON response**
+As a developer, I want the avatar upload response to omit the raw S3 key, so internal storage details are not unnecessarily disclosed to the client.
+
+*Technical note:* `POST /account/avatar` currently returns `{ ok: true, avatarUrl: ..., key: newKey }`. The `key` field (raw S3 object key) is not needed by the client — the UI uses `avatarUrl` for the preview update. Remove `key` from the response object. Not exploitable (the bucket is private), but good practice to minimise information disclosure.
+
+**HRD-7 — Rate-limit PATCH /account to prevent email enumeration**
+As a developer, I want `PATCH /account` to be rate-limited so that an authenticated user cannot rapidly enumerate registered email addresses via the 409 conflict response.
+
+*Technical note:* `PATCH /account` returns HTTP 409 `"Email already in use"` when the submitted email belongs to another account. Without a rate limit, an authenticated user can probe thousands of emails per minute. Apply the existing rate-limiter (or `express-rate-limit`) to this endpoint — a modest limit of ~10 requests per minute per user is sufficient. See `src/routes/account.js` for the endpoint and the existing limiter usage elsewhere in the codebase for the pattern to follow.
+
+---
+
+## Code Quality & Hardening (ACC-4 follow-up)
+
+The following items were identified as non-blocking observations during the tech-lead and QA review of PR #82 (`feat/acc-4-session-management`). All are low-priority cleanup or hardening tasks.
+
+**HRD-8 — Extract session TTL to a shared constant**
+As a developer, I want the 7-day session TTL defined in a single shared constant so that changing the cookie `maxAge` automatically keeps the "last seen" calculation in sync.
+
+*Technical note:* `account.js` hardcodes `7 * 24 * 60 * 60 * 1000` for the "last seen" calculation (`expire - maxAge`). This duplicates the same value in `session.js`'s `cookie.maxAge`. Extract it to a shared constant (e.g. `SESSION_MAX_AGE_MS` exported from `src/session.js` or a new `src/constants.js`) and import it in both files. A TTL change in one place currently breaks the display silently.
+
+**HRD-9 — Add CSRF 403 tests for session revoke endpoints**
+As a developer, I want `account.test.js` to assert that `DELETE /account/sessions` and `DELETE /account/sessions/:sid` return 403 when the `X-CSRF-Token` header is absent, so removing the CSRF middleware from `app.js` cannot go undetected.
+
+*Technical note:* The `makeApp` helper in `account.test.js` does not wire `csrfMiddleware`, so a missing CSRF token on the session revoke `DELETE` routes does not return 403 in the current test suite. Add two test cases — one for the bulk endpoint and one for the individual endpoint — that send the `DELETE` request without an `X-CSRF-Token` header and assert a 403 response. Wire the CSRF middleware in `makeApp` (or use a dedicated app instance) to make the assertion meaningful.
+
+**HRD-10 — Unit-test parseUserAgent and relativeTime helpers**
+As a developer, I want direct unit tests for the `parseUserAgent` and `relativeTime` private helpers in `account.js` so that missing branches are caught before integration.
+
+*Technical note:* Both helpers are currently exercised only via integration tests, leaving several branches untested. Missing coverage includes: Edge on Windows, Mobile Safari on iPhone, Firefox on Linux, raw UA truncation fallback (UA string longer than 60 characters), `relativeTime` with a `null` or invalid input, and all singular vs plural forms (1 day vs 2 days, 1 month vs 2 months, 1 year vs 2 years). Export the helpers (or move them to a `src/utils/session-helpers.js` module) and add a dedicated unit test file covering each branch.
+
+**HRD-11 — Add 500 error path test for individual session revoke**
+As a developer, I want `DELETE /account/sessions/:sid` to have a `returns 500 when db.query rejects` test, matching the equivalent test that already exists for the bulk revoke endpoint.
+
+*Technical note:* The bulk `DELETE /account/sessions` handler has a test asserting it returns 500 when `db.query` rejects. The individual `DELETE /account/sessions/:sid` handler lacks this test, creating an inconsistency in error-path coverage. Add a test case that makes `db.query` reject and asserts the route returns 500 with the expected error body (consistent with `wrapAsync` behaviour).
+
+**HRD-12 — Mock express-rate-limit in account.test.js**
+As a developer, I want `express-rate-limit` mocked in `account.test.js` so that `sessionRevokeLimiter`'s in-memory store cannot cause spurious 429 responses as the test suite grows.
+
+*Technical note:* `sessionRevokeLimiter` uses an in-memory store that is not reset between tests. If the number of `DELETE` route test cases grows past 30, tests will start returning 429 instead of their expected status codes. Add `jest.mock('express-rate-limit', () => () => (req, res, next) => next())` at the top of `account.test.js`, matching the pattern already used by the avatar tests in the same file.
+

@@ -1,8 +1,10 @@
+// Capture MockStore.set calls so tests can assert on persisted session data
+const mockStoreSets = [];
 jest.mock('connect-pg-simple', () => () => class MockStore {
   constructor() {}
   on() {}
   get(sid, cb) { cb(null, null); }
-  set(sid, sess, cb) { cb(null); }
+  set(sid, sess, cb) { mockStoreSets.push({ sid, sess }); cb(null); }
   destroy(sid, cb) { cb(null); }
   regenerate(req, cb) { cb(null); }
 });
@@ -81,6 +83,28 @@ describe('POST /login', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('/login?error=1');
+  });
+
+  it('stores userAgent and loginIp in session on successful login', async () => {
+    // Clear captured set calls from any prior tests
+    mockStoreSets.length = 0;
+
+    db.query.mockResolvedValue({ rows: [FAKE_USER] });
+    bcrypt.compare.mockResolvedValue(true);
+
+    const res = await request(app)
+      .post('/login')
+      .set('User-Agent', 'TestBrowser/1.0')
+      .send('email=saev%40test.com&password=secret');
+
+    expect(res.status).toBe(302);
+
+    // express-session calls MockStore.set to persist the regenerated session
+    expect(mockStoreSets.length).toBeGreaterThan(0);
+    const { sess } = mockStoreSets[mockStoreSets.length - 1];
+    expect(sess.userAgent).toBe('TestBrowser/1.0');
+    expect(typeof sess.loginIp).toBe('string');
+    expect(sess.loginIp).not.toBeNull();
   });
 });
 
