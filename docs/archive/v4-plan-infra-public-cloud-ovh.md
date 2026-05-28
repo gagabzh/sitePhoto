@@ -1,5 +1,5 @@
 > **DEPRECATED** — This plan describes a NestJS + Nx architecture that was evaluated but never implemented.
-> The real architecture uses Express + plain JavaScript. See `docs/architecture/architecture-v4.md`.
+> The real architecture uses Express + plain JavaScript. See `docs/architecture/architecture.md`.
 >
 > This file is kept for historical reference only.
 

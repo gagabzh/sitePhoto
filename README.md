@@ -28,7 +28,7 @@ A self-hosted photo gallery built with Express.js and PostgreSQL. It supports al
 
 Instance-1 (always on) runs the Express app, PostgreSQL, Redis, and Caddy. Instance-2 (shelved when idle) runs the BullMQ worker and Ollama. Both instances share an OVH Object Storage bucket over the public internet; internal traffic (Redis, worker callbacks) stays on the private vRack (`10.0.0.0/24`). The worker POSTs results back to Instance-1's internal API, which then pushes a WebSocket notification to the browser.
 
-See [docs/architecture/architecture-v4.md](docs/architecture/architecture-v4.md) for diagrams and full design notes.
+See [docs/architecture/architecture.md](docs/architecture/architecture.md) for diagrams and full design notes.
 
 ---
 
@@ -220,4 +220,4 @@ Ollama must listen on all interfaces so Docker can reach it — set `OLLAMA_HOST
 ## Documentation
 
 - Feature backlog and status: [docs/backlog/STATUS.md](docs/backlog/STATUS.md)
-- Architecture diagrams and design notes: [docs/architecture/architecture-v4.md](docs/architecture/architecture-v4.md)
+- Architecture diagrams and design notes: [docs/architecture/architecture.md](docs/architecture/architecture.md)
