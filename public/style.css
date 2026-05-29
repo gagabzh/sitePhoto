@@ -8,6 +8,9 @@
   --ink-ghost:  #b5ad9d;
   --accent:     oklch(62% 0.14 35);
   --accent-cool:oklch(62% 0.14 220);
+  --accent-2:   var(--accent-cool);  /* cool blue -- editor badge, editor tape */
+  --accent-3:   oklch(64% 0.13 140); /* sage green -- viewer badge, can-pills */
+  --paper-3:    #e3ddcb;             /* darker paper -- some card accents */
   --danger:     oklch(58% 0.18 25);
 }
 
@@ -1798,8 +1801,8 @@ tr:hover .tm-row-actions { opacity:1; }
 .acc-card { border: 1.5px solid var(--ink); padding: 1.5rem; display: flex; align-items: center; gap: 1.25rem; }
 .acc-avatar { width: 64px; height: 64px; border: 1.5px solid var(--ink); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Caveat', cursive; font-size: 2rem; font-weight: 700; flex-shrink: 0; background: var(--paper-2); }
 .acc-name { font-family: 'Caveat', cursive; font-size: 2rem; font-weight: 700; line-height: 1; }
-.role-badge { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; padding: 2px 8px; border: 1.5px solid var(--ink); text-transform: uppercase; }
-.role-badge.admin { background: var(--accent); }
+.role-badge { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; padding: 2px 8px; border: 1.5px solid var(--ink); text-transform: uppercase; letter-spacing: 2px; }
+.role-badge.admin { color: oklch(55% 0.20 25); border-color: oklch(55% 0.20 25); background: oklch(96% 0.02 25); }
 .acc-stats { display: flex; gap: 1.5rem; margin-top: 0.5rem; }
 .acc-stat { text-align: center; }
 .acc-stat-n { font-family: 'Caveat', cursive; font-size: 1.5rem; font-weight: 700; line-height: 1; }
@@ -1833,10 +1836,13 @@ tr:hover .tm-row-actions { opacity:1; }
 .acc-field-row:last-child { border-bottom: none; }
 
 .acc-field-label {
+  min-width: 100px;
   width: 120px;
   flex-shrink: 0;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
   color: var(--ink);
   opacity: 0.7;
 }
@@ -1950,4 +1956,104 @@ tr:hover .tm-row-actions { opacity:1; }
   object-fit: cover;
   cursor: pointer;
   vertical-align: middle;
+}
+
+/* ── Account page design alignment (DS-ACC-6) ── */
+
+.role-badge.editor { border-color: var(--accent-2); background: oklch(96% 0.02 220); color: var(--accent-2); }
+.role-badge.viewer { border-color: var(--accent-3); background: oklch(96% 0.02 140); color: var(--accent-3); }
+
+.acc-card-block {
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  padding: 16px 18px;
+}
+
+.acc-card-title {
+  font-family: 'Caveat', cursive;
+  font-size: 26px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+.acc-card-more {
+  font-family: 'Kalam', cursive;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  margin-left: auto;
+}
+
+.d1-tape { position: relative; overflow: visible; }
+.d1-tape::before {
+  content: '';
+  display: block;
+  width: 56px;
+  height: 12px;
+  background: rgba(217,169,99,0.55);
+  border: 1px dashed rgba(217,169,99,0.9);
+  border-radius: 2px;
+  position: absolute;
+  top: -6px;
+  left: 12px;
+  transform: rotate(-2deg);
+}
+.d1-tape--cool::before {
+  background: rgba(99,149,217,0.55);
+  border-color: rgba(99,149,217,0.9);
+}
+.d1-tape--green::before {
+  background: rgba(99,180,130,0.55);
+  border-color: rgba(99,180,130,0.9);
+}
+.d1-tape--red::before {
+  background: rgba(217,99,99,0.55);
+  border-color: rgba(217,99,99,0.9);
+}
+
+.acc-stat-tile { text-align: right; padding: 0 12px; position: relative; }
+.acc-stat-tile + .acc-stat-tile { border-left: 1.5px solid var(--ink); }
+.acc-stat-num { font-family: 'Caveat', cursive; font-size: 30px; font-weight: 700; line-height: 1; display: block; }
+.acc-stat-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-faint); display: block; }
+.acc-stat-tile--muted .acc-stat-num { color: var(--ink-faint); }
+
+.acc-tool-tile {
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper);
+  padding: 10px 12px;
+  text-decoration: none;
+  display: block;
+  transition: transform 0.1s;
+}
+.acc-tool-tile:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.acc-pill-can {
+  border: 1.5px solid var(--accent-3);
+  background: oklch(96% 0.02 140);
+  color: var(--ink);
+  border-radius: 999px;
+  font-family: 'Kalam', cursive;
+  font-size: 12px;
+  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.acc-pill-cant {
+  border: 1.5px solid var(--ink-faint);
+  background: transparent;
+  color: var(--ink-faint);
+  border-radius: 999px;
+  font-family: 'Kalam', cursive;
+  font-size: 12px;
+  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: line-through;
 }
