@@ -186,7 +186,7 @@ As an editor or admin browsing an album, clicking a photo thumbnail opens the ph
 **Acceptance criteria:**
 
 1. On the album detail page (`GET /albums/:id`), each photo thumbnail is wrapped in an `<a href="/photos/[id]/edit?from=/albums/[id]">` for editors and admins. Clicking anywhere on the thumbnail (except the lightbox icon) navigates to the edit page.
-2. Each thumbnail has a visible lightbox icon button (class `.lb-btn`, aria-label: "View fullscreen"): positioned `top: 6px; right: 6px; position: absolute` inside the `.photo-thumb-wrap` container. Icon: the `⤢` or `⊞` glyph in a 24×24 circle. On hover, the icon scales slightly (`transform: scale(1.1)`). Clicking the icon opens the lightbox viewer (story LB-1) without navigating away.
+2. Each thumbnail has a visible lightbox icon button (class `.lb-btn`, aria-label: "View fullscreen"): positioned `top: 6px; right: 6px; position: absolute` inside the `.photo-thumb-wrap` container. Icon: the `⊞` glyph in a 24×24 circle. On hover, the icon scales slightly (`transform: scale(1.1)`). Clicking the icon opens the lightbox viewer (story LB-1) without navigating away.
 3. Viewers (`role === 'viewer'`) see no lightbox icon button. For viewers, clicking the thumbnail opens the lightbox directly (existing behaviour). The `<a>` wrapping the thumbnail resolves to the lightbox trigger (`data-lightbox` or equivalent), not the edit page.
 4. Role determination for the thumbnail template is server-side: the `canEdit` flag (already computed per photo in `renderAlbumPage`) controls which link and icon are rendered. No client-side role check.
 5. On mobile (viewport < 600 px), the lightbox icon tap target is extended to minimum 44×44 px via padding or a `::before` pseudo-element.
@@ -393,6 +393,7 @@ As a logged-in user browsing an album, I can click any photo thumbnail to open i
 > ];
 > </script>
 > ```
+> The `LB_PHOTOS` array must be serialised with `JSON.stringify` before embedding in the `<script>` block — do NOT use `esc()` or string interpolation in script context (user-supplied photo titles injected via string concatenation would allow XSS).
 >
 > The lightbox JS reads `LB_PHOTOS` to know the full ordered list. On thumbnail click (viewer) or `.lb-btn` click (editor), find the index in `LB_PHOTOS` by `data-photo-id` attribute, then render the overlay.
 >

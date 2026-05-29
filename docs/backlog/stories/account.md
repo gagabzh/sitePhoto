@@ -401,6 +401,8 @@ As a logged-in user, I can see a large avatar, my name with role badge, and a st
 > The existing `.acc-avatar` 64px circle CSS (line 1799 in `style.css`) is superseded. Keep it for the nav avatar fallback but add the new `.acc-avatar-hero` class at 130px for the header.
 >
 > The `.acc-avatar-tab` replaces the current `#js-avatar-change` SVG icon button. The JS `avatarChange.addEventListener('click', ...)` handler remains unchanged; only the element's class and HTML change.
+>
+> **QA note:** This story adds new query slots (favourites, comments placeholders) to the `Promise.all` in `GET /account` — update the `mockAccountQueries` helper in `account.test.js` to reflect the new slot indices, or every index-dependent assertion below the insertion point will silently query the wrong result.
 
 ---
 
@@ -530,6 +532,8 @@ As a logged-in user, I can see role-appropriate content in the left column of my
 > Photo thumbnail serving: the existing `GET /photos/:id/thumb` endpoint (or equivalent) must be used for mosaic cells. If no thumbnail endpoint exists, use the full-size photo with `object-fit: cover`. Check `src/routes/photos.js` for the correct thumbnail URL pattern.
 >
 > Favourites and activity queries are deferred to when those tables exist. Use `Promise.resolve({ rows: [] })` as placeholders.
+>
+> **QA note:** This story adds a new recipes-for-display query slot to the `Promise.all` in `GET /account` — update the `mockAccountQueries` helper in `account.test.js` to reflect the new slot index, or every assertion that destructures results by position after this slot will silently query the wrong value.
 
 ---
 
@@ -660,7 +664,9 @@ As a logged-in user, I can see role-appropriate action cards in the right column
 >
 > `_albums` is already fetched in the existing `Promise.all` (currently unused). Wire it into the albums grid card. Extend the query with `photo_count` aggregate (see criterion 1 SQL above) and change `LIMIT` to 4.
 >
-> `/albums/access` (revoke) endpoint: check `src/routes/albums.js` for whether a `DELETE` endpoint for individual access grants exists. If not, mark with `/* TODO */` and disable the revoke button.
+> `/albums/access` (revoke) endpoint: check `src/routes/albums.js` for whether a `DELETE /albums/access` endpoint (or equivalent) for individual access grants exists before implementing the revoke button; if absent, render the button as disabled with a `/* TODO: DS-ACC-5 revoke endpoint */` comment and open a follow-up story to add the endpoint.
+>
+> **QA note:** This story adds admin tool count queries (conditionally) and a shared-with query to the `Promise.all` in `GET /account` — update the `mockAccountQueries` helper in `account.test.js` to cover the new conditional slots, or role-specific assertions will silently read results from the wrong query index.
 
 ---
 
