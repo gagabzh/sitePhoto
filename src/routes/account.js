@@ -64,11 +64,16 @@ router.get('/account', wrapAsync(async (req, res) => {
   // [7] favourites count — TODO: DS-ACC-2 photo_likes table not yet implemented
   // [8] comments count  — TODO: DS-ACC-2 comments table not yet implemented
   // [9] tag recipes for left-column card (LIMIT 3 for admin, 2 for editor, 0 for viewer)
+  // [10] albums for grid card (admin/editor: own albums with photo count LIMIT 4; viewer: accessible LIMIT 4)
+  // [11] admin tool counts (4 subquery values) — db.query for admin, Promise.resolve for others
+  // [12] shared-with list (editor only) — db.query for editor, Promise.resolve for others
+  // [13] admin name+email for viewer limits card (viewer only) — db.query for viewer, Promise.resolve for others
   const [
     statsUploads, statsAlbums, statsRecipes,
     sessionsResult, recentUploads, albumsResult,
     profileResult, favouritesResult, commentsResult,
     recipesResult,
+    albumsGridResult, adminToolsResult, sharedWithResult, adminLookupResult,
   ] = await Promise.all([
     // [0] stats: upload count (role-aware)
     isViewer
@@ -131,6 +136,47 @@ router.get('/account', wrapAsync(async (req, res) => {
           `SELECT id, name FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${role === 'admin' ? 3 : 2}`,
           [userId]
         ),
+    // [10] albums for grid card (admin/editor: own albums with photo count LIMIT 4; viewer: accessible LIMIT 4)
+    role === 'viewer'
+      ? db.query(
+          `SELECT a.id, a.title, a.created_at, COUNT(ap.photo_id)::int AS photo_count
+           FROM albums a
+           JOIN album_access aa ON aa.album_id = a.id AND aa.viewer_id = $1
+           LEFT JOIN album_photos ap ON ap.album_id = a.id
+           GROUP BY a.id ORDER BY a.created_at DESC LIMIT 4`,
+          [userId]
+        )
+      : db.query(
+          `SELECT a.id, a.title, a.created_at, COUNT(ap.photo_id)::int AS photo_count
+           FROM albums a
+           LEFT JOIN album_photos ap ON ap.album_id = a.id
+           WHERE a.user_id = $1
+           GROUP BY a.id ORDER BY a.created_at DESC LIMIT 4`,
+          [userId]
+        ),
+    // [11] admin tool counts (4 values in one query via subqueries — only for admin)
+    role === 'admin'
+      ? db.query(`SELECT
+          (SELECT COUNT(*)::int FROM users)        AS user_count,
+          (SELECT COUNT(*)::int FROM tags)         AS tag_count,
+          (SELECT COUNT(*)::int FROM albums)       AS album_count,
+          (SELECT COUNT(*)::int FROM tag_recipes)  AS recipe_count`)
+      : Promise.resolve({ rows: [{ user_count: 0, tag_count: 0, album_count: 0, recipe_count: 0 }] }),
+    // [12] shared-with list (editor only)
+    role === 'editor'
+      ? db.query(
+          `SELECT DISTINCT u.id, u.name, COUNT(DISTINCT aa.album_id)::int AS album_count
+           FROM album_access aa
+           JOIN albums a ON a.id = aa.album_id AND a.user_id = $1
+           JOIN users u ON u.id = aa.viewer_id
+           GROUP BY u.id ORDER BY u.name ASC`,
+          [userId]
+        )
+      : Promise.resolve({ rows: [] }),
+    // [13] admin name+email for viewer limits card (viewer only)
+    role === 'viewer'
+      ? db.query(`SELECT name, email FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1`)
+      : Promise.resolve({ rows: [] }),
   ]);
 
   const stats = {
@@ -168,6 +214,10 @@ router.get('/account', wrapAsync(async (req, res) => {
     albums: albumsResult.rows,
     profile,
     recipes: recipesResult.rows,
+    albumsGrid: albumsGridResult.rows,
+    adminTools: adminToolsResult.rows[0] || {},
+    sharedWith: sharedWithResult.rows,
+    adminContact: adminLookupResult.rows[0] || null,
   }, req.session));
 }));
 
@@ -563,14 +613,22 @@ router.post('/account/delete', wrapAsync(async (req, res) => {
 
 // ── FE-1.4 / ACC-4: Account page HTML template ───────────────────────────────
 
-function renderAccountPage({ stats, sessions, recentUploads, albums: _albums, profile, recipes }, session) {
+function renderAccountPage({ stats, sessions, recentUploads, albums: _albums, profile, recipes,
+  albumsGrid, adminTools, sharedWith, adminContact }, session) {
   const { role } = session;
 
   // DS-ACC-1: two-column layout with header + perms strip + body
   const headerHtml  = buildHeader(stats, session);
   const permsStrip  = buildPermsStrip(role);
   const leftCol     = buildLeftColumn(role, { profile, recentUploads, recipes, stats });
-  const rightCol    = buildRightColumn(sessions, role);
+  const rightCol    = buildRightColumn(sessions, role, {
+    albums: albumsGrid,
+    adminTools,
+    sharedWith,
+    adminContact,
+    stats,
+    recipes,
+  });
 
   const accountScript = buildAccountScript();
 
@@ -827,34 +885,166 @@ function buildActivityCard() {
     </div>`;
 }
 
-// ── DS-ACC-1: Right column — sessions + quick links + danger zone ─────────────
+// ── DS-ACC-5: Right column — role-specific cards + sessions + danger zone ────
 
-function buildRightColumn(sessions, role) {
-  const sessionsCard  = buildSessionsSection(sessions);
-  const quickLinks    = buildQuickLinks(role);
-  const dangerCard    = buildDangerZoneCard();
-  return `${sessionsCard}${quickLinks}${dangerCard}`;
-}
+function buildRightColumn(sessions, role, data = {}) {
+  const { albums = [], adminTools = {}, sharedWith = [], adminContact = null, stats = {}, recipes = [] } = data;
+  let html = '';
 
-function buildQuickLinks(role) {
-  const links = [];
-  if (role === 'editor' || role === 'admin') {
-    links.push(`<a class="btn btn-secondary" href="/photos">My uploads</a>`);
-    links.push(`<a class="btn btn-secondary" href="/albums">My albums</a>`);
+  // Role-specific cards (above sessions)
+  if (role === 'admin' || role === 'editor') {
+    html += buildAlbumsGridCard(role, albums, stats);
   }
   if (role === 'admin') {
-    links.push(`<a class="btn btn-secondary" href="/admin/users">Manage users</a>`);
-    links.push(`<a class="btn btn-secondary" href="/admin/ai">AI tools</a>`);
+    html += buildAdminToolsCard(adminTools);
   }
-  if (links.length === 0) return '';
+  if (role === 'editor') {
+    html += buildSharedWithCard(sharedWith);
+  }
+  if (role === 'viewer') {
+    html += buildViewerRecipesCard(recipes);
+    html += buildViewerLimitsCard(adminContact);
+  }
+
+  // Always last: sessions + danger zone
+  html += buildSessionsSection(sessions);
+  html += buildDangerZoneCard();
+
+  return html;
+}
+
+function buildAlbumsGridCard(role, albums, stats) {
+  const tapeClass = role === 'admin' ? 'd1-tape' : 'd1-tape--cool';
+  const totalCount = stats && stats.albums != null ? String(stats.albums) : '0';
+  const countNum = parseInt(totalCount, 10) || 0;
+  const moreLink = countNum > 4
+    ? `<a href="/albums" class="acc-card-more">${countNum - 4} more &#8594;</a>`
+    : '';
+
+  const tiles = albums.map(a => `
+    <a href="/albums/${esc(String(a.id))}" class="acc-album-tile">
+      <div style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">${esc(a.title)}</div>
+      <div style="font-family:'Kalam',cursive;font-size:11px;color:var(--ink-faint)">${esc(String(a.photo_count || 0))} photos</div>
+    </a>`).join('');
+
+  const gridOrEmpty = albums.length > 0
+    ? `<div class="acc-albums-grid">${tiles}</div>`
+    : `<p class="acc-albums-empty" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint);margin:0">no albums yet &#8212; <a href="/albums/new">create one</a></p>`;
+
   return `
-    <div class="acc-card-block">
-      <h3 class="acc-card-title">Quick links</h3>
-      <div style="padding:0">
-        <div class="acc-links" style="display:flex;flex-wrap:wrap;gap:0.75rem">
-          ${links.join('\n          ')}
-        </div>
+    <div class="acc-card-block acc-albums-card ${tapeClass}">
+      <div style="display:flex;align-items:baseline;margin-bottom:12px">
+        <h3 class="acc-card-title" style="margin:0">your albums</h3>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-faint);margin-left:8px">${esc(totalCount)}</span>
+        ${moreLink}
       </div>
+      ${gridOrEmpty}
+    </div>`;
+}
+
+function buildAdminToolsCard(adminTools) {
+  const userCount    = esc(String(adminTools.user_count   || 0));
+  const tagCount     = esc(String(adminTools.tag_count    || 0));
+  const albumCount   = esc(String(adminTools.album_count  || 0));
+  const recipeCount  = esc(String(adminTools.recipe_count || 0));
+  const countStyle   = 'font-family:\'JetBrains Mono\',monospace;font-size:12px;color:var(--accent);float:right';
+
+  return `
+    <div class="acc-card-block acc-admin-tools-card d1-tape--red" style="position:relative;overflow:visible">
+      <div style="display:flex;align-items:center;margin-bottom:12px">
+        <h3 class="acc-card-title" style="margin:0">admin tools</h3>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:1.5px;color:oklch(55% 0.20 25);border:1px solid oklch(55% 0.20 25);padding:2px 6px;margin-left:auto">ADMIN ONLY</span>
+      </div>
+      <div class="acc-tools-grid">
+        <a href="/admin/users" class="acc-tool-tile">
+          <div style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">users <span style="${countStyle}">${userCount}</span></div>
+        </a>
+        <a href="/tags/manage" class="acc-tool-tile">
+          <div style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">manage tags <span style="${countStyle}">${tagCount}</span></div>
+        </a>
+        <a href="/albums?scope=all" class="acc-tool-tile">
+          <div style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">all albums <span style="${countStyle}">${albumCount}</span></div>
+        </a>
+        <a href="/tags/recipes?scope=all" class="acc-tool-tile">
+          <div style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">all recipes <span style="${countStyle}">${recipeCount}</span></div>
+        </a>
+        <a href="#" class="acc-tool-tile full">
+          <div style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">storage <span style="${countStyle}">&#8211;%</span></div>
+          <!-- TODO: DS-ACC-5 storage tile — endpoint not yet implemented -->
+        </a>
+      </div>
+    </div>`;
+}
+
+function buildSharedWithCard(sharedWith) {
+  const rows = sharedWith.map((u, i) => {
+    const isLast = i === sharedWith.length - 1;
+    const borderStyle = isLast ? 'none' : '1px dashed var(--ink-faint)';
+    const initial = esc((u.name || '?')[0].toUpperCase());
+    return `
+      <div class="acc-shared-row" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:${borderStyle}">
+        <div style="width:24px;height:24px;border-radius:50%;background:var(--paper-2);border:1px solid var(--ink);display:flex;align-items:center;justify-content:center;font-family:'Caveat',cursive;font-size:14px;flex-shrink:0">${initial}</div>
+        <span style="font-family:'Kalam',cursive;font-size:14px;flex:1">${esc(u.name)}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-faint)">${esc(String(u.album_count || 0))} albums</span>
+        <button class="btn btn-sm btn-secondary" disabled>revoke</button>
+        <!-- TODO: DS-ACC-5 revoke endpoint — check DELETE /albums/access in src/routes/albums.js -->
+      </div>`;
+  }).join('');
+
+  const content = sharedWith.length > 0
+    ? rows
+    : `<p class="acc-shared-empty" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint);margin:0">not sharing with anyone yet</p>`;
+
+  return `
+    <div class="acc-card-block acc-shared-card d1-tape--cool">
+      <h3 class="acc-card-title">shared with</h3>
+      ${content}
+    </div>`;
+}
+
+function buildViewerRecipesCard(recipes) {
+  const displayed = recipes.slice(0, 4);
+  const recipeRows = displayed.map((recipe, i) => {
+    const isLast = i === displayed.length - 1;
+    const borderStyle = isLast ? 'none' : '1px dashed var(--ink-faint)';
+    return `<a href="/tags/recipes/${esc(String(recipe.id))}" class="acc-recipe-row" style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:6px 0;border-bottom:${borderStyle};text-decoration:none;color:inherit">
+        <span style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">${esc(recipe.name)}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-faint)">&#8212;</span>
+      </a>`;
+  }).join('');
+
+  const content = recipes.length > 0
+    ? recipeRows
+    : `<p style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint);margin:0">no recipes yet &#8212; <a href="/tags/recipes/new">create one</a></p>`;
+
+  return `
+    <div class="acc-card-block acc-viewer-recipes-card d1-tape--green">
+      <div style="display:flex;align-items:center;margin-bottom:12px">
+        <h3 class="acc-card-title" style="margin:0">your tag recipes</h3>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:1.5px;background:oklch(96% 0.02 140);border:1.5px solid var(--accent-3);color:var(--accent-3);padding:2px 8px;border-radius:999px;margin-left:8px">YOUR THING</span>
+      </div>
+      ${content}
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <a href="/tags/recipes/new" class="acc-pill-can">+ new recipe</a>
+      </div>
+    </div>`;
+}
+
+function buildViewerLimitsCard(adminContact) {
+  const cta = adminContact
+    ? `<p class="acc-limits-cta" style="font-family:'Kalam',cursive;font-size:13px;margin:0">&#8594; ask <a href="mailto:${esc(adminContact.email)}">${esc(adminContact.name)}</a> for editor rights</p>`
+    : `<p class="acc-limits-cta" style="font-family:'Kalam',cursive;font-size:13px;margin:0">&#8594; contact the site owner for editor rights</p>`;
+
+  return `
+    <div class="acc-card-block acc-viewer-limits-card" style="background:oklch(97% 0.02 140);border:1.5px solid var(--accent-3)">
+      <h3 class="acc-card-title" style="color:var(--accent-3)">what you can't do here</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+        <span class="acc-pill-cant">upload photos</span>
+        <span class="acc-pill-cant">create albums</span>
+        <span class="acc-pill-cant">share albums</span>
+        <span class="acc-pill-cant">manage users</span>
+      </div>
+      ${cta}
     </div>`;
 }
 

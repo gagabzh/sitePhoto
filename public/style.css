@@ -2155,6 +2155,33 @@ tr:hover .tm-row-actions { opacity:1; }
 .acc-role-badge--editor { color: var(--accent-2);      border-color: var(--accent-2);      background: oklch(96% 0.02 220); }
 .acc-role-badge--viewer { color: var(--accent-3);      border-color: var(--accent-3);      background: oklch(96% 0.02 140); }
 
+/* ── Account page DS-ACC-5: right column cards ── */
+.acc-albums-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.acc-album-tile {
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper-2);
+  padding: 10px 12px;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: transform 0.1s;
+}
+.acc-album-tile:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.acc-tools-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.acc-tool-tile.full { grid-column: span 2; }
+
 /* ── Account page DS-ACC-4: left column cards ── */
 
 .acc-uploads-mosaic {
