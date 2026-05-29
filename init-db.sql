@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS photos (
   latitude NUMERIC(10,7),
   longitude NUMERIC(10,7),
   nextcloud_url TEXT,
+  place TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
