@@ -2,16 +2,22 @@ const { page, esc } = require('../layout');
 const { selectionBar, selectionScript } = require('../components');
 const { singleUploadFields } = require('../uploadHelpers');
 
-function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, latestAlbum, session }) {
+function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, latestAlbum, session, activeImport }) {
   const firstname = esc((session.name || '').split(' ')[0]);
+  const isEditor = session.role === 'editor' || session.role === 'admin';
+
+  // NC-5: import progress banner (server-side rendered for page-reload recovery)
+  const importBannerHtml = (isEditor && activeImport) ? renderImportBanner(activeImport) : '';
 
   if (rows.length === 0) {
     return page('Photos', `
+      ${importBannerHtml}
       <div class="wall-greet">
         <h1>hi <span style="color:var(--accent)">${firstname}</span>, welcome home.</h1>
         <p class="wall-count">0 photos</p>
       </div>
       <p>No photos yet. <a href="/photos/upload">Upload the first one.</a></p>
+      ${isEditor ? importProgressScript(activeImport) : ''}
     `, session, true);
   }
 
@@ -55,6 +61,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
     : '<p style="font-size:0.85rem">No albums yet.</p>';
 
   return page('Photos', `
+    ${importBannerHtml}
     <div class="wall-greet">
       <h1>hi <span style="color:var(--accent)">${firstname}</span>, welcome home.</h1>
       <p class="wall-count">${total} photo${total !== 1 ? 's' : ''}</p>
@@ -66,6 +73,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
           ${selectionBar({ showTag: true, tagAction: '/photos/bulk-tag', untagAction: '/photos/bulk-untag', deleteAction: '/photos/bulk-delete' })}
           <div class="row" style="justify-content:flex-end;margin-bottom:0.75rem;gap:8px">
             <button class="btn btn-secondary btn-sm" id="sel-select-btn" type="button">select</button>
+            ${isEditor ? `<a class="btn btn-secondary" href="/photos/nextcloud-import">Import from Nextcloud</a>` : ''}
             <a class="btn" href="/photos/upload">+ Upload</a>
           </div>
           ${mosaicHtml}
@@ -128,6 +136,7 @@ function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, late
   observer.observe(sentinel);
 })();
 </script>` : ''}
+    ${isEditor ? importProgressScript(activeImport) : ''}
   `, session, true);
 }
 
@@ -287,6 +296,108 @@ function renderPhotoEditPage({ photo, from, session }) {
       </div>
     </div>
   `, session);
+}
+
+// NC-5: server-side rendered import progress banner
+function renderImportBanner(imp) {
+  const done   = imp.done   || 0;
+  const total  = imp.total  || 0;
+  const failed = imp.failed || 0;
+  const complete = (done + failed) >= total;
+  let message;
+  if (complete && failed === total && done === 0) {
+    message = `Import failed — 0 of ${total} photos could be imported. Check the Nextcloud share link.`;
+  } else if (complete) {
+    message = failed > 0
+      ? `Import complete — ${done} of ${total} imported, ${failed} failed.`
+      : `Import complete — ${done} of ${total} photos imported.`;
+  } else {
+    message = failed > 0
+      ? `Importing from Nextcloud — ${done} of ${total} photos done (${failed} failed)`
+      : `Importing from Nextcloud — ${done} of ${total} photos done`;
+  }
+  return `<div id="nc-import-banner" style="position:sticky;top:0;z-index:100;background:var(--paper-2);border-bottom:1.5px solid var(--ink);padding:0.6rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;font-family:var(--hand-tight);font-size:0.9rem" data-import-id="${imp.id}" data-complete="${complete ? '1' : '0'}">
+  <span id="nc-banner-text">${esc(message)}</span>
+  <button type="button" id="nc-banner-close" style="background:none;border:none;cursor:pointer;font-size:1.2rem;line-height:1;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center" aria-label="Dismiss import banner">&#x2715;</button>
+</div>`;
+}
+
+// NC-5: client-side socket.io listener for real-time import progress
+function importProgressScript(activeImport) {
+  const importId = activeImport ? activeImport.id : 'null';
+  const complete = activeImport ? ((activeImport.done + activeImport.failed) >= activeImport.total ? 1 : 0) : 0;
+  return `<script>
+(function(){
+  var banner = document.getElementById('nc-import-banner');
+  var closeBtn = banner ? document.getElementById('nc-banner-close') : null;
+  var activeImportId = ${importId};
+  var dismissed = false;
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function() {
+      dismissed = true;
+      if (banner) banner.style.display = 'none';
+    });
+    // Auto-dismiss if already complete on load
+    if (${complete} && banner) {
+      setTimeout(function() { if (!dismissed && banner) banner.style.display = 'none'; }, 5000);
+    }
+  }
+
+  function bannerText(done, total, failed) {
+    var complete = (done + failed) >= total;
+    if (complete && failed === total && done === 0) return 'Import failed — 0 of ' + total + ' photos could be imported. Check the Nextcloud share link.';
+    if (complete && failed > 0)  return 'Import complete — ' + done + ' of ' + total + ' imported, ' + failed + ' failed.';
+    if (complete) return 'Import complete — ' + done + ' of ' + total + ' photos imported.';
+    if (failed > 0) return 'Importing from Nextcloud — ' + done + ' of ' + total + ' photos done (' + failed + ' failed)';
+    return 'Importing from Nextcloud — ' + done + ' of ' + total + ' photos done';
+  }
+
+  function updateBanner(done, total, failed) {
+    if (dismissed) return;
+    var textEl = document.getElementById('nc-banner-text');
+    if (!banner) {
+      // Create banner dynamically (user navigated back after import started)
+      banner = document.createElement('div');
+      banner.id = 'nc-import-banner';
+      banner.style.cssText = 'position:sticky;top:0;z-index:100;background:var(--paper-2);border-bottom:1.5px solid var(--ink);padding:0.6rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;font-family:var(--hand-tight);font-size:0.9rem';
+      banner.innerHTML = '<span id="nc-banner-text"></span>'
+        + '<button type="button" id="nc-banner-close" style="background:none;border:none;cursor:pointer;font-size:1.2rem;line-height:1;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center" aria-label="Dismiss import banner">&#x2715;</button>';
+      document.body.insertBefore(banner, document.body.firstChild);
+      document.getElementById('nc-banner-close').addEventListener('click', function() {
+        dismissed = true;
+        banner.style.display = 'none';
+      });
+    }
+    textEl = document.getElementById('nc-banner-text');
+    if (textEl) textEl.textContent = bannerText(done, total, failed);
+    banner.style.display = 'flex';
+
+    var complete = (done + failed) >= total;
+    if (complete) {
+      setTimeout(function() { if (!dismissed && banner) banner.style.display = 'none'; }, 5000);
+    }
+  }
+
+  // Listen for real-time progress via socket.io (socket is initialised globally in layout)
+  if (typeof window._socket !== 'undefined' && window._socket) {
+    window._socket.on('nextcloud-import-progress', function(data) {
+      if (activeImportId !== null && data.importId !== activeImportId) return;
+      if (activeImportId === null) activeImportId = data.importId;
+      updateBanner(data.done, data.total, data.failed);
+    });
+  } else {
+    // Socket not yet ready — wait for it
+    document.addEventListener('socket-ready', function(e) {
+      e.detail.on('nextcloud-import-progress', function(data) {
+        if (activeImportId !== null && data.importId !== activeImportId) return;
+        if (activeImportId === null) activeImportId = data.importId;
+        updateBanner(data.done, data.total, data.failed);
+      });
+    });
+  }
+})();
+</script>`;
 }
 
 module.exports = { renderPhotoListPage, renderUploadPage, renderPhotoDetailPage, renderPhotoEditPage };
