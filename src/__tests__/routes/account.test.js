@@ -14,6 +14,8 @@ jest.mock('sharp', () => {
   return jest.fn(() => chain);
 });
 jest.mock('uuid', () => ({ v4: jest.fn() }));
+// HRD-12: prevent express-rate-limit from throttling test runs
+jest.mock('express-rate-limit', () => () => (req, res, next) => next());
 
 const request = require('supertest');
 const express = require('express');
@@ -22,6 +24,7 @@ const bcrypt = require('bcryptjs');
 const { uploadPhoto, streamPhoto, deletePhoto } = require('../../storage');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
+const { csrfMiddleware } = require('../../middleware');
 
 beforeEach(() => jest.resetAllMocks());
 
@@ -40,6 +43,22 @@ function makeApp(sessionData, sessionID = 'test-sid') {
   });
   app.use(require('../../routes/account'));
   // Error handler required so wrapAsync-caught errors produce a 500 response
+  app.use((err, req, res, _next) => res.status(500).send(err.message));
+  return app;
+}
+
+// HRD-9: app variant with CSRF middleware wired in, for CSRF enforcement tests
+function makeAppWithCsrf(sessionData, sessionID = 'test-sid') {
+  const app = express();
+  app.use(express.urlencoded({ extended: false }));
+  app.use(express.json());
+  app.use((req, res, next) => {
+    req.session   = { ...sessionData, destroy: (cb) => cb() };
+    req.sessionID = sessionID;
+    next();
+  });
+  app.use(csrfMiddleware);
+  app.use(require('../../routes/account'));
   app.use((err, req, res, _next) => res.status(500).send(err.message));
   return app;
 }
@@ -394,8 +413,9 @@ describe('GET /account', () => {
       .mockResolvedValueOnce({ rows: [] })           // [3] sessions
       // [4] Promise.resolve — skipped
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list
-      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }); // [6]
-    // [7][8][9] Promise.resolve — skipped
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7][8][9][10][11][12] Promise.resolve — skipped
+      .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
     expect(res.status).toBe(200);
     expect(res.text).toContain('acc-favourites-card');
@@ -761,6 +781,27 @@ describe('DELETE /account/sessions/:sid', () => {
     const params = db.query.mock.calls[0][1];
     expect(params[1]).toBe('42');
   });
+
+  // HRD-9: CSRF enforcement
+  it('returns 403 when CSRF token is missing', async () => {
+    // No x-csrf-token header — csrfMiddleware must reject before the route handler runs
+    const res = await request(makeAppWithCsrf(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions/other-sid');
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  // HRD-11: 500 error path
+  it('returns 500 when db.query rejects', async () => {
+    db.query.mockRejectedValueOnce(new Error('db failure'));
+
+    const res = await request(makeApp(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions/other-sid')
+      .set('x-csrf-token', 'test-csrf');
+
+    expect(res.status).toBe(500);
+  });
 });
 
 // ── ACC-4: DELETE /account/sessions — bulk revoke ─────────────────────────────
@@ -830,6 +871,16 @@ describe('DELETE /account/sessions (bulk)', () => {
       .set('x-csrf-token', 'test-csrf');
 
     expect(res.status).toBe(500);
+  });
+
+  // HRD-9: CSRF enforcement
+  it('returns 403 when CSRF token is missing', async () => {
+    // No x-csrf-token header — csrfMiddleware must reject before the route handler runs
+    const res = await request(makeAppWithCsrf(USER_SESSION, 'current-sid'))
+      .delete('/account/sessions');
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
 
