@@ -12,7 +12,7 @@ module.exports = session({
     errorLog: console.error,
   }),
   secret: process.env.SESSION_SECRET || 'dev-secret',
-  resave: false,
+  resave: true,
   saveUninitialized: false,
   rolling: true,
   cookie: {
