@@ -97,7 +97,7 @@ function importFormScript() {
       headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
       body: JSON.stringify({ shareUrl: url }),
     })
-      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(r) { return r.text().then(function(t) { var d; try { d = JSON.parse(t); } catch(e) { d = { error: t || 'Unexpected server error.' }; } return { ok: r.ok, data: d }; }); })
       .then(function(res) {
         previewBtn.disabled = false; previewBtn.textContent = 'Preview';
         if (!res.ok) { showError(errorEl, res.data.error || 'Could not reach Nextcloud.'); return; }
@@ -136,7 +136,7 @@ function importFormScript() {
       headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
       body: JSON.stringify({ shareUrl: urlInput.value.trim(), tags: tagList, place: place || null, albumName: albumName || null }),
     })
-      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(r) { return r.text().then(function(t) { var d; try { d = JSON.parse(t); } catch(e) { d = { error: t || 'Unexpected server error.' }; } return { ok: r.ok, data: d }; }); })
       .then(function(res) {
         startBtn.disabled = false; startBtn.textContent = 'Start import';
         if (!res.ok) { showError(confirmErr, res.data.error || 'Import failed. Try again.'); return; }

@@ -5,7 +5,7 @@ One row per story. Update `Status` and `PR / Notes` when work begins or lands.
 Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 
 | ID | Title | Domain | Status | PR / Notes |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | DS-1 | Avatar dropdown navigation | Design System | Done | design system implemented in early V5 work |
 | DS-2 | Family Wall photo list | Design System | Done | design system implemented in early V5 work |
 | DS-3 | Photo Books album list | Design System | Done | design system implemented in early V5 work |
@@ -79,11 +79,11 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | TR-3 | View a travel | Travel | Backlog | — |
 | TR-4 | Share a travel | Travel | Backlog | — |
 | TR-5 | Edit / delete a travel | Travel | Backlog | — |
-| US-NC1 | Link a photo to Nextcloud | Nextcloud | Backlog | — |
-| US-NC2 | Download original from photo page | Nextcloud | Backlog | — |
-| US-NC3 | Manage Nextcloud link | Nextcloud | Backlog | — |
-| US-NC4 | Import a Nextcloud shared folder | Nextcloud | Backlog | — |
-| US-NC5 | Import progress feedback | Nextcloud | Backlog | — |
+| US-NC1 | Link a photo to Nextcloud | Nextcloud | Done | v1.sql + edit form |
+| US-NC2 | Download original from photo page | Nextcloud | Done | v1.sql + photo detail |
+| US-NC3 | Manage Nextcloud link | Nextcloud | Done | v1.sql + edit form |
+| US-NC4 | Import a Nextcloud shared folder | Nextcloud | Done | #93 |
+| US-NC5 | Import progress feedback | Nextcloud | Done | #93 |
 | AI-1 | Duplicate photo detection | Local AI | Done | admin-ai.js |
 | AI-2 | People identification and tagging | Local AI | Done | worker.js |
 | AI-3 | Manual person tagging | Local AI | Backlog | — |
@@ -112,8 +112,8 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | HRD-5 | Add test for sharp failure path on corrupt image input | Hardening | Done | #84 |
 | HRD-6 | Remove S3 key from POST /account/avatar JSON response | Hardening | Done | #84 |
 | HRD-7 | Rate-limit PATCH /account to prevent email enumeration | Hardening | Done | #84 |
-| HRD-8 | Extract session TTL to a shared constant | Hardening | Backlog | follow-up from PR #82 |
-| HRD-9 | Add CSRF 403 tests for session revoke endpoints | Hardening | Backlog | follow-up from PR #82 |
-| HRD-10 | Unit-test parseUserAgent and relativeTime helpers | Hardening | Backlog | follow-up from PR #82 |
-| HRD-11 | Add 500 error path test for individual session revoke | Hardening | Backlog | follow-up from PR #82 |
-| HRD-12 | Mock express-rate-limit in account.test.js | Hardening | Backlog | follow-up from PR #82 |
+| HRD-8 | Extract session TTL to a shared constant | Hardening | Done | #92 |
+| HRD-9 | Add CSRF 403 tests for session revoke endpoints | Hardening | Done | #92 |
+| HRD-10 | Unit-test parseUserAgent and relativeTime helpers | Hardening | Done | #92 |
+| HRD-11 | Add 500 error path test for individual session revoke | Hardening | Done | #92 |
+| HRD-12 | Mock express-rate-limit in account.test.js | Hardening | Done | #92 |

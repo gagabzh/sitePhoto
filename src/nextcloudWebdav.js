@@ -106,7 +106,7 @@ async function propfindShare(shareUrl) {
     throw Object.assign(new Error('Invalid share URL.'), { httpStatus: 422 });
   }
 
-  const webdavUrl = `${shareUrl}/public.php/webdav/`;
+  const webdavUrl = `${shareUrl.replace(/\/$/, '')}/public.php/webdav/`;
   const auth = Buffer.from(`${token}:`).toString('base64');
 
   const propfindBody = `<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:getcontenttype/><D:getcontentlength/><D:displayname/></D:prop></D:propfind>`;
@@ -205,7 +205,7 @@ function downloadFileAsBuffer(shareUrl, fileName) {
     return Promise.reject(Object.assign(new Error('Invalid share URL.'), { statusCode: 422 }));
   }
 
-  const fileUrl = `${shareUrl}/public.php/webdav/${encodeURIComponent(fileName)}`;
+  const fileUrl = `${shareUrl.replace(/\/$/, '')}/public.php/webdav/${encodeURIComponent(fileName)}`;
   const auth = Buffer.from(`${token}:`).toString('base64');
   const parsed = new URL(fileUrl);
   const lib = parsed.protocol === 'https:' ? https : http;

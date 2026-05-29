@@ -28,6 +28,10 @@ function csrfMiddleware(req, res, next) {
     if (!ct.startsWith('multipart/')) {
       const token = req.headers['x-csrf-token'] || (req.body && req.body._csrf);
       if (!token || token !== req.session.csrf) {
+        // JSON for API requests so fetch() callers get a parseable error
+        const wantsJson = (ct.includes('application/json'))
+          || (req.headers.accept || '').includes('application/json');
+        if (wantsJson) return res.status(403).json({ error: 'Invalid CSRF token' });
         return res.status(403).send('Invalid CSRF token');
       }
     }
