@@ -72,7 +72,6 @@ function renderImportPage(session) {
 function importFormScript() {
   return `<script>
 (function() {
-  var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
   var previewBtn = document.getElementById('nc-preview-btn');
   var startBtn   = document.getElementById('nc-start-btn');
   var backBtn    = document.getElementById('nc-back-btn');
@@ -94,7 +93,7 @@ function importFormScript() {
     previewBtn.textContent = 'Checking…';
     fetch('/photos/nextcloud-import', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shareUrl: url }),
     })
       .then(function(r) { return r.text().then(function(t) { var d; try { d = JSON.parse(t); } catch(e) { d = { error: t || 'Unexpected server error.' }; } return { ok: r.ok, data: d }; }); })
@@ -133,7 +132,7 @@ function importFormScript() {
     startBtn.disabled = true; startBtn.textContent = 'Starting…';
     fetch('/photos/nextcloud-import/confirm', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shareUrl: urlInput.value.trim(), tags: tagList, place: place || null, albumName: albumName || null }),
     })
       .then(function(r) { return r.text().then(function(t) { var d; try { d = JSON.parse(t); } catch(e) { d = { error: t || 'Unexpected server error.' }; } return { ok: r.ok, data: d }; }); })
