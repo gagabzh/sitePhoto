@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { page } = require('../layout');
 const db = require('../db');
+const { parseCoord } = require('../uploadHelpers');
 const { addNextcloudImportJob } = require('../queue/producer');
 const { isValidNextcloudShareUrl, propfindShare } = require('../nextcloudWebdav');
 
@@ -51,8 +52,13 @@ function renderImportPage(session) {
           <label>Tags <small>(optional, comma-separated)</small>
             <input type="text" id="nc-tags" placeholder="Paris, Vacation">
           </label>
-          <label>Place <small>(optional)</small>
-            <input type="text" id="nc-place" placeholder="Paris, France">
+          <label>Location <small>(optional — assigns GPS coordinates to all imported photos)</small>
+            <div class="tag-ac-wrap loc-search-wrap">
+              <input type="text" class="loc-search-input" placeholder="Search a place…" autocomplete="off">
+              <button type="button" class="loc-clear-btn" style="display:none">× clear</button>
+            </div>
+            <input type="hidden" name="latitude" id="nc-lat">
+            <input type="hidden" name="longitude" id="nc-lon">
           </label>
           <label>Album name <small>(optional — creates a new album)</small>
             <input type="text" id="nc-album" placeholder="Summer 2024">
@@ -126,14 +132,15 @@ function importFormScript() {
   startBtn.addEventListener('click', function() {
     hideError(confirmErr);
     var tags = document.getElementById('nc-tags').value.trim();
-    var place = document.getElementById('nc-place').value.trim();
     var albumName = document.getElementById('nc-album').value.trim();
+    var latVal = document.getElementById('nc-lat').value;
+    var lonVal = document.getElementById('nc-lon').value;
     var tagList = tags ? tags.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
     startBtn.disabled = true; startBtn.textContent = 'Starting…';
     fetch('/photos/nextcloud-import/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shareUrl: urlInput.value.trim(), tags: tagList, place: place || null, albumName: albumName || null }),
+      body: JSON.stringify({ shareUrl: urlInput.value.trim(), tags: tagList, latitude: latVal ? parseFloat(latVal) : null, longitude: lonVal ? parseFloat(lonVal) : null, albumName: albumName || null }),
     })
       .then(function(r) { return r.text().then(function(t) { var d; try { d = JSON.parse(t); } catch(e) { d = { error: t || 'Unexpected server error.' }; } return { ok: r.ok, data: d }; }); })
       .then(function(res) {
@@ -182,7 +189,8 @@ router.post('/', requireEditor, previewLimiter, wrapAsync(async (req, res) => {
 router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
   const shareUrl  = (req.body.shareUrl  || '').trim();
   const tags      = Array.isArray(req.body.tags) ? req.body.tags.map(String) : [];
-  const place     = req.body.place     ? String(req.body.place).trim()     : null;
+  const latitude  = parseCoord(req.body.latitude,  -90,  90);
+  const longitude = parseCoord(req.body.longitude, -180, 180);
   const albumName = req.body.albumName ? String(req.body.albumName).trim() : null;
 
   if (!isValidNextcloudShareUrl(shareUrl)) {
@@ -240,7 +248,8 @@ router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
       mimeType: file.mimeType,
       userId,
       tags,
-      place,
+      latitude,
+      longitude,
       albumId,
       importId,
     });

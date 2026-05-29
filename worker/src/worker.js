@@ -79,7 +79,7 @@ worker.on('error', (err) => {
 
 // NC-4: nextcloud-import queue — one job per file in the shared folder
 const ncWorker = new Worker('nextcloud-import', async (job) => {
-  const { shareUrl, fileName, mimeType, userId, tags, place, albumId, importId } = job.data;
+  const { shareUrl, fileName, mimeType, userId, tags, latitude, longitude, albumId, importId } = job.data;
   console.log(`[worker] nc-import job ${job.id} — ${fileName} (import ${importId})`);
 
   let succeeded = false;
@@ -96,7 +96,7 @@ const ncWorker = new Worker('nextcloud-import', async (job) => {
 
     // Step d+e+f: insert photo row, album membership, tags via Instance-1
     const { photoId } = await insertImportedPhoto({
-      userId, s3Key, fileName, mimeType, shareUrl, place, albumId, tags, importId,
+      userId, s3Key, fileName, mimeType, shareUrl, latitude, longitude, albumId, tags, importId,
     });
 
     // Step g: enqueue AI identification

@@ -251,7 +251,7 @@ describe('POST /photos/nextcloud-import/confirm', () => {
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/nextcloud-import/confirm')
-      .send({ shareUrl: SHARE_URL, tags: ['paris'], place: 'Paris' });
+      .send({ shareUrl: SHARE_URL, tags: ['paris'], latitude: 48.8566, longitude: 2.3522 });
 
     expect(res.status).toBe(200);
     expect(res.body.importId).toBe(7);
@@ -264,7 +264,8 @@ describe('POST /photos/nextcloud-import/confirm', () => {
         mimeType: 'image/jpeg',
         userId: 10,
         tags: ['paris'],
-        place: 'Paris',
+        latitude: 48.8566,
+        longitude: 2.3522,
         albumId: null,
         importId: 7,
       }),

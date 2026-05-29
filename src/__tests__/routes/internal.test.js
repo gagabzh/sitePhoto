@@ -217,7 +217,7 @@ describe('POST /internal/nextcloud-photo', () => {
       .set('x-worker-secret', VALID_SECRET)
       .send({
         userId: 5, s3Key: 'uuid-abc.jpg', mimeType: 'image/jpeg',
-        shareUrl: 'https://cloud.example.com/s/token', place: 'Paris',
+        shareUrl: 'https://cloud.example.com/s/token', latitude: 48.8566, longitude: 2.3522,
         albumId: 7, tags: ['paris', 'vacation'], importId: 3,
       });
 
@@ -226,7 +226,7 @@ describe('POST /internal/nextcloud-photo', () => {
     expect(db.query).toHaveBeenCalledTimes(4);
     expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining('INSERT INTO photos'),
-      [5, 'uuid-abc.jpg', 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 'Paris'],
+      [5, 'uuid-abc.jpg', 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 48.8566, 2.3522],
     );
     expect(db.query).toHaveBeenNthCalledWith(2,
       expect.stringContaining('INSERT INTO album_photos'),
