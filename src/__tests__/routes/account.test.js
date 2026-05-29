@@ -126,7 +126,7 @@ describe('US-6: Change own password', () => {
 // ── GET /account — dashboard page ────────────────────────────────────────────
 
 describe('GET /account', () => {
-  // Promise.all execution order for non-viewer (editor / admin):
+  // Promise.all execution order for non-viewer (editor):
   // [0] db.query → uploads stat  (SELECT COUNT FROM photos WHERE user_id)
   // [1] db.query → albums stat   (SELECT COUNT FROM albums WHERE user_id)
   // [2] db.query → recipes stat  (SELECT COUNT FROM tag_recipes WHERE user_id)
@@ -137,8 +137,12 @@ describe('GET /account', () => {
   // [7] Promise.resolve          — favourites count placeholder (no db.query consumed)
   // [8] Promise.resolve          — comments count placeholder (no db.query consumed)
   // [9] db.query → tag recipes for left-column card (SELECT id, name FROM tag_recipes LIMIT N)
+  // [10] db.query → albums grid (SELECT ... FROM albums LEFT JOIN album_photos WHERE user_id LIMIT 4)
+  // [11] Promise.resolve         — admin tools (no db.query consumed for editor)
+  // [12] db.query → shared-with list (SELECT ... FROM album_access JOIN albums ... editor only)
+  // [13] Promise.resolve         — admin lookup (no db.query consumed for editor)
   //
-  // For viewer, slots [4] and [9] are Promise.resolve({rows:[]}) — they do NOT consume db.query mocks.
+  // For viewer, slots [4], [9], [11], [12] are Promise.resolve({rows:[]}) — they do NOT consume db.query mocks.
   // Promise.all execution order for viewer:
   // [0] db.query → uploads stat  (via album_access JOIN)
   // [1] db.query → albums stat   (SELECT COUNT FROM album_access WHERE viewer_id)
@@ -150,8 +154,13 @@ describe('GET /account', () => {
   // [7] Promise.resolve          — favourites count placeholder
   // [8] Promise.resolve          — comments count placeholder
   // [9] Promise.resolve          — tag recipes (viewer has none)
+  // [10] Promise.resolve         — albums grid (viewer has no albums grid card)
+  // [11] Promise.resolve         — admin tools (no db.query consumed for viewer)
+  // [12] Promise.resolve         — shared-with (no db.query consumed for viewer)
+  // [13] db.query → admin lookup (SELECT name, email FROM users WHERE role='admin' LIMIT 1)
   function mockAccountQueries({ uploads = 5, albums = 2, recipes = 1, sessions = [],
                                  recentUploads = [], userAlbums = [], recipeRows = [],
+                                 albumsGrid = [], sharedWith = [],
                                  profile = { name: 'Saev', email: 'saev@test.com',
                                              avatar_s3_key: null, language: 'en',
                                              theme: 'light', notif_enabled: true } } = {}) {
@@ -173,7 +182,13 @@ describe('GET /account', () => {
       // [7] Promise.resolve for favourites — no db.query mock needed
       // [8] Promise.resolve for comments — no db.query mock needed
       // [9] tag recipes for left-column card
-      .mockResolvedValueOnce({ rows: recipeRows });
+      .mockResolvedValueOnce({ rows: recipeRows })
+      // [10] albums grid card (editor: own albums with photo count LIMIT 4)
+      .mockResolvedValueOnce({ rows: albumsGrid })
+      // [11] Promise.resolve for admin tools — no db.query mock needed (editor)
+      // [12] shared-with list (editor)
+      .mockResolvedValueOnce({ rows: sharedWith });
+      // [13] Promise.resolve for admin lookup — no db.query mock needed (editor)
   }
 
   it('returns 200 and shows the user name', async () => {
@@ -290,16 +305,36 @@ describe('GET /account', () => {
     expect(sessionCall[1]).toEqual([String(USER_SESSION.userId)]);
   });
 
-  it('admin sees admin quick links', async () => {
-    mockAccountQueries();
+  it('admin sees admin tools card', async () => {
+    // Admin Promise.all execution order:
+    // [0-9] same as editor but [9] LIMIT 3
+    // [10] db.query → albums grid (own albums with photo count LIMIT 4)
+    // [11] db.query → admin tool counts (subquery — admin only)
+    // [12] Promise.resolve — shared-with (no db.query consumed for admin)
+    // [13] Promise.resolve — admin lookup (no db.query consumed for admin)
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 5 }] })   // [0] uploads stat
+      .mockResolvedValueOnce({ rows: [{ n: 2 }] })   // [1] albums stat
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })   // [2] recipes stat
+      .mockResolvedValueOnce({ rows: [] })            // [3] sessions
+      .mockResolvedValueOnce({ rows: [] })            // [4] recent uploads
+      .mockResolvedValueOnce({ rows: [] })            // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Admin', email: 'admin@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7] Promise.resolve favourites, [8] Promise.resolve comments
+      .mockResolvedValueOnce({ rows: [] })            // [9] tag recipes (admin, LIMIT 3)
+      .mockResolvedValueOnce({ rows: [] })            // [10] albums grid
+      .mockResolvedValueOnce({ rows: [{ user_count: 3, tag_count: 10, album_count: 5, recipe_count: 2 }] }); // [11] admin tools
+      // [12] Promise.resolve sharedWith, [13] Promise.resolve admin lookup
+
     const res = await request(makeApp(ADMIN_SESSION)).get('/account');
     expect(res.status).toBe(200);
-    expect(res.text).toContain('Manage users');
-    expect(res.text).toContain('AI tools');
+    expect(res.text).toContain('admin tools');
+    expect(res.text).toContain('/admin/users');
+    expect(res.text).toContain('ADMIN ONLY');
   });
 
   it('viewer does not see upload links', async () => {
-    // Viewer Promise.all execution order (slots [4] and [9] are Promise.resolve — no db.query consumed):
+    // Viewer Promise.all execution order (slots [4], [9], [10], [11], [12] are Promise.resolve — no db.query consumed):
     // [0] db.query → uploads stat  (via album_access JOIN)
     // [1] db.query → albums stat   (SELECT COUNT FROM album_access WHERE viewer_id)
     // [2] db.query → recipes stat
@@ -310,6 +345,10 @@ describe('GET /account', () => {
     // [7] Promise.resolve          — favourites placeholder
     // [8] Promise.resolve          — comments placeholder
     // [9] Promise.resolve          — tag recipes (viewer has none)
+    // [10] Promise.resolve         — albums grid (viewer has no albums grid card)
+    // [11] Promise.resolve         — admin tools (no db.query consumed for viewer)
+    // [12] Promise.resolve         — shared-with (no db.query consumed for viewer)
+    // [13] db.query → admin lookup (SELECT name, email FROM users WHERE role='admin' LIMIT 1)
     db.query
       .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads via album_access
       .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums via album_access
@@ -317,10 +356,9 @@ describe('GET /account', () => {
       .mockResolvedValueOnce({ rows: [] })           // [3] sessions
       // [4] Promise.resolve — no db.query mock needed
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list via album_access
-      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }); // [6]
-    // [7] Promise.resolve — no db.query mock needed
-    // [8] Promise.resolve — no db.query mock needed
-    // [9] Promise.resolve — no db.query mock needed (viewer)
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7][8][9][10][11][12] Promise.resolve — no db.query mocks needed
+      .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
     expect(res.status).toBe(200);
@@ -440,6 +478,201 @@ describe('GET /account', () => {
     expect(res.text).toContain('acc-avatar-img');
     expect(res.text).toContain('/account/avatar');
     expect(res.text).toContain('js-avatar-remove');
+  });
+
+  // DS-ACC-5: role-specific right-column cards
+
+  it('DS-ACC-5: editor sees albums grid card with album tiles', async () => {
+    mockAccountQueries({
+      albumsGrid: [
+        { id: 10, title: 'Summer Trip', created_at: new Date(), photo_count: 5 },
+        { id: 11, title: 'Winter', created_at: new Date(), photo_count: 3 },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-albums-grid');
+    expect(res.text).toContain('your albums');
+    expect(res.text).toContain('Summer Trip');
+    expect(res.text).toContain('Winter');
+    expect(res.text).toContain('/albums/10');
+    expect(res.text).toContain('/albums/11');
+  });
+
+  it('DS-ACC-5: editor sees empty albums state when no albums', async () => {
+    mockAccountQueries({ albumsGrid: [] });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-albums-empty');
+    expect(res.text).toContain('/albums/new');
+  });
+
+  it('DS-ACC-5: editor sees "N more" link when stats.albums > 4', async () => {
+    // albums stat is 7, only 4 shown in grid — should show "3 more"
+    mockAccountQueries({
+      albums: 7,
+      albumsGrid: [
+        { id: 1, title: 'A', created_at: new Date(), photo_count: 1 },
+        { id: 2, title: 'B', created_at: new Date(), photo_count: 2 },
+        { id: 3, title: 'C', created_at: new Date(), photo_count: 3 },
+        { id: 4, title: 'D', created_at: new Date(), photo_count: 4 },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('more');
+    expect(res.text).toContain('/albums');
+  });
+
+  it('DS-ACC-5: editor sees shared-with card', async () => {
+    mockAccountQueries({
+      sharedWith: [
+        { id: 5, name: 'Alice', album_count: 2 },
+        { id: 6, name: 'Bob',   album_count: 1 },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('shared with');
+    expect(res.text).toContain('Alice');
+    expect(res.text).toContain('Bob');
+    expect(res.text).toContain('2 albums');
+  });
+
+  it('DS-ACC-5: editor sees empty shared-with state when no viewers', async () => {
+    mockAccountQueries({ sharedWith: [] });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('shared with');
+    expect(res.text).toContain('not sharing with anyone yet');
+  });
+
+  it('DS-ACC-5: editor does NOT see admin tools card', async () => {
+    mockAccountQueries();
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('ADMIN ONLY');
+    expect(res.text).not.toContain('acc-admin-tools-card');
+  });
+
+  it('DS-ACC-5: viewer sees viewer limits card with "what you can\'t do" pills', async () => {
+    // Viewer mock order: [0-3] db.query, [4] Promise.resolve, [5-6] db.query,
+    // [7-9] Promise.resolve, [10] Promise.resolve (viewer — no albums grid), [11-12] Promise.resolve, [13] db.query (admin lookup)
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7][8][9][10][11][12] Promise.resolve
+      .mockResolvedValueOnce({ rows: [{ name: 'Admin User', email: 'admin@test.com' }] }); // [13] admin lookup
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-viewer-limits-card');
+    expect(res.text).toContain("what you can't do here");
+    expect(res.text).toContain('upload photos');
+    expect(res.text).toContain('create albums');
+  });
+
+  it('DS-ACC-5: viewer limits card shows admin contact link when admin exists', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7][8][9][10][11][12] Promise.resolve
+      .mockResolvedValueOnce({ rows: [{ name: 'Alice Admin', email: 'alice@test.com' }] }); // [13] admin lookup
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('alice@test.com');
+    expect(res.text).toContain('Alice Admin');
+    expect(res.text).toContain('mailto:alice@test.com');
+  });
+
+  it('DS-ACC-5: viewer limits card shows fallback when no admin found', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7][8][9][10][11][12] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup — no admin
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('contact the site owner for editor rights');
+  });
+
+  it('DS-ACC-5: viewer sees viewer recipes card (right column)', async () => {
+    // Viewer gets tag recipes via slot [9] (Promise.resolve for viewer = empty),
+    // but the viewer recipes card is built from the same recipes data.
+    // This test uses no recipes for simplicity.
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
+      // [7][8][9][10][11][12] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-viewer-recipes-card');
+    expect(res.text).toContain('your tag recipes');
+    expect(res.text).toContain('/tags/recipes/new');
+  });
+
+  it('DS-ACC-5: album title is escaped to prevent XSS', async () => {
+    mockAccountQueries({
+      albumsGrid: [
+        { id: 99, title: '<script>alert(1)</script>', created_at: new Date(), photo_count: 0 },
+      ],
+    });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('<script>alert(1)</script>');
+    expect(res.text).toContain('&lt;script&gt;');
+  });
+
+  it('DS-ACC-5: shared-with user name is escaped to prevent XSS', async () => {
+    mockAccountQueries({
+      sharedWith: [{ id: 7, name: '<img src=x onerror=alert(1)>', album_count: 1 }],
+    });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('<img src=x onerror=alert(1)>');
+    expect(res.text).toContain('&lt;img');
+  });
+
+  it('DS-ACC-5: admin contact name and email are escaped in mailto link', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6]
+      // [7][8][9][10][11][12] Promise.resolve
+      .mockResolvedValueOnce({ rows: [{ name: '<script>xss</script>', email: '"><script>xss</script>@x.com' }] }); // [13]
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('<script>xss</script>');
+    expect(res.text).toContain('&lt;script&gt;');
   });
 });
 
