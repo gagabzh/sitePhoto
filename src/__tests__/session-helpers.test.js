@@ -41,8 +41,8 @@ describe('parseUserAgent', () => {
     // A UA string longer than 60 chars with no recognised browser or OS tokens
     const ua = 'CustomAgent/1.0 (UnknownOS; X11; SomeArchitecture) XYZEngine/42.0.0.0 Compat/99';
     const result = parseUserAgent(ua);
-    // Should be truncated to 60 chars + ellipsis, not the full string
-    expect(result.length).toBeLessThanOrEqual(63); // 60 chars + '…' (3 bytes but 1 char)
+    // Should be truncated to exactly 60 chars + '…' (1 char) = 61 chars total
+    expect(result.length).toBe(61);
     expect(result).toMatch(/…$/);
   });
 
@@ -57,6 +57,26 @@ describe('parseUserAgent', () => {
   it('detects Chrome on Android', () => {
     const ua = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
     expect(parseUserAgent(ua)).toBe('Chrome on Android');
+  });
+
+  it('returns Mobile Safari on iPad for an iPad UA', () => {
+    const ua = 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+    expect(parseUserAgent(ua)).toBe('Mobile Safari on iPad');
+  });
+
+  it('returns Safari on macOS for a desktop Safari UA', () => {
+    const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+    expect(parseUserAgent(ua)).toBe('Safari on macOS');
+  });
+
+  it('returns Unknown browser on OS when OS is known but browser is not', () => {
+    const ua = 'CustomCrawler/1.0 (Windows NT 10.0; Win64; x64)';
+    expect(parseUserAgent(ua)).toBe('Unknown browser on Windows');
+  });
+
+  it('returns browser name only when browser is known but OS is not', () => {
+    const ua = 'Mozilla/5.0 Firefox/120.0';
+    expect(parseUserAgent(ua)).toBe('Firefox');
   });
 });
 
