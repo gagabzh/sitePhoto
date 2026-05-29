@@ -134,8 +134,11 @@ describe('GET /account', () => {
   // [4] db.query → recent uploads (SELECT ... FROM photos ORDER BY created_at LIMIT 10)
   // [5] db.query → albums list   (SELECT id, title FROM albums WHERE user_id)
   // [6] db.query → profile + prefs (SELECT u.name, u.email, u.avatar_s3_key, ... FROM users JOIN user_prefs)
+  // [7] Promise.resolve          — favourites count placeholder (no db.query consumed)
+  // [8] Promise.resolve          — comments count placeholder (no db.query consumed)
+  // [9] db.query → tag recipes for left-column card (SELECT id, name FROM tag_recipes LIMIT N)
   //
-  // For viewer, slot [4] is Promise.resolve({rows:[]}) — it does NOT consume a db.query mock.
+  // For viewer, slots [4] and [9] are Promise.resolve({rows:[]}) — they do NOT consume db.query mocks.
   // Promise.all execution order for viewer:
   // [0] db.query → uploads stat  (via album_access JOIN)
   // [1] db.query → albums stat   (SELECT COUNT FROM album_access WHERE viewer_id)
@@ -144,8 +147,11 @@ describe('GET /account', () => {
   // [4] Promise.resolve          — skips db.query entirely
   // [5] db.query → albums list   (SELECT ... FROM albums JOIN album_access WHERE viewer_id)
   // [6] db.query → profile + prefs
+  // [7] Promise.resolve          — favourites count placeholder
+  // [8] Promise.resolve          — comments count placeholder
+  // [9] Promise.resolve          — tag recipes (viewer has none)
   function mockAccountQueries({ uploads = 5, albums = 2, recipes = 1, sessions = [],
-                                 recentUploads = [], userAlbums = [],
+                                 recentUploads = [], userAlbums = [], recipeRows = [],
                                  profile = { name: 'Saev', email: 'saev@test.com',
                                              avatar_s3_key: null, language: 'en',
                                              theme: 'light', notif_enabled: true } } = {}) {
@@ -163,7 +169,11 @@ describe('GET /account', () => {
       // [5] albums list
       .mockResolvedValueOnce({ rows: userAlbums })
       // [6] profile + prefs
-      .mockResolvedValueOnce({ rows: [profile] });
+      .mockResolvedValueOnce({ rows: [profile] })
+      // [7] Promise.resolve for favourites — no db.query mock needed
+      // [8] Promise.resolve for comments — no db.query mock needed
+      // [9] tag recipes for left-column card
+      .mockResolvedValueOnce({ rows: recipeRows });
   }
 
   it('returns 200 and shows the user name', async () => {
@@ -289,7 +299,7 @@ describe('GET /account', () => {
   });
 
   it('viewer does not see upload links', async () => {
-    // Viewer Promise.all execution order (slot [4] is Promise.resolve — no db.query consumed):
+    // Viewer Promise.all execution order (slots [4] and [9] are Promise.resolve — no db.query consumed):
     // [0] db.query → uploads stat  (via album_access JOIN)
     // [1] db.query → albums stat   (SELECT COUNT FROM album_access WHERE viewer_id)
     // [2] db.query → recipes stat
@@ -297,6 +307,9 @@ describe('GET /account', () => {
     // [4] Promise.resolve          — skips db.query
     // [5] db.query → albums list   (via album_access JOIN)
     // [6] db.query → profile + prefs
+    // [7] Promise.resolve          — favourites placeholder
+    // [8] Promise.resolve          — comments placeholder
+    // [9] Promise.resolve          — tag recipes (viewer has none)
     db.query
       .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads via album_access
       .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums via album_access
@@ -305,6 +318,9 @@ describe('GET /account', () => {
       // [4] Promise.resolve — no db.query mock needed
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list via album_access
       .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }); // [6]
+    // [7] Promise.resolve — no db.query mock needed
+    // [8] Promise.resolve — no db.query mock needed
+    // [9] Promise.resolve — no db.query mock needed (viewer)
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
     expect(res.status).toBe(200);
@@ -319,6 +335,69 @@ describe('GET /account', () => {
     expect(res.text).toContain('12');
     expect(res.text).toContain('3');
     expect(res.text).toContain('7');
+  });
+
+  // DS-ACC-4: left column card rendering
+  it('editor sees acc-uploads-card and acc-recipes-card, not viewer placeholders', async () => {
+    mockAccountQueries();
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-uploads-card');
+    expect(res.text).toContain('acc-recipes-card');
+    expect(res.text).not.toContain('acc-favourites-card');
+    expect(res.text).not.toContain('acc-activity-card');
+  });
+
+  it('viewer sees acc-favourites-card and acc-activity-card, not uploads or recipes cards', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads stat
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums stat
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes stat
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve — skipped
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }); // [6]
+    // [7][8][9] Promise.resolve — skipped
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-favourites-card');
+    expect(res.text).toContain('acc-activity-card');
+    expect(res.text).not.toContain('acc-uploads-card');
+    expect(res.text).not.toContain('acc-recipes-card');
+  });
+
+  it('mosaic featured cell present when recentUploads.length >= 3', async () => {
+    const uploads = [
+      { id: 1, s3_key: 'a.jpg' },
+      { id: 2, s3_key: 'b.jpg' },
+      { id: 3, s3_key: 'c.jpg' },
+    ];
+    mockAccountQueries({ recentUploads: uploads });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).toContain('acc-mosaic-cell--featured');
+  });
+
+  it('mosaic featured cell absent when recentUploads.length < 3', async () => {
+    const uploads = [
+      { id: 1, s3_key: 'a.jpg' },
+      { id: 2, s3_key: 'b.jpg' },
+    ];
+    mockAccountQueries({ recentUploads: uploads });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).not.toContain('acc-mosaic-cell--featured');
+  });
+
+  it('renders acc-mosaic-empty when recentUploads is empty', async () => {
+    mockAccountQueries({ recentUploads: [] });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).toContain('acc-mosaic-empty');
+  });
+
+  it('HTML-escapes recipe name in output', async () => {
+    mockAccountQueries({ recipeRows: [{ id: 1, name: '<script>alert(1)</script>' }] });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).not.toContain('<script>alert(1)</script>');
+    expect(res.text).toContain('&lt;script&gt;');
   });
 
   it('returns 500 when db.query rejects', async () => {

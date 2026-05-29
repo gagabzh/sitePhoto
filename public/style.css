@@ -2153,3 +2153,20 @@ tr:hover .tm-row-actions { opacity:1; }
 .acc-role-badge--admin  { color: oklch(55% 0.20 25);  border-color: oklch(55% 0.20 25);  background: oklch(96% 0.02 25);  }
 .acc-role-badge--editor { color: var(--accent-2);      border-color: var(--accent-2);      background: oklch(96% 0.02 220); }
 .acc-role-badge--viewer { color: var(--accent-3);      border-color: var(--accent-3);      background: oklch(96% 0.02 140); }
+
+/* ── Account page DS-ACC-4: left column cards ── */
+
+.acc-uploads-mosaic {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-auto-rows: 70px;
+  gap: 4px;
+}
+.acc-mosaic-cell { display: block; overflow: hidden; background: var(--paper-2); border: 1px dashed var(--ink-faint); }
+.acc-mosaic-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.acc-mosaic-cell--featured { grid-column: span 2; grid-row: span 2; }
+.acc-mosaic-empty { font-family: 'Kalam', cursive; font-size: 13px; color: var(--ink-faint); margin: 0; }
+.acc-recipe-row:last-child { border-bottom: none !important; }
+@media (max-width: 900px) {
+  .acc-uploads-mosaic { grid-auto-rows: 50px; }
+}

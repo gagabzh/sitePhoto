@@ -63,10 +63,12 @@ router.get('/account', wrapAsync(async (req, res) => {
   // [6] profile + prefs
   // [7] favourites count — TODO: DS-ACC-2 photo_likes table not yet implemented
   // [8] comments count  — TODO: DS-ACC-2 comments table not yet implemented
+  // [9] tag recipes for left-column card (LIMIT 3 for admin, 2 for editor, 0 for viewer)
   const [
     statsUploads, statsAlbums, statsRecipes,
     sessionsResult, recentUploads, albumsResult,
     profileResult, favouritesResult, commentsResult,
+    recipesResult,
   ] = await Promise.all([
     // [0] stats: upload count (role-aware)
     isViewer
@@ -122,6 +124,13 @@ router.get('/account', wrapAsync(async (req, res) => {
     Promise.resolve({ rows: [{ n: 0 }] }),
     // [8] comments count — TODO: DS-ACC-2 comments table not yet implemented
     Promise.resolve({ rows: [{ n: 0 }] }),
+    // [9] tag recipes for left-column card (LIMIT 3 for admin, 2 for editor, 0 for viewer)
+    role === 'viewer'
+      ? Promise.resolve({ rows: [] })
+      : db.query(
+          `SELECT id, name FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${role === 'admin' ? 3 : 2}`,
+          [userId]
+        ),
   ]);
 
   const stats = {
@@ -158,6 +167,7 @@ router.get('/account', wrapAsync(async (req, res) => {
     recentUploads: recentUploads.rows,
     albums: albumsResult.rows,
     profile,
+    recipes: recipesResult.rows,
   }, req.session));
 }));
 
@@ -553,13 +563,13 @@ router.post('/account/delete', wrapAsync(async (req, res) => {
 
 // ── FE-1.4 / ACC-4: Account page HTML template ───────────────────────────────
 
-function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, albums: _albums, profile }, session) {
+function renderAccountPage({ stats, sessions, recentUploads, albums: _albums, profile, recipes }, session) {
   const { role } = session;
 
   // DS-ACC-1: two-column layout with header + perms strip + body
   const headerHtml  = buildHeader(stats, session);
   const permsStrip  = buildPermsStrip(role);
-  const leftCol     = buildLeftColumn(role, { profile });
+  const leftCol     = buildLeftColumn(role, { profile, recentUploads, recipes, stats });
   const rightCol    = buildRightColumn(sessions, role);
 
   const accountScript = buildAccountScript();
@@ -687,10 +697,12 @@ function buildPermsStrip(role) {
 
 // ── DS-ACC-1: Left column — profile details card ──────────────────────────────
 
-function buildLeftColumn(_role, data) {
-  const { profile } = data;
+function buildLeftColumn(role, data) {
+  const { profile, recentUploads = [], recipes = [], stats } = data;
+  let html = '';
 
-  const profileCard = profile ? `
+  // --- Card 1: Your details ---
+  html += profile ? `
     <div class="acc-card-block d1-tape">
       <h3 class="acc-card-title">Profile</h3>
       <div class="acc-section-b" style="padding:0">
@@ -725,7 +737,94 @@ function buildLeftColumn(_role, data) {
       </div>
     </div>` : '';
 
-  return profileCard;
+  if (role === 'admin' || role === 'editor') {
+    // --- Card 2: Recent uploads mosaic ---
+    html += buildUploadsCard(role, recentUploads, stats);
+    // --- Card 3: Tag recipes ---
+    html += buildRecipesCard(role, recipes);
+  } else {
+    // --- Card 2 (viewer): Favourites grid placeholder ---
+    html += buildFavouritesCard();
+    // --- Card 3 (viewer): Activity log placeholder ---
+    html += buildActivityCard();
+  }
+
+  return html;
+}
+
+function buildUploadsCard(role, recentUploads, stats) {
+  const totalCount = stats ? String(stats.uploads) : '0';
+  const mosaicCells = recentUploads.map((photo, i) => {
+    const isFeatured = i === 0 && recentUploads.length >= 3;
+    const featuredClass = isFeatured ? ' acc-mosaic-cell--featured' : '';
+    return `<a href="/photos/${esc(String(photo.id))}" class="acc-mosaic-cell${featuredClass}">
+        <img src="/uploads/${esc(photo.s3_key)}" alt="" onerror="this.parentElement.style.background='var(--paper-2)'">
+      </a>`;
+  }).join('');
+
+  const mosaicOrEmpty = recentUploads.length > 0
+    ? `<div class="acc-uploads-mosaic">${mosaicCells}</div>`
+    : `<p class="acc-mosaic-empty">no uploads yet</p>`;
+
+  const hint = role === 'editor'
+    ? `<p class="acc-uploads-hint" style="font-family:'Kalam',cursive;font-size:11px;color:var(--ink-faint);margin:6px 0 0">you're free to delete or re-tag any of yours</p>`
+    : '';
+
+  return `
+    <div class="acc-card-block acc-uploads-card d1-tape">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
+        <h3 class="acc-card-title" style="margin:0">your recent uploads</h3>
+        <span class="acc-card-count" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-faint)">${esc(totalCount)}</span>
+      </div>
+      ${mosaicOrEmpty}
+      ${hint}
+    </div>`;
+}
+
+function buildRecipesCard(role, recipes) {
+  const tapeClass = role === 'admin' ? 'd1-tape--cool' : 'd1-tape--green';
+  const count = String(recipes.length);
+
+  const recipeRows = recipes.map((recipe, i) => {
+    const isLast = i === recipes.length - 1;
+    const borderStyle = isLast ? 'none' : '1px dashed var(--ink-faint)';
+    return `<a href="/tags/recipes/${esc(String(recipe.id))}" class="acc-recipe-row" style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:6px 0;border-bottom:${borderStyle};text-decoration:none;color:inherit">
+        <span style="font-family:'Caveat',cursive;font-size:20px;font-weight:700">${esc(recipe.name)}</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-faint)">&#8212;</span>
+      </a>`;
+  }).join('');
+
+  const content = recipes.length > 0
+    ? recipeRows
+    : `<p style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint);margin:0">no recipes yet &#8212; <a href="/tags/recipes/new">create one</a></p>`;
+
+  return `
+    <div class="acc-card-block acc-recipes-card ${tapeClass}">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px">
+        <h3 class="acc-card-title" style="margin:0">your tag recipes</h3>
+        <span class="acc-card-count" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-faint)">${esc(count)}</span>
+        <a href="/tags/recipes/new" class="acc-card-more">new +</a>
+      </div>
+      ${content}
+    </div>`;
+}
+
+function buildFavouritesCard() {
+  return `
+    <div class="acc-card-block acc-favourites-card d1-tape--green">
+      <h3 class="acc-card-title">your favourites</h3>
+      <p class="acc-fav-empty" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint)">nothing starred yet</p>
+      <!-- TODO: DS-ACC-4 — photo_likes table not yet implemented -->
+    </div>`;
+}
+
+function buildActivityCard() {
+  return `
+    <div class="acc-card-block acc-activity-card">
+      <h3 class="acc-card-title">your activity <span style="font-family:'Kalam',cursive;font-size:11px;color:var(--ink-faint)">last 14 days</span></h3>
+      <p class="acc-activity-empty" style="font-family:'Kalam',cursive;font-size:13px;color:var(--ink-faint)">no activity recorded yet</p>
+      <!-- TODO: DS-ACC-4 — activity_log table not yet implemented -->
+    </div>`;
 }
 
 // ── DS-ACC-1: Right column — sessions + quick links + danger zone ─────────────
