@@ -15,6 +15,11 @@ const EXT_MAP = {
   'image/gif':  '.gif',
   'image/webp': '.webp',
 };
+// Reject RFC 1918, loopback, and link-local addresses to prevent SSRF.
+function isInternalHost(hostname) {
+  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$)/.test(hostname)
+    || hostname === 'localhost';
+}
 
 // Extract the share token from a Nextcloud public share URL.
 // e.g. https://cloud.example.com/s/abc123def456 → 'abc123def456'
@@ -32,7 +37,14 @@ function extractToken(shareUrl) {
 // Returns true if valid.
 function isValidNextcloudShareUrl(shareUrl) {
   if (typeof shareUrl !== 'string') return false;
-  return /^https:\/\/.+\/s\/[^/]+/.test(shareUrl);
+  if (!/^https:\/\/.+\/s\/[^/]+/.test(shareUrl)) return false;
+  try {
+    const { hostname } = new URL(shareUrl);
+    if (isInternalHost(hostname)) return false;
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 // Make an HTTP/HTTPS request and collect the body as a string.
@@ -83,6 +95,15 @@ function httpRequest({ method, url, headers, body, timeoutMs = 10000 }) {
 async function propfindShare(shareUrl) {
   const token = extractToken(shareUrl);
   if (!token) throw Object.assign(new Error('Could not extract token'), { httpStatus: 422 });
+
+  // Defence-in-depth: reject internal hostnames even if isValidNextcloudShareUrl was bypassed
+  try {
+    const { hostname } = new URL(shareUrl);
+    if (isInternalHost(hostname)) throw Object.assign(new Error('Invalid share URL.'), { httpStatus: 422 });
+  } catch (e) {
+    if (e.httpStatus) throw e;
+    throw Object.assign(new Error('Invalid share URL.'), { httpStatus: 422 });
+  }
 
   const webdavUrl = `${shareUrl}/public.php/webdav/`;
   const auth = Buffer.from(`${token}:`).toString('base64');
@@ -174,6 +195,15 @@ async function propfindShare(shareUrl) {
 // Download a file from a Nextcloud share. Returns a raw Buffer.
 function downloadFileAsBuffer(shareUrl, fileName) {
   const token = extractToken(shareUrl);
+
+  // Defence-in-depth: reject internal hostnames
+  try {
+    const { hostname } = new URL(shareUrl);
+    if (isInternalHost(hostname)) return Promise.reject(Object.assign(new Error('Invalid share URL.'), { statusCode: 422 }));
+  } catch {
+    return Promise.reject(Object.assign(new Error('Invalid share URL.'), { statusCode: 422 }));
+  }
+
   const fileUrl = `${shareUrl}/public.php/webdav/${encodeURIComponent(fileName)}`;
   const auth = Buffer.from(`${token}:`).toString('base64');
   const parsed = new URL(fileUrl);

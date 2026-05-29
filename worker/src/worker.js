@@ -1,6 +1,6 @@
 'use strict';
 
-const { Worker } = require('bullmq');
+const { Worker, Queue } = require('bullmq');
 const { v4: uuidv4 } = require('uuid');
 const { downloadPhoto, uploadPhoto } = require('./storage');
 const { generate } = require('./ai');
@@ -10,7 +10,7 @@ const {
   postNextcloudImportProgress,
   insertImportedPhoto,
 } = require('./instance1-api');
-const { downloadFileAsBuffer, EXT_MAP } = require('../../src/nextcloudWebdav');
+const { downloadFileAsBuffer, EXT_MAP } = require('./nextcloudWebdav');
 
 const IDENTIFICATION_PROMPT =
   process.env.IDENTIFICATION_PROMPT ||
@@ -21,6 +21,8 @@ const connection = {
   port: parseInt(process.env.REDIS_PORT || '6379', 10),
   password: process.env.REDIS_PASSWORD || undefined,
 };
+
+const identificationQueue = new Queue('identification', { connection });
 
 const worker = new Worker('identification', async (job) => {
   if (job.name === 'describe-person') {
@@ -94,11 +96,14 @@ const ncWorker = new Worker('nextcloud-import', async (job) => {
 
     // Step d+e+f: insert photo row, album membership, tags via Instance-1
     const { photoId } = await insertImportedPhoto({
-      userId, s3Key, mimeType, shareUrl, place, albumId, tags, importId,
+      userId, s3Key, fileName, mimeType, shareUrl, place, albumId, tags, importId,
     });
 
     // Step g: enqueue AI identification
-    await postIdentificationResult({ photoId, userId, tags: '' });
+    await identificationQueue.add('identify-photo', { photoId, userId, photoS3Key: s3Key }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    });
 
     succeeded = true;
     console.log(`[worker] nc-import job ${job.id} done — photoId ${photoId}`);

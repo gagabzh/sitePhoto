@@ -55,17 +55,18 @@ router.post('/describe-person-result', requireWorkerSecret, wrapAsync(async (req
 // Body: { userId, s3Key, mimeType, shareUrl, place, albumId, tags, importId }
 // Returns { photoId }
 router.post('/nextcloud-photo', requireWorkerSecret, wrapAsync(async (req, res) => {
-  const { userId, s3Key, mimeType, shareUrl, place, albumId, tags } = req.body;
+  const { userId, s3Key, fileName, mimeType, shareUrl, place, albumId, tags } = req.body;
   if (!userId || !s3Key) {
     return res.status(400).json({ error: 'Missing userId or s3Key' });
   }
 
-  // Insert photo row — filename mirrors s3Key (convention used throughout the app)
+  // Use original fileName for title and filename; fall back to s3Key if absent
+  const displayName = fileName || s3Key;
   const { rows: [photo] } = await db.query(
     `INSERT INTO photos (user_id, filename, s3_key, title, mime_type, size, nextcloud_url, place, created_at)
-     VALUES ($1, $2, $2, $2, $3, 0, $4, $5, NOW())
+     VALUES ($1, $2, $3, $2, $4, 0, $5, $6, NOW())
      RETURNING id`,
-    [userId, s3Key, mimeType || 'image/jpeg', shareUrl || null, place || null],
+    [userId, displayName, s3Key, mimeType || 'image/jpeg', shareUrl || null, place || null],
   );
   const photoId = photo.id;
 

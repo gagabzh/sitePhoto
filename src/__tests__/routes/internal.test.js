@@ -226,11 +226,19 @@ describe('POST /internal/nextcloud-photo', () => {
     expect(db.query).toHaveBeenCalledTimes(4);
     expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining('INSERT INTO photos'),
-      [5, 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 'Paris'],
+      [5, 'uuid-abc.jpg', 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 'Paris'],
     );
     expect(db.query).toHaveBeenNthCalledWith(2,
       expect.stringContaining('INSERT INTO album_photos'),
       [7, 42],
+    );
+    expect(db.query).toHaveBeenNthCalledWith(3,
+      expect.stringContaining('INSERT INTO tags'),
+      [['paris', 'vacation']],
+    );
+    expect(db.query).toHaveBeenNthCalledWith(4,
+      expect.stringContaining('INSERT INTO photo_tags'),
+      [42, [10]],
     );
   });
 
@@ -344,5 +352,33 @@ describe('POST /internal/nextcloud-import-progress', () => {
       .send({ userId: '7', importId: 999, succeeded: true });
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ── DB error paths ───────────────────────────────────────────────────────────
+
+describe('POST /internal/nextcloud-photo — DB error', () => {
+  it('returns 500 when first db.query rejects', async () => {
+    db.query.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: 5, s3Key: 'uuid-abc.jpg' });
+
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('POST /internal/nextcloud-import-progress — DB error', () => {
+  it('returns 500 when db.query rejects', async () => {
+    db.query.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: '7', importId: 42, succeeded: true });
+
+    expect(res.status).toBe(500);
   });
 });

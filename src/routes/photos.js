@@ -20,6 +20,9 @@ function parseFrom(raw) {
   return /^\/photos$|^\/albums\/\d+$|^\/travels\/[a-z0-9-]+$/.test(raw) ? raw : null;
 }
 
+// NC-4/5: Nextcloud import sub-router — must be registered before /:id to avoid shadowing
+router.use('/nextcloud-import', require('./nextcloudImport'));
+
 // US-P1: Photo list — Family Wall layout
 router.get('/', requireEditor, wrapAsync(async (req, res) => {
   const isEditor = req.session.role === 'editor' || req.session.role === 'admin';

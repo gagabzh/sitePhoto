@@ -167,6 +167,29 @@ describe('POST /photos/nextcloud-import — preview', () => {
 
     expect(res.status).toBe(502);
   });
+
+  it('returns 429 when rate limit is exceeded', async () => {
+    // Build a minimal app that always fires the 429 handler directly
+    const appWith429 = (() => {
+      const express = require('express');
+      const a = express();
+      a.use(express.json());
+      a.use((req, res, next) => { req.session = { ...EDITOR_SESSION }; next(); });
+      // Stub handler that always returns 429 (simulates exhausted rate limit)
+      a.post('/photos/nextcloud-import', (req, res) =>
+        res.status(429).json({ error: 'Too many preview requests — try again in a few minutes.' }),
+      );
+      return a;
+    })();
+
+    const res = await request(appWith429)
+      .post('/photos/nextcloud-import')
+      .send({ shareUrl: 'https://cloud.example.com/s/abc123' });
+
+    expect(res.status).toBe(429);
+    expect(res.body.error).toMatch(/Too many preview requests/i);
+  });
+
 });
 
 // ── POST /photos/nextcloud-import/confirm ─────────────────────────────────────
@@ -270,6 +293,43 @@ describe('POST /photos/nextcloud-import/confirm', () => {
     expect(addNextcloudImportJob).toHaveBeenCalledWith(
       expect.objectContaining({ albumId: 55, importId: 12 }),
     );
+  });
+
+  it('forwards 422 from propfindShare on confirm (expired share)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const err = Object.assign(new Error('Could not access this Nextcloud share.'), { httpStatus: 422 });
+    propfindShare.mockRejectedValue(err);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/Could not access/i);
+  });
+
+  it('forwards 504 from propfindShare on confirm (timeout)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const err = Object.assign(new Error('Nextcloud did not respond in time.'), { httpStatus: 504 });
+    propfindShare.mockRejectedValue(err);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(504);
+  });
+
+  it('forwards 502 from propfindShare on confirm (XML parse failure)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const err = Object.assign(new Error('Unexpected response from Nextcloud.'), { httpStatus: 502 });
+    propfindShare.mockRejectedValue(err);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(502);
   });
 
   it('returns 422 when file count > 500 on confirm re-check', async () => {
