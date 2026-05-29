@@ -53,10 +53,20 @@ router.get('/account', wrapAsync(async (req, res) => {
   const { userId, role } = req.session;
   const isViewer = role === 'viewer';
 
+  // Promise.all slot index reference — update this block when adding/removing slots:
+  // [0] stats: upload count (role-aware)
+  // [1] stats: album count (role-aware)
+  // [2] stats: recipes count
+  // [3] sessions (ACC-4: full sess blob for UA/IP/last-seen)
+  // [4] recent uploads — Promise.resolve for viewer (no db.query consumed)
+  // [5] albums list (role-aware)
+  // [6] profile + prefs
+  // [7] favourites count — TODO: DS-ACC-2 photo_likes table not yet implemented
+  // [8] comments count  — TODO: DS-ACC-2 comments table not yet implemented
   const [
     statsUploads, statsAlbums, statsRecipes,
     sessionsResult, recentUploads, albumsResult,
-    profileResult,
+    profileResult, favouritesResult, commentsResult,
   ] = await Promise.all([
     // [0] stats: upload count (role-aware)
     isViewer
@@ -74,7 +84,7 @@ router.get('/account', wrapAsync(async (req, res) => {
       : db.query('SELECT COUNT(*)::int AS n FROM albums WHERE user_id = $1', [userId]),
     // [2] stats: recipes count
     db.query('SELECT COUNT(*)::int AS n FROM tag_recipes WHERE user_id = $1', [userId]),
-    // active sessions for this user — ACC-4: fetch full sess blob for UA/IP/last-seen
+    // [3] active sessions for this user — ACC-4: fetch full sess blob for UA/IP/last-seen
     db.query(
       `SELECT sid, sess, expire
        FROM session
@@ -108,12 +118,18 @@ router.get('/account', wrapAsync(async (req, res) => {
        WHERE u.id = $1`,
       [userId]
     ),
+    // [7] favourites count — TODO: DS-ACC-2 photo_likes table not yet implemented
+    Promise.resolve({ rows: [{ n: 0 }] }),
+    // [8] comments count — TODO: DS-ACC-2 comments table not yet implemented
+    Promise.resolve({ rows: [{ n: 0 }] }),
   ]);
 
   const stats = {
-    uploads: statsUploads.rows[0].n,
-    albums:  statsAlbums.rows[0].n,
-    recipes: statsRecipes.rows[0].n,
+    uploads:    statsUploads.rows[0].n,
+    albums:     statsAlbums.rows[0].n,
+    recipes:    statsRecipes.rows[0].n,
+    favourites: favouritesResult.rows[0].n,
+    comments:   commentsResult.rows[0].n,
   };
 
   // ACC-4: enrich each session row with parsed UA, IP, last-seen
@@ -538,70 +554,146 @@ router.post('/account/delete', wrapAsync(async (req, res) => {
 // ── FE-1.4 / ACC-4: Account page HTML template ───────────────────────────────
 
 function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, albums: _albums, profile }, session) {
-  const { role, name } = session;
+  const { role } = session;
+
+  // DS-ACC-1: two-column layout with header + perms strip + body
+  const headerHtml  = buildHeader(stats, session);
+  const permsStrip  = buildPermsStrip(role);
+  const leftCol     = buildLeftColumn(role, { profile });
+  const rightCol    = buildRightColumn(sessions, role);
+
+  const accountScript = buildAccountScript();
+
+  const body = `
+    <div class="acc-page-bg">
+      <div class="acc-header">${headerHtml}</div>
+      ${permsStrip}
+      <div class="acc-body">
+        <div class="acc-col-left">${leftCol}</div>
+        <div class="acc-col-right">${rightCol}</div>
+      </div>
+      ${accountScript}
+    </div>`;
+
+  return page('My Account', body, session);
+}
+
+// ── DS-ACC-2: Header block — avatar + identity + stats strip ─────────────────
+
+function buildHeader(stats, session) {
+  const { role, name, avatarS3Key } = session;
   const initial = esc((name || '?')[0].toUpperCase());
 
-  // Role badge
-  const roleBadgeClass = role === 'admin' ? 'role-badge admin' : 'role-badge';
-  const roleLabel = esc(role);
+  // Column 1: Avatar
+  const avatarInner = avatarS3Key
+    ? `<img src="/account/avatar" class="acc-avatar-img" alt="">`
+    : `<span class="acc-avatar-initial">${initial}</span>`;
 
-  // Stats strip
-  const statsHtml = `
-    <div class="acc-stats">
-      <div class="acc-stat">
-        <div class="acc-stat-n">${stats.uploads}</div>
-        <div class="acc-stat-l">uploads</div>
+  const avatarCol = `
+    <div class="acc-avatar-wrap" style="position:relative">
+      <div class="acc-avatar-hero">
+        ${avatarInner}
       </div>
-      <div class="acc-stat">
-        <div class="acc-stat-n">${stats.albums}</div>
-        <div class="acc-stat-l">albums</div>
+      <button id="js-avatar-change" class="acc-avatar-tab" type="button">↻ change</button>
+    </div>
+    <input type="file" id="js-avatar-input" accept="image/jpeg,image/png,image/webp"
+           style="display:none" aria-hidden="true">
+    <div class="acc-avatar-error" id="js-avatar-err" style="display:none"></div>
+    ${avatarS3Key ? `<button class="acc-avatar-remove btn-icon" aria-label="Remove avatar" type="button" id="js-avatar-remove"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : ''}`;
+
+  // Column 2: Identity
+  const roleGlyph = role === 'admin' ? '★ ADMIN' : role === 'editor' ? '✎ EDITOR' : '◎ VIEWER';
+  const roleBadgeClass = `acc-role-badge acc-role-badge--${esc(role)}`;
+  const identityCol = `
+    <div class="acc-identity">
+      <h2 class="acc-greeting-name" style="font-family:'Caveat',cursive;font-size:32px;font-weight:700;margin:0 0 6px">Hello, ${esc(name)}</h2>
+      <span class="${roleBadgeClass}">${esc(roleGlyph)}</span>
+      <p style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-faint);margin:6px 0 0">${esc(session.email || '')}</p>
+    </div>`;
+
+  // Column 3: Stats strip
+  const isViewer = role === 'viewer';
+  const uploadsNum   = isViewer ? '&mdash;' : String(stats.uploads);
+  const albumsNum    = isViewer ? '&mdash;' : String(stats.albums);
+  const uploadsClass = isViewer ? 'acc-stat-tile acc-stat-tile--muted' : 'acc-stat-tile';
+  const albumsClass  = isViewer ? 'acc-stat-tile acc-stat-tile--muted' : 'acc-stat-tile';
+
+  const statsCol = `
+    <div class="acc-stats-strip" style="display:flex;align-items:flex-start">
+      <div class="${uploadsClass}">
+        <span class="acc-stat-num">${uploadsNum}</span>
+        <span class="acc-stat-label">uploads</span>
       </div>
-      <div class="acc-stat">
-        <div class="acc-stat-n">${stats.recipes}</div>
-        <div class="acc-stat-l">recipes</div>
+      <div class="${albumsClass}">
+        <span class="acc-stat-num">${albumsNum}</span>
+        <span class="acc-stat-label">albums</span>
+      </div>
+      <div class="acc-stat-tile">
+        <span class="acc-stat-num">${stats.favourites}</span>
+        <span class="acc-stat-label">favourites</span>
+      </div>
+      <div class="acc-stat-tile">
+        <span class="acc-stat-num">${stats.comments}</span>
+        <span class="acc-stat-label">comments</span>
+      </div>
+      <div class="acc-stat-tile">
+        <span class="acc-stat-num">${stats.recipes}</span>
+        <span class="acc-stat-label">recipes</span>
       </div>
     </div>`;
 
-  // Avatar block
-  const avatarHtml = session.avatarS3Key
-    ? `<div class="acc-avatar-wrap">
-         <img src="/account/avatar" class="acc-avatar acc-avatar-img" alt="Your avatar">
-         <button class="acc-avatar-change btn-icon" aria-label="Change avatar" type="button" id="js-avatar-change">
-           <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-         </button>
-         <button class="acc-avatar-remove btn-icon" aria-label="Remove avatar" type="button" id="js-avatar-remove">
-           <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-         </button>
-       </div>
-       <input type="file" id="js-avatar-input" accept="image/jpeg,image/png,image/webp"
-              style="display:none" aria-hidden="true">
-       <div class="acc-avatar-error" id="js-avatar-err" style="display:none"></div>`
-    : `<div class="acc-avatar-wrap">
-         <div class="acc-avatar" id="js-avatar-initial">${initial}</div>
-         <button class="acc-avatar-change btn-icon" aria-label="Change avatar" type="button" id="js-avatar-change">
-           <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-         </button>
-       </div>
-       <input type="file" id="js-avatar-input" accept="image/jpeg,image/png,image/webp"
-              style="display:none" aria-hidden="true">
-       <div class="acc-avatar-error" id="js-avatar-err" style="display:none"></div>`;
+  return `${avatarCol}${identityCol}${statsCol}`;
+}
 
-  // Identity card
-  const identityCard = `
-    <div class="acc-card">
-      ${avatarHtml}
-      <div>
-        <div class="acc-name">${esc(name)}</div>
-        <span class="${roleBadgeClass}">${roleLabel}</span>
-        ${statsHtml}
+// ── DS-ACC-3: Permission strip ────────────────────────────────────────────────
+
+function buildPermsStrip(role) {
+  let canLabels  = [];
+  let cantLabels = [];
+
+  if (role === 'admin') {
+    canLabels = [
+      'view photos', 'upload photos', 'manage own albums', 'share albums',
+      'tag photos', 'make tag recipes', 'manage all tags', 'manage users', 'access AI tools',
+    ];
+    cantLabels = [];
+  } else if (role === 'editor') {
+    canLabels = [
+      'view photos', 'upload photos', 'manage own albums', 'share albums',
+      'tag photos', 'make tag recipes',
+    ];
+    cantLabels = ['manage all tags', 'manage users', 'access AI tools'];
+  } else if (role === 'viewer') {
+    canLabels = [
+      'view photos', 'favourite photos', 'comment on photos', 'tag photos', 'make tag recipes',
+    ];
+    cantLabels = ['upload photos', 'create albums', 'share albums', 'manage users'];
+  } else {
+    console.warn('[buildPermsStrip] unknown role:', role);
+    cantLabels = ['unknown role'];
+  }
+
+  const canPills  = canLabels.map(l  => `<span class="acc-pill-can">&#10003; ${esc(l)}</span>`).join('');
+  const cantPills = cantLabels.map(l => `<span class="acc-pill-cant">&#10007; ${esc(l)}</span>`).join('');
+
+  return `
+    <div class="acc-perms-strip d1-tape acc-card-block" style="display:flex;align-items:flex-start;gap:16px;position:relative;overflow:visible;margin:0 32px 16px">
+      <span class="acc-perms-kicker" style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-faint);white-space:nowrap;padding-top:2px">YOUR RIGHTS &middot; ${esc(role.toUpperCase())} &middot;</span>
+      <div class="acc-perms-pills" style="display:flex;flex-wrap:wrap;gap:6px;flex:1">
+        ${canPills}${cantPills}
       </div>
     </div>`;
+}
 
-  // Profile section (editable fields)
-  const profileSection = profile ? `
-    <div class="acc-section">
-      <div class="acc-section-h">Profile</div>
-      <div class="acc-section-b">
+// ── DS-ACC-1: Left column — profile details card ──────────────────────────────
+
+function buildLeftColumn(_role, data) {
+  const { profile } = data;
+
+  const profileCard = profile ? `
+    <div class="acc-card-block d1-tape">
+      <h3 class="acc-card-title">Profile</h3>
+      <div class="acc-section-b" style="padding:0">
         <div class="acc-field-row">
           <span class="acc-field-label">Name</span>
           <span class="acc-field-val" data-field="name" data-current="${esc(profile.name)}">${esc(profile.name)}</span>
@@ -628,25 +720,59 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
                 data-current="${esc(profile.notif_enabled)}">${profile.notif_enabled ? 'On' : 'Off'}</span>
         </div>
       </div>
+      <div style="margin-top:12px">
+        <a href="/account/password" class="acc-details-pw-link" style="font-family:'Caveat',cursive;font-size:14px;color:var(--accent)">change password &#8594;</a>
+      </div>
     </div>` : '';
 
-  // Permissions strip
-  const perms = buildPermsPills(role);
-  const permsSection = `
-    <div class="acc-section">
-      <div class="acc-section-h">Permissions</div>
-      <div class="acc-section-b">
-        <div class="acc-perms">${perms}</div>
+  return profileCard;
+}
+
+// ── DS-ACC-1: Right column — sessions + quick links + danger zone ─────────────
+
+function buildRightColumn(sessions, role) {
+  const sessionsCard  = buildSessionsSection(sessions);
+  const quickLinks    = buildQuickLinks(role);
+  const dangerCard    = buildDangerZoneCard();
+  return `${sessionsCard}${quickLinks}${dangerCard}`;
+}
+
+function buildQuickLinks(role) {
+  const links = [];
+  if (role === 'editor' || role === 'admin') {
+    links.push(`<a class="btn btn-secondary" href="/photos">My uploads</a>`);
+    links.push(`<a class="btn btn-secondary" href="/albums">My albums</a>`);
+  }
+  if (role === 'admin') {
+    links.push(`<a class="btn btn-secondary" href="/admin/users">Manage users</a>`);
+    links.push(`<a class="btn btn-secondary" href="/admin/ai">AI tools</a>`);
+  }
+  if (links.length === 0) return '';
+  return `
+    <div class="acc-card-block">
+      <h3 class="acc-card-title">Quick links</h3>
+      <div style="padding:0">
+        <div class="acc-links" style="display:flex;flex-wrap:wrap;gap:0.75rem">
+          ${links.join('\n          ')}
+        </div>
       </div>
     </div>`;
+}
 
-  // Sessions section — ACC-4: always shown (even with just 1 session)
-  const sessionsSection = buildSessionsSection(sessions);
+function buildDangerZoneCard() {
+  return `
+    <div class="acc-card-block acc-dz" style="border-color:var(--danger)">
+      <h3 class="acc-card-title" style="color:var(--danger)">danger zone</h3>
+      <div style="padding:0">
+        <div class="acc-links" style="display:flex;flex-wrap:wrap;gap:0.75rem">
+          <a class="btn btn-secondary btn-danger-outline" href="/account/delete">Delete account</a>
+        </div>
+      </div>
+    </div>`;
+}
 
-  // Quick links
-  const linksSection = buildQuickLinks(role);
-
-  const accountScript = `<script>(function(){
+function buildAccountScript() {
+  return `<script>(function(){
   function activateField(span) {
     var field   = span.dataset.field;
     var type    = span.dataset.type || 'text';
@@ -741,9 +867,10 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
       var body = {};
       body[field] = value;
 
+      var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
       fetch('/account', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(body)
       })
       .then(function(r) {
@@ -769,8 +896,8 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
         }
         span.dataset.current = value;
         if (field === 'name') {
-          var nameEl = document.querySelector('.acc-name');
-          if (nameEl) nameEl.textContent = value;
+          var nameEl = document.querySelector('.acc-greeting-name');
+          if (nameEl) nameEl.textContent = 'Hello, ' + value;
         }
         cancel();
       })
@@ -837,12 +964,14 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
             avatarErr.style.display = 'block';
             return;
           }
-          var oldEl = avatarWrap.querySelector('.acc-avatar, .acc-avatar-img');
+          var heroWrap = avatarWrap.querySelector('.acc-avatar-hero');
+          var oldEl = heroWrap ? heroWrap.querySelector('.acc-avatar-initial, .acc-avatar-img') : avatarWrap.querySelector('.acc-avatar-initial, .acc-avatar-img');
           var img = document.createElement('img');
           img.src = '/account/avatar?_=' + Date.now();
-          img.className = 'acc-avatar acc-avatar-img';
+          img.className = 'acc-avatar-img';
           img.alt = '';
-          if (oldEl) avatarWrap.replaceChild(img, oldEl);
+          if (oldEl) oldEl.replaceWith(img);
+          else if (heroWrap) heroWrap.appendChild(img);
 
           if (!document.getElementById('js-avatar-remove')) {
             var rmBtn = document.createElement('button');
@@ -875,13 +1004,15 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
           avatarErr.style.display = 'block';
           return;
         }
-        var initial = (document.querySelector('.acc-name') || {}).textContent || '?';
-        var div = document.createElement('div');
-        div.className = 'acc-avatar';
-        div.id = 'js-avatar-initial';
-        div.textContent = initial[0].toUpperCase();
-        var oldImg = avatarWrap.querySelector('.acc-avatar-img, .acc-avatar');
-        if (oldImg) avatarWrap.replaceChild(div, oldImg);
+        var greetEl = document.querySelector('.acc-greeting-name');
+        var nameText = greetEl ? greetEl.textContent.replace(/^Hello,\s*/, '') : '?';
+        var heroWrap = avatarWrap ? avatarWrap.querySelector('.acc-avatar-hero') : null;
+        var span = document.createElement('span');
+        span.className = 'acc-avatar-initial';
+        span.textContent = nameText[0].toUpperCase();
+        var oldImg = heroWrap ? heroWrap.querySelector('.acc-avatar-img, .acc-avatar-initial') : null;
+        if (oldImg) oldImg.replaceWith(span);
+        else if (heroWrap) heroWrap.appendChild(span);
 
         var rmBtn = document.getElementById('js-avatar-remove');
         if (rmBtn) rmBtn.remove();
@@ -897,30 +1028,6 @@ function renderAccountPage({ stats, sessions, recentUploads: _recentUploads, alb
   }
 
 })();</script>`;
-
-  const body = `
-    <div class="acc-wrap">
-      ${identityCard}
-      ${profileSection}
-      ${permsSection}
-      ${sessionsSection}
-      ${linksSection}
-      ${accountScript}
-    </div>`;
-
-  return page('My Account', body, session);
-}
-
-function buildPermsPills(role) {
-  const perms = [
-    { label: 'view photos',    yes: true },
-    { label: 'upload photos',  yes: role === 'admin' || role === 'editor' },
-    { label: 'manage albums',  yes: role === 'admin' || role === 'editor' },
-    { label: 'manage tags',    yes: role === 'admin' },
-    { label: 'manage users',   yes: role === 'admin' },
-    { label: 'access AI tools', yes: role === 'admin' },
-  ];
-  return perms.map(p => `<span class="acc-perm${p.yes ? ' yes' : ''}">${p.yes ? '✓' : '⊘'} ${esc(p.label)}</span>`).join('');
 }
 
 // ── ACC-4: Inline user-agent parser — no new npm packages ────────────────────
@@ -1021,9 +1128,9 @@ function buildSessionsSection(sessions) {
   const bulkLabel = !hasOthers ? 'No other active sessions' : 'Sign out all other devices';
 
   return `
-    <div class="acc-section" id="acc-sessions-section">
-      <div class="acc-section-h">Active sessions</div>
-      <div class="acc-section-b">
+    <div class="acc-card-block d1-tape" id="acc-sessions-section">
+      <h3 class="acc-card-title">Active sessions</h3>
+      <div class="acc-section-b" style="padding:0">
         <div id="acc-sessions-list">
           ${rows}
         </div>
@@ -1112,28 +1219,5 @@ function buildSessionsSection(sessions) {
     </script>`;
 }
 
-function buildQuickLinks(role) {
-  const links = [
-    `<a class="btn btn-secondary" href="/account/password">Change password</a>`,
-  ];
-  if (role === 'editor' || role === 'admin') {
-    links.push(`<a class="btn btn-secondary" href="/photos">My uploads</a>`);
-    links.push(`<a class="btn btn-secondary" href="/albums">My albums</a>`);
-  }
-  if (role === 'admin') {
-    links.push(`<a class="btn btn-secondary" href="/admin/users">Manage users</a>`);
-    links.push(`<a class="btn btn-secondary" href="/admin/ai">AI tools</a>`);
-  }
-  links.push(`<a class="btn btn-secondary btn-danger-outline" href="/account/delete">Delete account</a>`);
-  return `
-    <div class="acc-section">
-      <div class="acc-section-h">Quick links</div>
-      <div class="acc-section-b">
-        <div class="acc-links">
-          ${links.join('\n          ')}
-        </div>
-      </div>
-    </div>`;
-}
 
 module.exports = router;

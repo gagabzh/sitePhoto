@@ -2057,3 +2057,99 @@ tr:hover .tm-row-actions { opacity:1; }
   gap: 4px;
   text-decoration: line-through;
 }
+
+/* ── DS-ACC-1: two-column layout shell ── */
+.acc-page-bg {
+  background-image:
+    radial-gradient(rgba(26,24,20,0.04) 1px, transparent 1px),
+    radial-gradient(rgba(26,24,20,0.03) 1px, transparent 1px);
+  background-size: 22px 22px, 11px 11px;
+  background-position: 0 0, 6px 6px;
+}
+
+.acc-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 24px;
+  align-items: start;
+  padding: 18px 32px 0;
+  margin-bottom: 16px;
+}
+
+.acc-body {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 24px;
+  padding: 18px 32px 22px;
+}
+
+.acc-col-left,
+.acc-col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.acc-perms-strip {
+  margin: 0 32px 16px;
+}
+
+@media (max-width: 900px) {
+  .acc-body { grid-template-columns: 1fr; }
+  .acc-header { grid-template-columns: 1fr; }
+  .acc-perms-strip { flex-direction: column; }
+}
+
+/* ── DS-ACC-2: avatar hero + identity + stats ── */
+.acc-avatar-hero {
+  width: 130px;
+  height: 130px;
+  border: 2.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper-2)
+    repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(26,24,20,0.06) 4px, rgba(26,24,20,0.06) 5px);
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.acc-avatar-initial {
+  font-family: 'Caveat', cursive;
+  font-size: 76px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+.acc-avatar-img { object-fit: cover; width: 100%; height: 100%; border-radius: 50%; }
+.acc-avatar-tab {
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2deg);
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  font-family: 'Caveat', cursive;
+  font-size: 13px;
+  padding: 2px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.acc-stats-strip { display: flex; align-items: flex-start; }
+
+/* ── DS-ACC-2: role badge variants ── */
+.acc-role-badge {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1.5px solid var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  transform: rotate(-1.5deg);
+}
+.acc-role-badge--admin  { color: oklch(55% 0.20 25);  border-color: oklch(55% 0.20 25);  background: oklch(96% 0.02 25);  }
+.acc-role-badge--editor { color: var(--accent-2);      border-color: var(--accent-2);      background: oklch(96% 0.02 220); }
+.acc-role-badge--viewer { color: var(--accent-3);      border-color: var(--accent-3);      background: oklch(96% 0.02 140); }
