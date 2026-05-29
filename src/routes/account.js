@@ -64,7 +64,7 @@ router.get('/account', wrapAsync(async (req, res) => {
   // [7] favourites count — TODO: DS-ACC-2 photo_likes table not yet implemented
   // [8] comments count  — TODO: DS-ACC-2 comments table not yet implemented
   // [9] tag recipes for left-column card (LIMIT 3 for admin, 2 for editor, 0 for viewer)
-  // [10] albums for grid card (admin/editor: own albums with photo count LIMIT 4; viewer: accessible LIMIT 4)
+  // [10] albums for grid card (admin/editor: own albums with photo count LIMIT 4; viewer: Promise.resolve — no albums grid)
   // [11] admin tool counts (4 subquery values) — db.query for admin, Promise.resolve for others
   // [12] shared-with list (editor only) — db.query for editor, Promise.resolve for others
   // [13] admin name+email for viewer limits card (viewer only) — db.query for viewer, Promise.resolve for others
@@ -136,16 +136,9 @@ router.get('/account', wrapAsync(async (req, res) => {
           `SELECT id, name FROM tag_recipes WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${role === 'admin' ? 3 : 2}`,
           [userId]
         ),
-    // [10] albums for grid card (admin/editor: own albums with photo count LIMIT 4; viewer: accessible LIMIT 4)
+    // [10] albums for grid card (admin/editor only — viewer has no albums grid card)
     role === 'viewer'
-      ? db.query(
-          `SELECT a.id, a.title, a.created_at, COUNT(ap.photo_id)::int AS photo_count
-           FROM albums a
-           JOIN album_access aa ON aa.album_id = a.id AND aa.viewer_id = $1
-           LEFT JOIN album_photos ap ON ap.album_id = a.id
-           GROUP BY a.id ORDER BY a.created_at DESC LIMIT 4`,
-          [userId]
-        )
+      ? Promise.resolve({ rows: [] })
       : db.query(
           `SELECT a.id, a.title, a.created_at, COUNT(ap.photo_id)::int AS photo_count
            FROM albums a
@@ -165,7 +158,7 @@ router.get('/account', wrapAsync(async (req, res) => {
     // [12] shared-with list (editor only)
     role === 'editor'
       ? db.query(
-          `SELECT DISTINCT u.id, u.name, COUNT(DISTINCT aa.album_id)::int AS album_count
+          `SELECT u.id, u.name, COUNT(DISTINCT aa.album_id)::int AS album_count
            FROM album_access aa
            JOIN albums a ON a.id = aa.album_id AND a.user_id = $1
            JOIN users u ON u.id = aa.viewer_id

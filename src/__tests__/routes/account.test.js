@@ -154,7 +154,7 @@ describe('GET /account', () => {
   // [7] Promise.resolve          — favourites count placeholder
   // [8] Promise.resolve          — comments count placeholder
   // [9] Promise.resolve          — tag recipes (viewer has none)
-  // [10] db.query → albums grid  (SELECT ... FROM albums JOIN album_access WHERE viewer_id LIMIT 4)
+  // [10] Promise.resolve         — albums grid (viewer has no albums grid card)
   // [11] Promise.resolve         — admin tools (no db.query consumed for viewer)
   // [12] Promise.resolve         — shared-with (no db.query consumed for viewer)
   // [13] db.query → admin lookup (SELECT name, email FROM users WHERE role='admin' LIMIT 1)
@@ -334,7 +334,7 @@ describe('GET /account', () => {
   });
 
   it('viewer does not see upload links', async () => {
-    // Viewer Promise.all execution order (slots [4], [9], [11], [12] are Promise.resolve — no db.query consumed):
+    // Viewer Promise.all execution order (slots [4], [9], [10], [11], [12] are Promise.resolve — no db.query consumed):
     // [0] db.query → uploads stat  (via album_access JOIN)
     // [1] db.query → albums stat   (SELECT COUNT FROM album_access WHERE viewer_id)
     // [2] db.query → recipes stat
@@ -345,7 +345,7 @@ describe('GET /account', () => {
     // [7] Promise.resolve          — favourites placeholder
     // [8] Promise.resolve          — comments placeholder
     // [9] Promise.resolve          — tag recipes (viewer has none)
-    // [10] db.query → albums grid  (via album_access JOIN LIMIT 4)
+    // [10] Promise.resolve         — albums grid (viewer has no albums grid card)
     // [11] Promise.resolve         — admin tools (no db.query consumed for viewer)
     // [12] Promise.resolve         — shared-with (no db.query consumed for viewer)
     // [13] db.query → admin lookup (SELECT name, email FROM users WHERE role='admin' LIMIT 1)
@@ -357,12 +357,7 @@ describe('GET /account', () => {
       // [4] Promise.resolve — no db.query mock needed
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list via album_access
       .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
-      // [7] Promise.resolve — no db.query mock needed
-      // [8] Promise.resolve — no db.query mock needed
-      // [9] Promise.resolve — no db.query mock needed (viewer)
-      .mockResolvedValueOnce({ rows: [] })           // [10] albums grid via album_access
-      // [11] Promise.resolve — no db.query mock needed (viewer)
-      // [12] Promise.resolve — no db.query mock needed (viewer)
+      // [7][8][9][10][11][12] Promise.resolve — no db.query mocks needed
       .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
@@ -499,7 +494,7 @@ describe('GET /account', () => {
 
   it('DS-ACC-5: viewer sees viewer limits card with "what you can\'t do" pills', async () => {
     // Viewer mock order: [0-3] db.query, [4] Promise.resolve, [5-6] db.query,
-    // [7-9] Promise.resolve, [10] db.query (albums grid), [11-12] Promise.resolve, [13] db.query (admin lookup)
+    // [7-9] Promise.resolve, [10] Promise.resolve (viewer — no albums grid), [11-12] Promise.resolve, [13] db.query (admin lookup)
     db.query
       .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
       .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
@@ -508,9 +503,7 @@ describe('GET /account', () => {
       // [4] Promise.resolve
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list
       .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
-      // [7][8][9] Promise.resolve
-      .mockResolvedValueOnce({ rows: [] })           // [10] albums grid
-      // [11][12] Promise.resolve
+      // [7][8][9][10][11][12] Promise.resolve
       .mockResolvedValueOnce({ rows: [{ name: 'Admin User', email: 'admin@test.com' }] }); // [13] admin lookup
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
@@ -530,9 +523,7 @@ describe('GET /account', () => {
       // [4] Promise.resolve
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list
       .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
-      // [7][8][9] Promise.resolve
-      .mockResolvedValueOnce({ rows: [] })           // [10] albums grid
-      // [11][12] Promise.resolve
+      // [7][8][9][10][11][12] Promise.resolve
       .mockResolvedValueOnce({ rows: [{ name: 'Alice Admin', email: 'alice@test.com' }] }); // [13] admin lookup
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
@@ -551,9 +542,7 @@ describe('GET /account', () => {
       // [4] Promise.resolve
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list
       .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
-      // [7][8][9] Promise.resolve
-      .mockResolvedValueOnce({ rows: [] })           // [10] albums grid
-      // [11][12] Promise.resolve
+      // [7][8][9][10][11][12] Promise.resolve
       .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup — no admin
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
@@ -573,9 +562,7 @@ describe('GET /account', () => {
       // [4] Promise.resolve
       .mockResolvedValueOnce({ rows: [] })           // [5] albums list
       .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6] profile
-      // [7][8][9] Promise.resolve
-      .mockResolvedValueOnce({ rows: [] })           // [10] albums grid
-      // [11][12] Promise.resolve
+      // [7][8][9][10][11][12] Promise.resolve
       .mockResolvedValueOnce({ rows: [] });          // [13] admin lookup
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/account');
@@ -605,6 +592,24 @@ describe('GET /account', () => {
     expect(res.status).toBe(200);
     expect(res.text).not.toContain('<img src=x onerror=alert(1)>');
     expect(res.text).toContain('&lt;img');
+  });
+
+  it('DS-ACC-5: admin contact name and email are escaped in mailto link', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }) // [6]
+      // [7][8][9][10][11][12] Promise.resolve
+      .mockResolvedValueOnce({ rows: [{ name: '<script>xss</script>', email: '"><script>xss</script>@x.com' }] }); // [13]
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('<script>xss</script>');
+    expect(res.text).toContain('&lt;script&gt;');
   });
 });
 
