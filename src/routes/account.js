@@ -867,9 +867,10 @@ function buildAccountScript() {
       var body = {};
       body[field] = value;
 
+      var csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
       fetch('/account', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
         body: JSON.stringify(body)
       })
       .then(function(r) {

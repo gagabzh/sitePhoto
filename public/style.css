@@ -2149,7 +2149,6 @@ tr:hover .tm-row-actions { opacity:1; }
   text-transform: uppercase;
   letter-spacing: 2.5px;
   transform: rotate(-1.5deg);
-  display: inline-block;
 }
 .acc-role-badge--admin  { color: oklch(55% 0.20 25);  border-color: oklch(55% 0.20 25);  background: oklch(96% 0.02 25);  }
 .acc-role-badge--editor { color: var(--accent-2);      border-color: var(--accent-2);      background: oklch(96% 0.02 220); }
