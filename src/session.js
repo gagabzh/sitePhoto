@@ -3,6 +3,7 @@
 const session = require('express-session');
 const ConnectPgSimple = require('connect-pg-simple')(session);
 const db = require('./db');
+const { SESSION_MAX_AGE_MS } = require('./constants');
 
 module.exports = session({
   store: new ConnectPgSimple({
@@ -18,6 +19,6 @@ module.exports = session({
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: SESSION_MAX_AGE_MS,
   },
 });
