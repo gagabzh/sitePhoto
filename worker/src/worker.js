@@ -1,9 +1,16 @@
 'use strict';
 
 const { Worker } = require('bullmq');
-const { downloadPhoto } = require('./storage');
+const { v4: uuidv4 } = require('uuid');
+const { downloadPhoto, uploadPhoto } = require('./storage');
 const { generate } = require('./ai');
-const { postIdentificationResult, postDescribePersonResult } = require('./instance1-api');
+const {
+  postIdentificationResult,
+  postDescribePersonResult,
+  postNextcloudImportProgress,
+  insertImportedPhoto,
+} = require('./instance1-api');
+const { downloadFileAsBuffer, EXT_MAP } = require('../../src/nextcloudWebdav');
 
 const IDENTIFICATION_PROMPT =
   process.env.IDENTIFICATION_PROMPT ||
@@ -68,4 +75,44 @@ worker.on('error', (err) => {
   console.error('[worker] error:', err.message);
 });
 
-console.log('[worker] listening on queue: identification');
+// NC-4: nextcloud-import queue — one job per file in the shared folder
+const ncWorker = new Worker('nextcloud-import', async (job) => {
+  const { shareUrl, fileName, mimeType, userId, tags, place, albumId, importId } = job.data;
+  console.log(`[worker] nc-import job ${job.id} — ${fileName} (import ${importId})`);
+
+  let succeeded = false;
+  try {
+    // Step a: download from Nextcloud
+    const buffer = await downloadFileAsBuffer(shareUrl, fileName);
+
+    // Step b: generate S3 key
+    const ext = EXT_MAP[mimeType] || '.jpg';
+    const s3Key = `${uuidv4()}${ext}`;
+
+    // Step c: upload to S3
+    await uploadPhoto(s3Key, buffer, mimeType);
+
+    // Step d+e+f: insert photo row, album membership, tags via Instance-1
+    const { photoId } = await insertImportedPhoto({
+      userId, s3Key, mimeType, shareUrl, place, albumId, tags, importId,
+    });
+
+    // Step g: enqueue AI identification
+    await postIdentificationResult({ photoId, userId, tags: '' });
+
+    succeeded = true;
+    console.log(`[worker] nc-import job ${job.id} done — photoId ${photoId}`);
+  } catch (err) {
+    console.error(`[worker] nc-import job ${job.id} file "${fileName}" failed:`, err.message);
+    succeeded = false;
+  }
+
+  // Steps h+i: atomic DB increment + socket.io notification (via Instance-1)
+  await postNextcloudImportProgress({ userId, importId, succeeded });
+}, { connection });
+
+ncWorker.on('error', (err) => {
+  console.error('[worker] nc-import error:', err.message);
+});
+
+console.log('[worker] listening on queues: identification, nextcloud-import');

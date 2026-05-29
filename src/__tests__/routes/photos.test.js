@@ -78,33 +78,50 @@ function makeApp(sessionData) {
 // ── US-P1: List ──────────────────────────────────────────────────────────────
 
 describe('US-P1: GET /photos — photo list', () => {
-  // GET /photos calls 5 db.query in this order (Promise.all order):
-  //   1. fetchPhotoPage (photo rows)
-  //   2. fetchPhotoStats: uploader counts
-  //   3. fetchPhotoStats: tag counts
-  //   4. fetchPhotoStats: total COUNT
-  //   5. fetchLatestAlbum
+  // GET /photos calls 6 db.query in this order (for editor/admin):
+  //   1. SELECT nextcloud_imports (active import check — NC-5)
+  //   2. fetchPhotoPage (photo rows)          } Promise.all
+  //   3. fetchPhotoStats: uploader counts     }
+  //   4. fetchPhotoStats: tag counts          }
+  //   5. fetchPhotoStats: total COUNT         }
+  //   6. fetchLatestAlbum                     }
 
   it('returns 200 and renders photos for editor', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })      // fetchPhotoPage
-      .mockResolvedValueOnce({ rows: [{ name: 'Alice', cnt: 1 }] }) // uploaders
-      .mockResolvedValueOnce({ rows: [] })                // topTags
-      .mockResolvedValueOnce({ rows: [{ n: 1 }] })        // total
-      .mockResolvedValueOnce({ rows: [] });               // fetchLatestAlbum
+      .mockResolvedValueOnce({ rows: [] })                // 1. nextcloud_imports (no active import)
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })      // 2. fetchPhotoPage
+      .mockResolvedValueOnce({ rows: [{ name: 'Alice', cnt: 1 }] }) // 3. uploaders
+      .mockResolvedValueOnce({ rows: [] })                // 4. topTags
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })        // 5. total
+      .mockResolvedValueOnce({ rows: [] });               // 6. fetchLatestAlbum
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
     expect(res.status).toBe(200);
     expect(res.text).toContain('Sunset');
     expect(res.text).toContain('+ Upload');
   });
 
+  it('renders the import banner when an active import exists', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 3, total: 20, done: 5, failed: 1 }] }) // 1. active import
+      .mockResolvedValueOnce({ rows: [] })               // 2. fetchPhotoPage (empty)
+      .mockResolvedValueOnce({ rows: [] })               // 3. uploaders
+      .mockResolvedValueOnce({ rows: [] })               // 4. topTags
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })       // 5. total
+      .mockResolvedValueOnce({ rows: [] });              // 6. fetchLatestAlbum
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('nc-import-banner');
+    expect(res.text).toContain('5 of 20');
+  });
+
   it('returns 200 and renders photos for admin', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [] })  // fetchPhotoPage (empty)
-      .mockResolvedValueOnce({ rows: [] })  // uploaders
-      .mockResolvedValueOnce({ rows: [] })  // topTags
-      .mockResolvedValueOnce({ rows: [{ n: 0 }] }) // total
-      .mockResolvedValueOnce({ rows: [] }); // fetchLatestAlbum
+      .mockResolvedValueOnce({ rows: [] })               // 1. nextcloud_imports (no active import)
+      .mockResolvedValueOnce({ rows: [] })               // 2. fetchPhotoPage (empty)
+      .mockResolvedValueOnce({ rows: [] })               // 3. uploaders
+      .mockResolvedValueOnce({ rows: [] })               // 4. topTags
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })       // 5. total
+      .mockResolvedValueOnce({ rows: [] });              // 6. fetchLatestAlbum
     const res = await request(makeApp(ADMIN_SESSION)).get('/photos');
     expect(res.status).toBe(200);
     expect(res.text).toContain('Upload the first one');
@@ -462,11 +479,12 @@ describe('POST /photos/bulk-tag — apply tag to multiple photos', () => {
 describe('GET /photos — photo list selection mode', () => {
   function mockPhotoList(photo) {
     db.query
-      .mockResolvedValueOnce({ rows: [photo] })           // fetchPhotoPage
-      .mockResolvedValueOnce({ rows: [] })                // uploaders
-      .mockResolvedValueOnce({ rows: [] })                // topTags
-      .mockResolvedValueOnce({ rows: [{ n: 1 }] })        // total
-      .mockResolvedValueOnce({ rows: [] });               // fetchLatestAlbum
+      .mockResolvedValueOnce({ rows: [] })                // 1. nextcloud_imports (no active import)
+      .mockResolvedValueOnce({ rows: [photo] })           // 2. fetchPhotoPage
+      .mockResolvedValueOnce({ rows: [] })                // 3. uploaders
+      .mockResolvedValueOnce({ rows: [] })                // 4. topTags
+      .mockResolvedValueOnce({ rows: [{ n: 1 }] })        // 5. total
+      .mockResolvedValueOnce({ rows: [] });               // 6. fetchLatestAlbum
   }
 
   it('shows sel-tile and sel-select-btn for editor-owned photos', async () => {

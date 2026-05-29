@@ -174,3 +174,175 @@ describe('POST /internal/describe-person-result', () => {
     );
   });
 });
+
+// ── POST /internal/nextcloud-photo ───────────────────────────────────────────
+
+describe('POST /internal/nextcloud-photo', () => {
+  it('returns 403 without valid x-worker-secret', async () => {
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .send({ userId: 1, s3Key: 'abc.jpg' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when userId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ s3Key: 'abc.jpg' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when s3Key is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: 1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('inserts photo, album membership, and tags — returns photoId', async () => {
+    // 1. INSERT photos RETURNING id
+    // 2. INSERT album_photos
+    // 3. INSERT tags RETURNING id
+    // 4. INSERT photo_tags
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })     // INSERT photos
+      .mockResolvedValueOnce({ rows: [] })                // INSERT album_photos
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })     // INSERT tags
+      .mockResolvedValueOnce({ rows: [] });               // INSERT photo_tags
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5, s3Key: 'uuid-abc.jpg', mimeType: 'image/jpeg',
+        shareUrl: 'https://cloud.example.com/s/token', place: 'Paris',
+        albumId: 7, tags: ['paris', 'vacation'], importId: 3,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(42);
+    expect(db.query).toHaveBeenCalledTimes(4);
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO photos'),
+      [5, 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 'Paris'],
+    );
+    expect(db.query).toHaveBeenNthCalledWith(2,
+      expect.stringContaining('INSERT INTO album_photos'),
+      [7, 42],
+    );
+  });
+
+  it('skips album_photos when albumId is not provided', async () => {
+    // 1. INSERT photos RETURNING id
+    // 2. INSERT tags RETURNING id
+    // 3. INSERT photo_tags
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 55 }] })   // INSERT photos
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] })    // INSERT tags
+      .mockResolvedValueOnce({ rows: [] });             // INSERT photo_tags
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: 5, s3Key: 'uuid-def.jpg', tags: ['travel'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(55);
+    // Only 3 queries — no album_photos insert
+    expect(db.query).toHaveBeenCalledTimes(3);
+  });
+
+  it('skips tags when tags array is empty', async () => {
+    // 1. INSERT photos RETURNING id only
+    db.query.mockResolvedValueOnce({ rows: [{ id: 99 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: 5, s3Key: 'uuid-ghi.jpg', tags: [] });
+
+    expect(res.status).toBe(200);
+    expect(db.query).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── POST /internal/nextcloud-import-progress ─────────────────────────────────
+
+describe('POST /internal/nextcloud-import-progress', () => {
+  it('returns 403 without valid x-worker-secret', async () => {
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .send({ userId: 1, importId: 7, succeeded: true });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when userId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ importId: 7, succeeded: true });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when importId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: 1, succeeded: true });
+    expect(res.status).toBe(400);
+  });
+
+  it('increments done and emits socket event on success', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ done: 3, total: 10, failed: 0 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: '7', importId: 42, succeeded: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, done: 3, total: 10, failed: 0 });
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SET done = done + 1'),
+      [42],
+    );
+    expect(notifyUser).toHaveBeenCalledWith(
+      '7',
+      { importId: 42, done: 3, total: 10, failed: 0 },
+      'nextcloud-import-progress',
+    );
+  });
+
+  it('increments failed and emits socket event on failure', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ done: 2, total: 10, failed: 1 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: '7', importId: 42, succeeded: false });
+
+    expect(res.status).toBe(200);
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SET failed = failed + 1'),
+      [42],
+    );
+    expect(notifyUser).toHaveBeenCalledWith(
+      '7',
+      { importId: 42, done: 2, total: 10, failed: 1 },
+      'nextcloud-import-progress',
+    );
+  });
+
+  it('returns 404 when importId does not exist', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-import-progress')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: '7', importId: 999, succeeded: true });
+
+    expect(res.status).toBe(404);
+  });
+});

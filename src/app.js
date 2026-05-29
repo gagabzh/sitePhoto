@@ -72,6 +72,7 @@ app.use(requireAuth);
 app.use(csrfMiddleware);
 app.use(require('./routes/account'));
 app.use('/photos', require('./routes/photos'));
+app.use('/photos/nextcloud-import', require('./routes/nextcloudImport'));
 app.use('/albums', require('./routes/albums'));
 app.use('/tags', require('./routes/tags'));
 app.use('/timeline', require('./routes/timeline'));

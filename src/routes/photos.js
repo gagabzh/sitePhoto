@@ -6,6 +6,7 @@ const {
   upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
 } = require('../uploadHelpers');
 const { addIdentificationJob } = require('../queue/producer');
+const db = require('../db');
 const {
   renderPhotoListPage, renderUploadPage, renderPhotoDetailPage, renderPhotoEditPage,
 } = require('./photosViews');
@@ -21,6 +22,25 @@ function parseFrom(raw) {
 
 // US-P1: Photo list — Family Wall layout
 router.get('/', requireEditor, wrapAsync(async (req, res) => {
+  const isEditor = req.session.role === 'editor' || req.session.role === 'admin';
+
+  // NC-5: query active import for the progress banner (fail silently on DB error)
+  let activeImport = null;
+  if (isEditor) {
+    try {
+      const { rows: importRows } = await db.query(
+        `SELECT id, total, done, failed
+           FROM nextcloud_imports
+          WHERE user_id = $1
+            AND done + failed < total
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [req.session.userId],
+      );
+      activeImport = importRows[0] || null;
+    } catch { /* fail silently — do not block the photos page */ }
+  }
+
   const [{ photos, nextCursor }, stats, latestAlbum] = await Promise.all([
     fetchPhotoPage(null, 24),
     fetchPhotoStats(),
@@ -29,7 +49,7 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
   const rows = photos.map(p => ({ ...p, canEdit: canModify(req.session, p) }));
   res.send(renderPhotoListPage({
     rows, uploaders: stats.uploaders, topTags: stats.topTags,
-    total: stats.total, nextCursor, latestAlbum, session: req.session,
+    total: stats.total, nextCursor, latestAlbum, session: req.session, activeImport,
   }));
 }));
 
