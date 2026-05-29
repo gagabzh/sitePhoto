@@ -30,6 +30,12 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | ACC-3 | Avatar upload and removal | Account | Done | #81 |
 | ACC-4 | Session management | Account | Done | #82 |
 | ACC-5 | Danger zone | Account | Done | #80 |
+| DS-ACC-1 | Implement two-column layout and card shell | Account | Backlog | — |
+| DS-ACC-2 | Header block: 130px avatar, greeting, and 5-KPI stats strip | Account | Backlog | — |
+| DS-ACC-3 | Permission strip with role-aware can/can't pills | Account | Backlog | — |
+| DS-ACC-4 | Role-specific left column cards | Account | Backlog | — |
+| DS-ACC-5 | Role-specific right column cards | Account | Backlog | — |
+| DS-ACC-6 | Design token alignment and missing CSS | Account | Backlog | — |
 | US-P1 | Upload a photo | Photos | Done | — |
 | US-P2 | Tag a photo | Photos | Done | — |
 | US-P3 | Edit a photo | Photos | Done | — |
