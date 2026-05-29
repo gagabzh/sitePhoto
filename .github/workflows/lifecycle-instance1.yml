@@ -2,8 +2,8 @@ name: Lifecycle — Instance 1 (shelve / unshelve)
 
 on:
   schedule:
-    - cron: '0 22 * * *'   # shelve — 22:00 UTC = midnight CET / 01:00 CEST
-    - cron: '0 5 * * *'    # unshelve — 05:00 UTC = 07:00 CET / 08:00 CEST
+    - cron: '0 21 * * *'   # shelve — 21:00 UTC scheduled → expected actual fire ~22:00–23:00 CEST due to GitHub queue delay (target: midnight CEST)
+    - cron: '0 4 * * *'    # unshelve — 04:00 UTC scheduled → expected actual fire ~05:00–07:00 CEST due to GitHub queue delay (target: 07:00 CEST)
   workflow_dispatch:
     inputs:
       action:
@@ -23,7 +23,7 @@ jobs:
     name: Shelve Instance-1
     runs-on: ubuntu-latest
     environment: production
-    if: github.event.schedule == '0 22 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'shelve')
+    if: github.event.schedule == '0 21 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'shelve')
 
     steps:
       - name: Check current status
@@ -90,7 +90,7 @@ jobs:
     name: Unshelve Instance-1
     runs-on: ubuntu-latest
     environment: production
-    if: github.event.schedule == '0 5 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
+    if: github.event.schedule == '0 4 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
 
     steps:
       - name: Check current status
