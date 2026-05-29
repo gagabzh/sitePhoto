@@ -17,8 +17,9 @@ const EXT_MAP = {
 };
 // Reject RFC 1918, loopback, and link-local addresses to prevent SSRF.
 function isInternalHost(hostname) {
-  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$)/.test(hostname)
-    || hostname === 'localhost';
+  const h = hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets from Node URL parser
+  return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$)/.test(h)
+    || h === 'localhost';
 }
 
 // Extract the share token from a Nextcloud public share URL.

@@ -1,6 +1,5 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../queue/producer', () => ({
-  addIdentificationJob: jest.fn().mockResolvedValue(),
   addNextcloudImportJob: jest.fn().mockResolvedValue(),
 }));
 jest.mock('../../nextcloudWebdav', () => ({
