@@ -106,7 +106,10 @@ async function propfindShare(shareUrl) {
     throw Object.assign(new Error('Invalid share URL.'), { httpStatus: 422 });
   }
 
-  const webdavUrl = `${shareUrl.replace(/\/$/, '')}/public.php/webdav/`;
+  // WebDAV base is the Nextcloud root, not the /s/{token} path.
+  // e.g. https://cloud.example.com/s/TOKEN → https://cloud.example.com/public.php/webdav/
+  const ncBase = shareUrl.replace(/\/s\/[^/?#]+.*$/, '').replace(/\/$/, '');
+  const webdavUrl = `${ncBase}/public.php/webdav/`;
   const auth = Buffer.from(`${token}:`).toString('base64');
 
   const propfindBody = `<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:getcontenttype/><D:getcontentlength/><D:displayname/></D:prop></D:propfind>`;
@@ -205,7 +208,8 @@ function downloadFileAsBuffer(shareUrl, fileName) {
     return Promise.reject(Object.assign(new Error('Invalid share URL.'), { statusCode: 422 }));
   }
 
-  const fileUrl = `${shareUrl.replace(/\/$/, '')}/public.php/webdav/${encodeURIComponent(fileName)}`;
+  const ncBase = shareUrl.replace(/\/s\/[^/?#]+.*$/, '').replace(/\/$/, '');
+  const fileUrl = `${ncBase}/public.php/webdav/${encodeURIComponent(fileName)}`;
   const auth = Buffer.from(`${token}:`).toString('base64');
   const parsed = new URL(fileUrl);
   const lib = parsed.protocol === 'https:' ? https : http;
