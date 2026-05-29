@@ -337,6 +337,69 @@ describe('GET /account', () => {
     expect(res.text).toContain('7');
   });
 
+  // DS-ACC-4: left column card rendering
+  it('editor sees acc-uploads-card and acc-recipes-card, not viewer placeholders', async () => {
+    mockAccountQueries();
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-uploads-card');
+    expect(res.text).toContain('acc-recipes-card');
+    expect(res.text).not.toContain('acc-favourites-card');
+    expect(res.text).not.toContain('acc-activity-card');
+  });
+
+  it('viewer sees acc-favourites-card and acc-activity-card, not uploads or recipes cards', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [0] uploads stat
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [1] albums stat
+      .mockResolvedValueOnce({ rows: [{ n: 0 }] })  // [2] recipes stat
+      .mockResolvedValueOnce({ rows: [] })           // [3] sessions
+      // [4] Promise.resolve — skipped
+      .mockResolvedValueOnce({ rows: [] })           // [5] albums list
+      .mockResolvedValueOnce({ rows: [{ name: 'Bob', email: 'bob@test.com', avatar_s3_key: null, language: 'en', theme: 'light', notif_enabled: true }] }); // [6]
+    // [7][8][9] Promise.resolve — skipped
+    const res = await request(makeApp(VIEWER_SESSION)).get('/account');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('acc-favourites-card');
+    expect(res.text).toContain('acc-activity-card');
+    expect(res.text).not.toContain('acc-uploads-card');
+    expect(res.text).not.toContain('acc-recipes-card');
+  });
+
+  it('mosaic featured cell present when recentUploads.length >= 3', async () => {
+    const uploads = [
+      { id: 1, s3_key: 'a.jpg' },
+      { id: 2, s3_key: 'b.jpg' },
+      { id: 3, s3_key: 'c.jpg' },
+    ];
+    mockAccountQueries({ recentUploads: uploads });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).toContain('acc-mosaic-cell--featured');
+  });
+
+  it('mosaic featured cell absent when recentUploads.length < 3', async () => {
+    const uploads = [
+      { id: 1, s3_key: 'a.jpg' },
+      { id: 2, s3_key: 'b.jpg' },
+    ];
+    mockAccountQueries({ recentUploads: uploads });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).not.toContain('acc-mosaic-cell--featured');
+  });
+
+  it('renders acc-mosaic-empty when recentUploads is empty', async () => {
+    mockAccountQueries({ recentUploads: [] });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).toContain('acc-mosaic-empty');
+  });
+
+  it('HTML-escapes recipe name in output', async () => {
+    mockAccountQueries({ recipeRows: [{ id: 1, name: '<script>alert(1)</script>' }] });
+    const res = await request(makeApp(USER_SESSION)).get('/account');
+    expect(res.text).not.toContain('<script>alert(1)</script>');
+    expect(res.text).toContain('&lt;script&gt;');
+  });
+
   it('returns 500 when db.query rejects', async () => {
     db.query.mockRejectedValueOnce(new Error('db failure'));
     const res = await request(makeApp(USER_SESSION)).get('/account');
