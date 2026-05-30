@@ -130,3 +130,23 @@ As a logged-in user, I can see the list of my active sessions and revoke any of 
 - `memory/project_v5_plan.md` — V5 technical plan (to stay aligned with what's planned)
 - `sitephoto-design/` — design references (to stay within the visual system)
 - `src/middleware.js` — role definitions (admin / editor / viewer) for correct "As a" phrasing
+
+---
+
+## Skills This Agent Uses
+
+This agent uses these skills from SKILL-LIBRARY/:
+
+1. **Blocker Tracking** (SKILL-LIBRARY/1-blocker-tracking.skill.md)
+   - Identify blockers when writing stories
+   - Use format 🔴 BLOCKER: [CODE-N]
+
+2. **Git Safety** (SKILL-LIBRARY/3-git-safety.skill.md)
+   - Review PRs before merge
+   - Ensure feature branches are used
+
+3. **Acceptance Criteria Scorer** (SKILL-LIBRARY/4-acceptance-criteria-scorer.skill.md)
+   - Score criteria testability before finalizing stories
+   - Target score >= 7
+
+For detailed implementation, see skill files.
