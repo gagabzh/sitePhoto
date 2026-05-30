@@ -166,7 +166,7 @@ function renderUploadPage({ error, session }) {
   `, session, true);
 }
 
-function renderPhotoDetailPage({ photo, canEdit, from, session }) {
+function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
   return page(photo.title, `
     <div style="max-width:820px;margin:0 auto">
       <div class="top-bar" style="margin-bottom:1rem">
@@ -188,6 +188,16 @@ function renderPhotoDetailPage({ photo, canEdit, from, session }) {
           <p style="color:#888;margin-top:0;font-size:0.9rem">by ${esc(photo.uploader)}</p>
           ${photo.description ? `<p>${esc(photo.description)}</p>` : ''}
           ${photo.tags.length ? `<div class="tags">${photo.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${(() => {
+            const albums = photoAlbums || [];
+            if (!albums.length) {
+              return `<p style="color:var(--ink-faint);font-size:0.85rem;margin-top:0.75rem">Not in any album.</p>`;
+            }
+            const links = albums.map(a =>
+              `<a class="tag" href="/albums/${a.id}">${esc(a.title)}</a>`
+            ).join('');
+            return `<div class="tags" style="margin-top:0.75rem">${links}</div>`;
+          })()}
           ${photo.latitude != null && photo.longitude != null ? `
           <div id="photo-map" style="height:220px;border-radius:8px;margin-top:0.75rem"></div>
           <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
@@ -257,7 +267,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, session }) {
   `, session, true);
 }
 
-function renderPhotoEditPage({ photo, from, session }) {
+function renderPhotoEditPage({ photo, from, albumChoices, session }) {
   return page(`Edit — ${photo.title}`, `
     <div class="top-bar">
       <h1>Edit photo</h1>
@@ -288,6 +298,17 @@ function renderPhotoEditPage({ photo, from, session }) {
           <label>Nextcloud link <small>(optional — leave blank to remove)</small>
             <input type="url" name="nextcloud_url" value="${esc(photo.nextcloud_url || '')}">
           </label>
+          ${albumChoices && albumChoices.length ? `
+<fieldset style="border:1.5px solid var(--ink);padding:0.75rem 1rem;margin-top:1rem">
+  <legend style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:2px;padding:0 0.4rem">Albums</legend>
+  <div style="${albumChoices.length > 10 ? 'max-height:240px;overflow-y:auto' : ''}">
+    ${albumChoices.map(a => `
+    <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;font-family:var(--hand-tight);font-size:0.9rem">
+      <input type="checkbox" name="album_ids" value="${a.id}"${a.checked ? ' checked' : ''}>
+      ${esc(a.title)}
+    </label>`).join('')}
+  </div>
+</fieldset>` : ''}
           <div class="row">
             <button class="btn" type="submit">Save</button>
             <a class="btn btn-secondary" href="/photos/${photo.id}">Cancel</a>

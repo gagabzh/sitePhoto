@@ -14,6 +14,7 @@ const {
   fetchPhotoPage, fetchPhotoStats, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
   insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner, updatePhoto,
 } = require('../repositories/photos');
+const { fetchAlbumsForPhoto, fetchAlbumsForPhotoEdit } = require('../repositories/albums');
 
 function parseFrom(raw) {
   if (typeof raw !== 'string') return null;
@@ -166,18 +167,26 @@ router.get('/:id', wrapAsync(async (req, res) => {
   const photo = await fetchPhotoWithTags(req.params.id);
   if (!photo) return res.status(404).send('Photo not found');
 
+  let photoAlbums = [];
+  try {
+    photoAlbums = await fetchAlbumsForPhoto(req.params.id, req.session);
+  } catch { /* fail silently — page still renders */ }
+
   const canEdit = canModify(req.session, photo);
-  res.send(renderPhotoDetailPage({ photo, canEdit, from, session: req.session }));
+  res.send(renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session: req.session }));
 }));
 
 // US-P3: Edit form
 router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
   const from = parseFrom(req.query.from);
-  const photo = await fetchPhotoForEdit(req.params.id);
+  const [photo, albumChoices] = await Promise.all([
+    fetchPhotoForEdit(req.params.id),
+    fetchAlbumsForPhotoEdit(req.params.id, req.session),
+  ]);
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
-  res.send(renderPhotoEditPage({ photo, from, session: req.session }));
+  res.send(renderPhotoEditPage({ photo, from, albumChoices, session: req.session }));
 }));
 
 // US-P3: Save edits
@@ -190,7 +199,42 @@ router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
   const lat = parseCoord(latitude, -90, 90);
   const lon = parseCoord(longitude, -180, 180);
-  await updatePhoto(req.params.id, title, description || null, taken_at || null, ncUrl, lat, lon);
+
+  const availableAlbums = await fetchAlbumsForPhotoEdit(req.params.id, req.session);
+  const availableIds = new Set(availableAlbums.map(a => a.id));
+  const currentlyChecked = new Set(availableAlbums.filter(a => a.checked).map(a => a.id));
+  const rawAlbumIds = [].concat(req.body.album_ids || []).map(Number).filter(n => n > 0);
+  const requestedIds = new Set(rawAlbumIds.filter(id => availableIds.has(id)));
+  const toAdd    = [...requestedIds].filter(id => !currentlyChecked.has(id));
+  const toRemove = [...currentlyChecked].filter(id => !requestedIds.has(id));
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'UPDATE photos SET title = $1, description = $2, taken_at = $3, nextcloud_url = $4, latitude = $5, longitude = $6, updated_at = NOW() WHERE id = $7',
+      [title, description || null, taken_at || null, ncUrl, lat, lon, req.params.id]
+    );
+    for (const albumId of toAdd) {
+      await client.query(
+        'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [albumId, req.params.id]
+      );
+    }
+    for (const albumId of toRemove) {
+      await client.query(
+        'DELETE FROM album_photos WHERE album_id = $1 AND photo_id = $2',
+        [albumId, req.params.id]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+
   await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);
 }));
