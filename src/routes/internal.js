@@ -63,13 +63,12 @@ router.post('/nextcloud-photo', requireWorkerSecret, wrapAsync(async (req, res) 
   const lat = Number.isFinite(Number(latitude))  ? Number(latitude)  : null;
   const lon = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
 
-  // Use original fileName for title and filename; fall back to s3Key if absent
   const displayName = fileName || s3Key;
   const { rows: [photo] } = await db.query(
-    `INSERT INTO photos (user_id, filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, created_at)
-     VALUES ($1, $2, $3, $2, $4, 0, $5, $6, $7, NOW())
+    `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, created_at)
+     VALUES ($1, $2, $3, $2, $3, $4, 0, $5, $6, $7, NOW())
      RETURNING id`,
-    [userId, displayName, s3Key, mimeType || 'image/jpeg', shareUrl || null, lat, lon],
+    [userId, s3Key, displayName, mimeType || 'image/jpeg', shareUrl || null, lat, lon],
   );
   const photoId = photo.id;
 
