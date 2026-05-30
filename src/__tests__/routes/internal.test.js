@@ -228,6 +228,60 @@ describe('POST /internal/nextcloud-photo', () => {
       expect.stringContaining('INSERT INTO photos'),
       [5, 'uuid-abc.jpg', 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 48.8566, 2.3522],
     );
+  });
+
+  it('stores s3Key as filename and original fileName as original_filename', async () => {
+    // Regression test: filename column must be the UUID s3Key (used by /uploads/:filename
+    // to stream from S3), not the original Nextcloud filename.
+    // 1. INSERT photos RETURNING id
+    db.query.mockResolvedValueOnce({ rows: [{ id: 77 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5,
+        s3Key: 'a1b2c3d4-0000-0000-0000-000000000000.jpg',
+        fileName: '25_m-FPIX-4-0127788I-DIGITAL_HIGHRES-8514_006062-54441729.JPG',
+        mimeType: 'image/jpeg',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(77);
+    // params order: [userId, s3Key, displayName (fileName), mimeType, shareUrl, lat, lon]
+    // filename column ($2) must be the UUID s3Key, original_filename column ($3) must be the original filename
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO photos'),
+      [
+        5,
+        'a1b2c3d4-0000-0000-0000-000000000000.jpg',                    // $2 → filename (s3Key)
+        '25_m-FPIX-4-0127788I-DIGITAL_HIGHRES-8514_006062-54441729.JPG', // $3 → original_filename
+        'image/jpeg',
+        null,
+        null,
+        null,
+      ],
+    );
+  });
+
+  it('inserts photo, album membership, and tags — returns photoId (continued)', async () => {
+    // Continuation of the full-path test to assert album/tag queries
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })     // INSERT photos
+      .mockResolvedValueOnce({ rows: [] })                // INSERT album_photos
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })     // INSERT tags
+      .mockResolvedValueOnce({ rows: [] });               // INSERT photo_tags
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5, s3Key: 'uuid-abc.jpg', mimeType: 'image/jpeg',
+        shareUrl: 'https://cloud.example.com/s/token', latitude: 48.8566, longitude: 2.3522,
+        albumId: 7, tags: ['paris', 'vacation'], importId: 3,
+      });
+
+    expect(res.status).toBe(200);
     expect(db.query).toHaveBeenNthCalledWith(2,
       expect.stringContaining('INSERT INTO album_photos'),
       [7, 42],
