@@ -5,7 +5,13 @@
       "Bash(git pull *)",
       "Bash(git *)",
       "Bash(npm test *)",
-      "Bash(npx jest *)"
+      "Bash(npx jest *)",
+      "Bash(docker compose *)",
+      "Bash(gh pr *)",
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(git add *)",
+      "Bash(git stash *)"
     ]
   }
 }
