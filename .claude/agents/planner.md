@@ -134,3 +134,24 @@ When the developer asks "what should I do next?" or "plan the next sprint":
 - `git log --oneline -30` — what's been done
 - `migrations/` — latest migration number (increment for new ones)
 - `src/routes/` — existing routes (avoid collisions)
+
+---
+
+## Skills This Agent Uses
+
+This agent uses these skills from SKILL-LIBRARY/:
+
+1. **Blocker Tracking** (SKILL-LIBRARY/1-blocker-tracking.skill.md)
+   - Track blocker lifecycle OPEN → IN_PROGRESS → RESOLVED → CLOSED
+   - Maintain blocker dashboard
+   - Escalate appropriately using 🔴 BLOCKER: [CODE-N] format
+
+2. **Definition of Done** (SKILL-LIBRARY/2-definition-of-done.skill.md)
+   - Verify tasks meet DoD before marking as started
+   - Check all boxes before moving to next phase
+
+3. **Git Safety** (SKILL-LIBRARY/3-git-safety.skill.md)
+   - Verify PRs are ready before merge
+   - Ensure review process is followed
+
+For detailed implementation, see skill files.

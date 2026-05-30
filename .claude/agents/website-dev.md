@@ -178,3 +178,20 @@ router.delete('/admin/users/:id', requireAuth, requireAdmin, wrapAsync(...));
 | AI-1 | 🔲 | Manual face tagging → store crops in S3 + `person_faces` table → few-shot inject in Ollama prompt. |
 
 Full details in `memory/project_v5_plan.md`. User stories in `docs/user-stories.md`.
+
+---
+
+## Skills This Agent Uses
+
+This agent uses these skills from SKILL-LIBRARY/:
+
+1. **Definition of Done** (SKILL-LIBRARY/2-definition-of-done.skill.md)
+   - Verify 100% before submitting PR
+   - Code quality, testing, documentation
+
+2. **Git Safety** (SKILL-LIBRARY/3-git-safety.skill.md)
+   - Create feature branches (never commit to main)
+   - Follow branch naming convention
+   - Create PRs with clear descriptions
+
+For detailed implementation, see skill files.
