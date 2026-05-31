@@ -159,6 +159,60 @@ async function insertNewAlbumPhoto(albumId, photoId) {
   );
 }
 
+async function fetchAlbumsForPhoto(photoId, session) {
+  if (session.role === 'admin') {
+    const { rows } = await db.query(
+      `SELECT a.id, a.title
+         FROM albums a
+         JOIN album_photos ap ON ap.album_id = a.id
+        WHERE ap.photo_id = $1
+        ORDER BY a.title`,
+      [photoId]
+    );
+    return rows;
+  }
+  if (session.role === 'viewer') {
+    const { rows } = await db.query(
+      `SELECT a.id, a.title
+         FROM albums a
+         JOIN album_photos ap ON ap.album_id = a.id
+         JOIN album_access aa ON aa.album_id = a.id
+        WHERE ap.photo_id = $1
+          AND aa.viewer_id = $2
+        ORDER BY a.title`,
+      [photoId, session.userId]
+    );
+    return rows;
+  }
+  // editor: only albums they own
+  const { rows } = await db.query(
+    `SELECT a.id, a.title
+       FROM albums a
+       JOIN album_photos ap ON ap.album_id = a.id
+      WHERE ap.photo_id = $1
+        AND a.user_id = $2
+      ORDER BY a.title`,
+    [photoId, session.userId]
+  );
+  return rows;
+}
+
+async function fetchAlbumsForPhotoEdit(photoId, session) {
+  const albumRows = session.role === 'admin'
+    ? (await db.query(`SELECT id, title FROM albums ORDER BY title`)).rows
+    : (await db.query(`SELECT id, title FROM albums WHERE user_id = $1 ORDER BY title`, [session.userId])).rows;
+
+  if (!albumRows.length) return [];
+
+  const memberRows = (await db.query(
+    `SELECT album_id FROM album_photos WHERE photo_id = $1 AND album_id = ANY($2::int[])`,
+    [photoId, albumRows.map(a => a.id)]
+  )).rows;
+
+  const memberSet = new Set(memberRows.map(r => r.album_id));
+  return albumRows.map(a => ({ ...a, checked: memberSet.has(a.id) }));
+}
+
 module.exports = {
   fetchAlbumList,
   createAlbum,
@@ -177,4 +231,6 @@ module.exports = {
   linkPhotoToAlbum,
   removePhotoFromAlbum,
   insertNewAlbumPhoto,
+  fetchAlbumsForPhoto,
+  fetchAlbumsForPhotoEdit,
 };

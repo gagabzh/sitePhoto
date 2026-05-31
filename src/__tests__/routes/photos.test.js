@@ -1,4 +1,8 @@
-jest.mock('../../db', () => ({ query: jest.fn() }));
+jest.mock('../../db', () => ({ query: jest.fn(), pool: { connect: jest.fn() } }));
+jest.mock('../../repositories/albums', () => ({
+  fetchAlbumsForPhoto: jest.fn(),
+  fetchAlbumsForPhotoEdit: jest.fn(),
+}));
 jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
 jest.mock('../../imageOptimizer', () => ({ optimizeBuffer: jest.fn() }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
@@ -31,6 +35,9 @@ const storage = require('../../storage');
 const { addIdentificationJob } = require('../../queue/producer');
 const { extractMetadata } = require('../../extractMetadata');
 const { selectionBar, selectionScript } = require('../../components');
+const { fetchAlbumsForPhoto, fetchAlbumsForPhotoEdit } = require('../../repositories/albums');
+
+let mockClient;
 
 beforeEach(() => {
   jest.resetAllMocks();
@@ -45,6 +52,10 @@ beforeEach(() => {
   fs.promises.unlink.mockResolvedValue();
   selectionBar.mockReturnValue('<div id="sel-bar" class="sel-bar-mock"><input type="text" name="tag"><button type="submit" formaction="/photos/bulk-tag">apply</button><button type="submit" formaction="/photos/bulk-delete">delete</button></div>');
   selectionScript.mockReturnValue('<script>/* sel-script-mock */</script>');
+  fetchAlbumsForPhoto.mockResolvedValue([]);
+  fetchAlbumsForPhotoEdit.mockResolvedValue([]);
+  mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
+  db.pool.connect = jest.fn().mockResolvedValue(mockClient);
 });
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
@@ -295,18 +306,22 @@ describe('US-P3: GET /photos/:id/edit — edit form', () => {
 
 describe('US-P3: POST /photos/:id — save edits', () => {
   it('updates title, description, tags and redirects', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // SELECT user_id
-      .mockResolvedValueOnce({ rows: [] })                  // UPDATE photos
-      .mockResolvedValueOnce({ rows: [] })                  // DELETE photo_tags
-      .mockResolvedValueOnce({ rows: [{ id: 2 }] })        // INSERT tag
-      .mockResolvedValueOnce({ rows: [] });                 // INSERT photo_tag
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. SELECT user_id (getPhotoOwner)
+    // fetchAlbumsForPhotoEdit returns [] (default mock)
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags, INSERT tags, INSERT photo_tags, COMMIT
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [] })    // BEGIN
+      .mockResolvedValueOnce({ rows: [] })    // UPDATE photos
+      .mockResolvedValueOnce({ rows: [] })    // DELETE photo_tags
+      .mockResolvedValueOnce({ rows: [{ id: 2 }] })  // INSERT tags RETURNING id
+      .mockResolvedValueOnce({ rows: [] })    // INSERT photo_tags
+      .mockResolvedValueOnce({ rows: [] });   // COMMIT
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
       .send('title=Updated+Title&description=New+desc&tags=London');
 
-    expect(db.query).toHaveBeenCalledWith(
+    expect(mockClient.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
       ['Updated Title', 'New desc', null, null, null, null, '1']
     );
@@ -698,32 +713,30 @@ describe('US-NC3: manage nextcloud_url via edit', () => {
   });
 
   it('updates nextcloud_url to a new valid url', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    // fetchAlbumsForPhotoEdit returns [] (default mock)
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
       .send('title=T&nextcloud_url=https%3A%2F%2Fcloud.example%2Fs%2Fnew');
 
-    expect(db.query).toHaveBeenCalledWith(
+    expect(mockClient.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
       ['T', null, null, 'https://cloud.example/s/new', null, null, '1']
     );
   });
 
   it('clears nextcloud_url when empty string is submitted', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    // fetchAlbumsForPhotoEdit returns [] (default mock)
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
       .send('title=T&nextcloud_url=');
 
-    expect(db.query).toHaveBeenCalledWith(
+    expect(mockClient.query).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE photos'),
       ['T', null, null, null, null, null, '1']
     );
@@ -896,31 +909,29 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
 
 describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
   it('updates lat/lon and redirects', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    // fetchAlbumsForPhotoEdit returns [] (default mock)
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
       .send('title=T&latitude=48.8566&longitude=2.3522');
 
-    const call = db.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
+    const call = mockClient.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
     expect(call[1][4]).toBeCloseTo(48.8566);
     expect(call[1][5]).toBeCloseTo(2.3522);
   });
 
   it('clears coordinates when fields are empty (user clicked × clear)', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    // fetchAlbumsForPhotoEdit returns [] (default mock)
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
       .send('title=T&latitude=&longitude=');
 
-    const call = db.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
+    const call = mockClient.query.mock.calls.find(c => c[0].includes('UPDATE photos'));
     expect(call[1][4]).toBeNull();
     expect(call[1][5]).toBeNull();
   });
@@ -1010,5 +1021,149 @@ describe('GPS2: GET /photos/:id — mini-map display', () => {
     db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, latitude: null, longitude: null }] });
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
     expect(res.text).not.toContain('photo-map');
+  });
+});
+
+// ── MA-2: GET /photos/:id — album memberships ────────────────────────────────
+
+describe('MA-2: GET /photos/:id — album memberships', () => {
+  it('renders album links when photo belongs to albums', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    fetchAlbumsForPhoto.mockResolvedValue([{ id: 1, title: 'Summer' }]);
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('/albums/1');
+    expect(res.text).toContain('Summer');
+  });
+
+  it('renders "Not in any album" when photoAlbums is empty', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    fetchAlbumsForPhoto.mockResolvedValue([]);
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('Not in any album');
+  });
+
+  it('page still renders when fetchAlbumsForPhoto rejects', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    fetchAlbumsForPhoto.mockRejectedValue(new Error('DB down'));
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain(FAKE_PHOTO.title);
+  });
+
+  it('calls fetchAlbumsForPhoto with viewer session', async () => {
+    const viewerSession = { userId: 9, role: 'viewer', username: 'viewer' };
+    fetchAlbumsForPhoto.mockResolvedValue([{ id: 3, title: 'Shared' }]);
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(viewerSession)).get('/photos/1');
+
+    expect(res.status).toBe(200);
+    expect(fetchAlbumsForPhoto).toHaveBeenCalledWith('1', expect.objectContaining({ role: 'viewer' }));
+    expect(res.text).toContain('Shared');
+    expect(res.text).toContain('/albums/3');
+  });
+});
+
+// ── MA-3: GET /photos/:id/edit — album checklist ─────────────────────────────
+
+describe('MA-3: GET /photos/:id/edit — album checklist', () => {
+  it('renders album checkboxes with pre-checked current memberships', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    fetchAlbumsForPhotoEdit.mockResolvedValue([
+      { id: 1, title: 'A', checked: true },
+      { id: 2, title: 'B', checked: false },
+    ]);
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit');
+
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('checked');
+    expect(res.text).toContain('A');
+    expect(res.text).toContain('B');
+  });
+
+  it('renders no fieldset when albumChoices is empty', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    fetchAlbumsForPhotoEdit.mockResolvedValue([]);
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit');
+
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('<fieldset');
+  });
+});
+
+// ── MA-3: POST /photos/:id — album membership reconciliation ─────────────────
+
+describe('MA-3: POST /photos/:id — album membership reconciliation', () => {
+  it('runs BEGIN/COMMIT and adds newly checked album', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    fetchAlbumsForPhotoEdit.mockResolvedValue([{ id: 1, title: 'Summer', checked: false }]);
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T&album_ids=1');
+
+    expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
+    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO album_photos'),
+      [1, '1']
+    );
+  });
+
+  it('runs BEGIN/COMMIT and removes unchecked album', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    fetchAlbumsForPhotoEdit.mockResolvedValue([{ id: 1, title: 'Summer', checked: true }]);
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T');
+
+    expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
+    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM album_photos'),
+      [1, '1']
+    );
+  });
+
+  it('calls ROLLBACK on db error and rethrows (returns 500)', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    fetchAlbumsForPhotoEdit.mockResolvedValue([]);
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [] })  // BEGIN
+      .mockResolvedValueOnce({ rows: [] })  // UPDATE photos
+      .mockRejectedValueOnce(new Error('DB error'));  // COMMIT fails
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T');
+
+    expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(res.status).toBe(500);
+  });
+
+  it('ignores album_ids not in available set', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
+    fetchAlbumsForPhotoEdit.mockResolvedValue([{ id: 1, title: 'Summer', checked: false }]);
+
+    await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1')
+      .send('title=T&album_ids=99');
+
+    // album_id 99 is not in available set, so no INSERT should use id 99
+    const insertCalls = mockClient.query.mock.calls.filter(c =>
+      typeof c[0] === 'string' && c[0].includes('INSERT INTO album_photos')
+    );
+    expect(insertCalls.every(c => c[1][0] !== 99)).toBe(true);
   });
 });
