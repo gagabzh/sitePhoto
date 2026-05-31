@@ -774,6 +774,9 @@ form.inline { display: inline; }
 .ad-cell:hover .ad-lb-btn,
 .photo-thumb:hover .ad-lb-btn { opacity: 1; pointer-events: auto; }
 .photo-thumb { position: relative; }
+@media (max-width: 599px) {
+  .ad-lb-btn { opacity: 1; pointer-events: auto; min-width: 44px; min-height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; }
+}
 
 /* -- Lightbox -- */
 .lb-overlay {
