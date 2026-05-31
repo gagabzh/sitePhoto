@@ -775,29 +775,37 @@ form.inline { display: inline; }
 .photo-thumb:hover .ad-lb-btn { opacity: 1; pointer-events: auto; }
 .photo-thumb { position: relative; }
 
-/* ── Lightbox ── */
+/* -- Lightbox -- */
 .lb-overlay {
   display: none; position: fixed; inset: 0; z-index: 1000;
-  background: rgba(20,18,14,0.93); align-items: center; justify-content: center;
+  background: rgba(26,24,20,0.92); align-items: center; justify-content: center;
+  flex-direction: column;
 }
 .lb-overlay.lb-open { display: flex; }
-.lb-img-wrap { position: relative; max-width: 90vw; max-height: 90vh; display: flex; align-items: center; justify-content: center; }
-.lb-img-wrap img { max-width: 90vw; max-height: 85vh; object-fit: contain; display: block; border: 2px solid var(--ink); }
-.lb-caption {
-  position: absolute; bottom: -1.8rem; left: 0; right: 0; text-align: center;
-  font-family: 'Kalam', cursive; font-size: 0.85rem; color: rgba(240,235,220,0.7);
+.lb-img-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  max-width: 90vw;
 }
-.lb-btn {
+.lb-img-wrap img { max-width: 90vw; max-height: 86vh; object-fit: contain; display: block; border: 2px solid var(--ink); }
+.lb-caption {
+  font-family: var(--hand); font-size: 18px; text-align: center;
+  color: var(--paper); margin-top: 8px;
+}
+.lb-prev,
+.lb-next {
   position: fixed; top: 50%; transform: translateY(-50%);
   background: none; border: none; cursor: pointer; padding: 1rem;
   font-family: 'JetBrains Mono', monospace; font-size: 1.6rem;
   color: rgba(240,235,220,0.7); transition: color 0.15s;
 }
-.lb-btn:hover { color: rgba(240,235,220,1); }
-.lb-prev { left: 0.75rem; }
-.lb-next { right: 0.75rem; }
+.lb-prev { left: 16px; }
+.lb-next { right: 16px; }
+.lb-prev:hover:not([disabled]),
+.lb-next:hover:not([disabled]) { color: rgba(240,235,220,1); }
+.lb-prev[disabled],
+.lb-next[disabled] { color: rgba(240,235,220,0.25); cursor: default; }
 .lb-close {
-  position: fixed; top: 1rem; right: 1.25rem;
+  position: fixed; top: 16px; right: 16px;
   background: none; border: none; cursor: pointer;
   font-family: 'JetBrains Mono', monospace; font-size: 1.4rem;
   color: rgba(240,235,220,0.7); transition: color 0.15s;
@@ -807,6 +815,10 @@ form.inline { display: inline; }
   position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%);
   font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
   color: rgba(240,235,220,0.45); letter-spacing: 0.08em;
+}
+@media (max-width: 599px) {
+  .lb-prev { top: auto; bottom: 20px; left: 20px; transform: none; width: 48px; height: 48px; padding: 0; }
+  .lb-next { top: auto; bottom: 20px; right: 20px; transform: none; width: 48px; height: 48px; padding: 0; }
 }
 
 /* ── Album Access (Vault) ── */
