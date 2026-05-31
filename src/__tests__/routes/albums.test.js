@@ -1,4 +1,11 @@
-jest.mock('../../db', () => ({ query: jest.fn() }));
+const mockClient = {
+  query: jest.fn(),
+  release: jest.fn(),
+};
+jest.mock('../../db', () => ({
+  query: jest.fn(),
+  pool: { connect: jest.fn() },
+}));
 jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
 jest.mock('../../imageOptimizer', () => ({ optimizeBuffer: jest.fn() }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
@@ -53,6 +60,10 @@ beforeEach(() => {
   selectionScript.mockReturnValue('<script>/* sel-script-mock */</script>');
   lbOverlay.mockReturnValue('<div id="lb" class="lb-overlay-mock"></div>');
   lbScript.mockReturnValue('<script>/* lb-script-mock */</script>');
+  // Reset pool client mock
+  mockClient.query.mockReset();
+  mockClient.release.mockReset();
+  db.pool.connect.mockResolvedValue(mockClient);
 });
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
@@ -79,6 +90,7 @@ const FAKE_PHOTO = {
 function makeApp(sessionData) {
   const app = express();
   app.use(express.urlencoded({ extended: false }));
+  app.use(express.json());
   app.use((req, res, next) => {
     req.session = { ...sessionData, destroy: (cb) => cb() };
     next();
@@ -1023,5 +1035,187 @@ describe('POST /albums/:id/photos/batch — batch upload', () => {
   it('returns 403 for viewer', async () => {
     const res = await request(makeApp(VIEWER_SESSION)).post('/albums/1/photos/batch').send('');
     expect(res.status).toBe(403);
+  });
+});
+
+// ── RA-1: POST /albums/from-recipe — snapshot album from recipe ───────────────
+
+const FAKE_RECIPE = {
+  id: 5,
+  name: 'Paris 2024',
+  user_id: 10,
+  query_json: {
+    sections: {
+      people:  { on: [],          not: [], logic: 'any' },
+      places:  { on: ['paris'],   not: [], logic: 'any' },
+      years:   { on: [],          not: [], logic: 'include' },
+      themes:  { on: [],          not: [], logic: 'any' },
+      other:   { on: [],          not: [], logic: 'any' },
+    },
+  },
+};
+
+const RECIPE_NO_FILTERS = {
+  id: 6,
+  name: 'Empty',
+  user_id: 10,
+  query_json: {
+    sections: {
+      people: { on: [], not: [], logic: 'any' },
+      places: { on: [], not: [], logic: 'any' },
+      years:  { on: [], not: [], logic: 'include' },
+      themes: { on: [], not: [], logic: 'any' },
+      other:  { on: [], not: [], logic: 'any' },
+    },
+  },
+};
+
+describe('POST /albums/from-recipe', () => {
+  it('creates album and returns 201 with albumId and photoCount', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_RECIPE] })       // 1. SELECT recipe
+      .mockResolvedValueOnce({ rows: [{ id: 3 }, { id: 7 }] }); // 2. SELECT photos matching filters
+
+    mockClient.query
+      .mockResolvedValueOnce({})                             // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 42 }] })        // INSERT album RETURNING id
+      .mockResolvedValueOnce({})                             // INSERT album_photos
+      .mockResolvedValueOnce({});                            // COMMIT
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: 'Paris Trip' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ albumId: 42, photoCount: 2 });
+    expect(mockClient.query).toHaveBeenCalledWith('BEGIN');
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO albums'),
+      [10, 'Paris Trip']
+    );
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO album_photos'),
+      expect.arrayContaining([42, 3, 7])
+    );
+    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(mockClient.release).toHaveBeenCalled();
+  });
+
+  it('returns 404 when recipe not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] }); // recipe not found
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 999, albumName: 'My Album' });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Recipe not found' });
+    expect(db.pool.connect).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when recipe belongs to another user', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ ...FAKE_RECIPE, user_id: 99 }] }); // other user
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: 'My Album' });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Recipe not found' });
+    expect(db.pool.connect).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when albumName is empty', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: '   ' });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({ error: 'Album name is required' });
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when albumName exceeds 255 chars', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: 'A'.repeat(256) });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({ error: 'Album name must be 255 characters or fewer' });
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when recipe has no filters', async () => {
+    db.query.mockResolvedValueOnce({ rows: [RECIPE_NO_FILTERS] }); // recipe with no filters
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 6, albumName: 'Empty Album' });
+
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({ error: 'Recipe has no filters' });
+    expect(db.pool.connect).not.toHaveBeenCalled();
+  });
+
+  it('creates empty album when recipe matches 0 photos', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_RECIPE] })  // 1. SELECT recipe
+      .mockResolvedValueOnce({ rows: [] });             // 2. SELECT photos — none match
+
+    mockClient.query
+      .mockResolvedValueOnce({})                        // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 55 }] })   // INSERT album RETURNING id
+      .mockResolvedValueOnce({});                       // COMMIT
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: 'Empty Paris' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ albumId: 55, photoCount: 0 });
+    // album_photos INSERT should NOT have been called
+    const albumPhotosCall = mockClient.query.mock.calls
+      .find(c => typeof c[0] === 'string' && c[0].includes('album_photos'));
+    expect(albumPhotosCall).toBeUndefined();
+    expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(mockClient.release).toHaveBeenCalled();
+  });
+
+  it('admin can create album from any recipe', async () => {
+    const adminOwnedByOther = { ...FAKE_RECIPE, user_id: 99 }; // owned by someone else
+    db.query
+      .mockResolvedValueOnce({ rows: [adminOwnedByOther] }) // 1. SELECT recipe
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] });        // 2. SELECT photos
+
+    mockClient.query
+      .mockResolvedValueOnce({})                            // BEGIN
+      .mockResolvedValueOnce({ rows: [{ id: 77 }] })       // INSERT album RETURNING id
+      .mockResolvedValueOnce({})                            // INSERT album_photos
+      .mockResolvedValueOnce({});                           // COMMIT
+
+    const res = await request(makeApp(ADMIN_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: 'Admin Album' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.albumId).toBe(77);
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/albums/from-recipe')
+      .set('Content-Type', 'application/json')
+      .send({ recipeId: 5, albumName: 'My Album' });
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
   });
 });
