@@ -1167,3 +1167,132 @@ describe('MA-3: POST /photos/:id — album membership reconciliation', () => {
     expect(insertCalls.every(c => c[1][0] !== 99)).toBe(true);
   });
 });
+
+// ── ALB-2: Context-aware back button ─────────────────────────────────────────
+
+describe('ALB-2: GET /photos/:id — context-aware back button', () => {
+  it('detail page back button shows "← back to album" when from=/albums/5', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Falbums%2F5');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('← back to album');
+    expect(res.text).toContain('href="/albums/5"');
+  });
+
+  it('detail page back button shows "← back to photos" when from is absent', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('← back to photos');
+  });
+
+  it('detail page back button shows "← back to photos" when from=/photos', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Fphotos');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('← back to photos');
+    expect(res.text).toContain('href="/photos"');
+  });
+});
+
+describe('ALB-2: GET /photos/:id/edit — context-aware back button + Cancel link', () => {
+  it('edit page back button shows "← back to album" when from=/albums/5', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit?from=%2Falbums%2F5');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('← back to album');
+  });
+
+  it('edit page Cancel link includes from param', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit?from=%2Falbums%2F5');
+    expect(res.status).toBe(200);
+    // Cancel button must link to /photos/1?from=%2Falbums%2F5 (or equivalent encoded form)
+    expect(res.text).toContain('href="/photos/1?from=%2Falbums%2F5"');
+  });
+
+  it('edit page Cancel links to photo detail when no from param', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1/edit');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('href="/photos/1"');
+  });
+});
+
+describe('ALB-2: POST /photos/:id/delete — from-aware redirect', () => {
+  it('delete form includes from hidden input when from is in query', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Falbums%2F5');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('name="from"');
+    expect(res.text).toContain('value="/albums/5"');
+  });
+
+  it('redirects to album after delete when from=/albums/5 is submitted', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10, filename: 'test-uuid.jpg' }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ filename: 'test-uuid.jpg' }] })              // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                                           // deletePhotos: DELETE
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/delete')
+      .send('from=%2Falbums%2F5');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/albums/5');
+  });
+
+  it('redirects to /photos after delete when from is absent', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10, filename: 'test-uuid.jpg' }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ filename: 'test-uuid.jpg' }] })              // deletePhotos: SELECT filename
+      .mockResolvedValueOnce({ rows: [] });                                           // deletePhotos: DELETE
+
+    const res = await request(makeApp(EDITOR_SESSION)).post('/photos/1/delete').send('');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/photos');
+  });
+
+  it('ignores an invalid from value and redirects to /photos', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ user_id: 10, filename: 'test-uuid.jpg' }] })
+      .mockResolvedValueOnce({ rows: [{ filename: 'test-uuid.jpg' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/delete')
+      .send('from=http%3A%2F%2Fevil.com%2Fphish');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('/photos');
+  });
+});
+
+// ── ALB-2: parseFrom regex coverage ─────────────────────────────────────────
+
+describe('ALB-2: parseFrom regex — valid and invalid paths', () => {
+  it('accepts /photos', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Fphotos');
+    expect(res.text).toContain('href="/photos"');
+  });
+
+  it('accepts /albums/123', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Falbums%2F123');
+    expect(res.text).toContain('href="/albums/123"');
+  });
+
+  it('accepts /travels/some-slug-2024', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Ftravels%2Fsome-slug-2024');
+    expect(res.text).toContain('href="/travels/some-slug-2024"');
+  });
+
+  it('rejects /admin (open-redirect guard)', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Fadmin');
+    // Falls back to /photos
+    expect(res.text).toContain('href="/photos"');
+  });
+});

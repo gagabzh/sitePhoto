@@ -257,8 +257,9 @@ router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
   if (!photo) return res.status(404).send('Photo not found');
   if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
 
+  const from = parseFrom(req.body.from);
   await deletePhotos([parseInt(req.params.id)]);
-  res.redirect('/photos');
+  res.redirect(from || '/photos');
 }));
 
 module.exports = router;
