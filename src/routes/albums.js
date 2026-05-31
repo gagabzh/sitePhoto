@@ -8,6 +8,7 @@ const {
   upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
 } = require('../uploadHelpers');
 const { addIdentificationJob } = require('../queue/producer');
+const { parseState, buildWhere, SECTIONS } = require('../combinator');
 const {
   renderAlbumListPage, renderNewAlbumPage, renderNewFromFolderPage, renderAlbumDetailPage,
   renderAlbumEditPage, renderAlbumAccessPage, renderAddPhotosPage,
@@ -89,6 +90,103 @@ router.post('/', requireEditor, wrapAsync(async (req, res) => {
   const { title, description } = req.body;
   const id = await createAlbum(req.session.userId, title, description || null);
   res.redirect(`/albums/${id}`);
+}));
+
+// ── RA-1: Create snapshot album from a tag recipe ────────────────────────────
+// MUST be registered before POST /:id to prevent Express capturing "from-recipe"
+// as an :id parameter value.
+
+router.post('/from-recipe', requireEditor, wrapAsync(async (req, res) => {
+  const recipeId = parseInt(req.body.recipeId, 10);
+  const albumName = String(req.body.albumName || '').trim();
+
+  // Validate albumName first (cheap checks before DB)
+  if (!albumName) {
+    return res.status(422).json({ error: 'Album name is required' });
+  }
+  if (albumName.length > 255) {
+    return res.status(422).json({ error: 'Album name must be 255 characters or fewer' });
+  }
+  if (isNaN(recipeId)) {
+    return res.status(404).json({ error: 'Recipe not found' });
+  }
+
+  // Fetch recipe — owned by user, or admin may access any
+  const { rows: recipeRows } = await db.query(
+    'SELECT id, name, query_json, user_id FROM tag_recipes WHERE id = $1',
+    [recipeId]
+  );
+  if (!recipeRows.length) {
+    return res.status(404).json({ error: 'Recipe not found' });
+  }
+  const recipe = recipeRows[0];
+  if (recipe.user_id !== req.session.userId && req.session.role !== 'admin') {
+    return res.status(404).json({ error: 'Recipe not found' });
+  }
+
+  // Validate recipe has at least one filter
+  const queryJson = recipe.query_json;
+  const hasFilters = SECTIONS.some(s => {
+    const sec = queryJson.sections && queryJson.sections[s];
+    return sec && (sec.on && sec.on.length > 0 || sec.not && sec.not.length > 0);
+  });
+  if (!hasFilters) {
+    return res.status(422).json({ error: 'Recipe has no filters' });
+  }
+
+  // Resolve matching photos using the same combinator logic (non-viewer: sees all photos)
+  const state = parseState(queryJson.sections
+    ? Object.fromEntries(
+        SECTIONS.flatMap(s => {
+          const sec = queryJson.sections[s] || {};
+          const entries = [];
+          if (sec.on && sec.on.length) entries.push([s, sec.on.join(',')]);
+          if (sec.not && sec.not.length) entries.push([`${s}.not`, sec.not.join(',')]);
+          if (sec.logic) entries.push([`logic.${s}`, sec.logic]);
+          return entries;
+        })
+      )
+    : {}
+  );
+  const { where, vals } = buildWhere(state, false, req.session.userId);
+  const { rows: photoRows } = await db.query(
+    `SELECT DISTINCT p.id FROM photos p ${where} ORDER BY p.id`,
+    vals
+  );
+
+  // Execute in a single transaction: INSERT album → bulk INSERT album_photos
+  const client = await db.pool.connect();
+  let albumId;
+  let photoCount = 0;
+  try {
+    await client.query('BEGIN');
+
+    // Insert album row
+    const { rows: [newAlbum] } = await client.query(
+      'INSERT INTO albums (user_id, title) VALUES ($1, $2) RETURNING id',
+      [req.session.userId, albumName]
+    );
+    albumId = newAlbum.id;
+
+    // Bulk-insert album_photos if any photos matched
+    if (photoRows.length > 0) {
+      const placeholders = photoRows.map((_, i) => `($1, $${i + 2})`).join(',');
+      await client.query(
+        `INSERT INTO album_photos (album_id, photo_id) VALUES ${placeholders} ON CONFLICT DO NOTHING`,
+        [albumId, ...photoRows.map(r => r.id)]
+      );
+      photoCount = photoRows.length;
+    }
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  return res.status(201).json({ albumId, photoCount });
 }));
 
 // ── Album detail (all roles) ─────────────────────────────────────────────────
