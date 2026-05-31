@@ -306,13 +306,16 @@ describe('US-P3: GET /photos/:id/edit — edit form', () => {
 
 describe('US-P3: POST /photos/:id — save edits', () => {
   it('updates title, description, tags and redirects', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // 1. SELECT user_id (getPhotoOwner)
-      .mockResolvedValueOnce({ rows: [] })                  // 2. DELETE photo_tags (setTags)
-      .mockResolvedValueOnce({ rows: [{ id: 2 }] })        // 3. INSERT tag (setTags)
-      .mockResolvedValueOnce({ rows: [] });                 // 4. INSERT photo_tag (setTags)
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. SELECT user_id (getPhotoOwner)
     // fetchAlbumsForPhotoEdit returns [] (default mock)
-    // client.query handles BEGIN, UPDATE photos, COMMIT
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags, INSERT tags, INSERT photo_tags, COMMIT
+    mockClient.query
+      .mockResolvedValueOnce({ rows: [] })    // BEGIN
+      .mockResolvedValueOnce({ rows: [] })    // UPDATE photos
+      .mockResolvedValueOnce({ rows: [] })    // DELETE photo_tags
+      .mockResolvedValueOnce({ rows: [{ id: 2 }] })  // INSERT tags RETURNING id
+      .mockResolvedValueOnce({ rows: [] })    // INSERT photo_tags
+      .mockResolvedValueOnce({ rows: [] });   // COMMIT
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
@@ -710,11 +713,9 @@ describe('US-NC3: manage nextcloud_url via edit', () => {
   });
 
   it('updates nextcloud_url to a new valid url', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // 1. getPhotoOwner
-      .mockResolvedValueOnce({ rows: [] });                  // 2. setTags (empty tags — DELETE only)
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
     // fetchAlbumsForPhotoEdit returns [] (default mock)
-    // client.query handles BEGIN, UPDATE photos, COMMIT
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
@@ -727,11 +728,9 @@ describe('US-NC3: manage nextcloud_url via edit', () => {
   });
 
   it('clears nextcloud_url when empty string is submitted', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // 1. getPhotoOwner
-      .mockResolvedValueOnce({ rows: [] });                  // 2. setTags (empty tags — DELETE only)
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
     // fetchAlbumsForPhotoEdit returns [] (default mock)
-    // client.query handles BEGIN, UPDATE photos, COMMIT
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
@@ -910,11 +909,9 @@ describe('GPS1: POST /photos/upload — store GPS coordinates', () => {
 
 describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
   it('updates lat/lon and redirects', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // 1. getPhotoOwner
-      .mockResolvedValueOnce({ rows: [] });                  // 2. setTags (empty — DELETE only)
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
     // fetchAlbumsForPhotoEdit returns [] (default mock)
-    // client.query handles BEGIN, UPDATE photos, COMMIT
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
@@ -926,11 +923,9 @@ describe('GPS1: POST /photos/:id — save GPS coordinates', () => {
   });
 
   it('clears coordinates when fields are empty (user clicked × clear)', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ user_id: 10 }] })  // 1. getPhotoOwner
-      .mockResolvedValueOnce({ rows: [] });                  // 2. setTags (empty — DELETE only)
+    db.query.mockResolvedValueOnce({ rows: [{ user_id: 10 }] });  // 1. getPhotoOwner
     // fetchAlbumsForPhotoEdit returns [] (default mock)
-    // client.query handles BEGIN, UPDATE photos, COMMIT
+    // client.query handles BEGIN, UPDATE photos, DELETE photo_tags (no tags → no INSERT), COMMIT
 
     await request(makeApp(EDITOR_SESSION))
       .post('/photos/1')
@@ -1061,6 +1056,19 @@ describe('MA-2: GET /photos/:id — album memberships', () => {
 
     expect(res.status).toBe(200);
     expect(res.text).toContain(FAKE_PHOTO.title);
+  });
+
+  it('calls fetchAlbumsForPhoto with viewer session', async () => {
+    const viewerSession = { userId: 9, role: 'viewer', username: 'viewer' };
+    fetchAlbumsForPhoto.mockResolvedValue([{ id: 3, title: 'Shared' }]);
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(viewerSession)).get('/photos/1');
+
+    expect(res.status).toBe(200);
+    expect(fetchAlbumsForPhoto).toHaveBeenCalledWith('1', expect.objectContaining({ role: 'viewer' }));
+    expect(res.text).toContain('Shared');
+    expect(res.text).toContain('/albums/3');
   });
 });
 

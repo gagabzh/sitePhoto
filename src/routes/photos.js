@@ -12,7 +12,7 @@ const {
 } = require('./photosViews');
 const {
   fetchPhotoPage, fetchPhotoStats, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
-  insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner, updatePhoto,
+  insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner,
 } = require('../repositories/photos');
 const { fetchAlbumsForPhoto, fetchAlbumsForPhotoEdit } = require('../repositories/albums');
 
@@ -227,15 +227,27 @@ router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
         [albumId, req.params.id]
       );
     }
+    // Inline setTags inside the transaction so tag changes are atomic with photo/album changes
+    await client.query('DELETE FROM photo_tags WHERE photo_id = $1', [req.params.id]);
+    const tagNames = String(tags || '').split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    if (tagNames.length) {
+      const { rows: tagRows } = await client.query(
+        'INSERT INTO tags (name) SELECT unnest($1::text[]) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+        [tagNames]
+      );
+      await client.query(
+        'INSERT INTO photo_tags (photo_id, tag_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+        [req.params.id, tagRows.map(r => r.id)]
+      );
+    }
     await client.query('COMMIT');
   } catch (e) {
-    await client.query('ROLLBACK');
+    await client.query('ROLLBACK').catch(() => {}); // ignore rollback error — original error takes priority
     throw e;
   } finally {
     client.release();
   }
 
-  await setTags(req.params.id, tags || '');
   res.redirect(`/photos/${req.params.id}`);
 }));
 
