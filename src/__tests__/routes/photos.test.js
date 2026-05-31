@@ -1332,13 +1332,15 @@ describe('POST /photos/:id/tag-person', () => {
   const VALID_BBOX = { x: 0.1, y: 0.1, width: 0.3, height: 0.4 };
 
   it('returns 201 with id, personName, cropKey on success', async () => {
-    // 1. SELECT photo
+    // 1. SELECT photo (includes user_id for canModify)
     // 2. INSERT tags RETURNING id
     // 3. INSERT person_faces RETURNING id
+    // 4. INSERT photo_tags (no return needed)
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 1, filename: 'test-uuid.jpg', s3_key: 'test-uuid.jpg' }] }) // 1. SELECT photo
+      .mockResolvedValueOnce({ rows: [{ id: 1, filename: 'test-uuid.jpg', s3_key: 'test-uuid.jpg', user_id: 10 }] }) // 1. SELECT photo
       .mockResolvedValueOnce({ rows: [{ id: 5 }] })  // 2. INSERT tags
-      .mockResolvedValueOnce({ rows: [{ id: 7 }] }); // 3. INSERT person_faces
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] })  // 3. INSERT person_faces
+      .mockResolvedValueOnce({ rows: [] });            // 4. INSERT photo_tags
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/1/tag-person')
@@ -1389,7 +1391,7 @@ describe('POST /photos/:id/tag-person', () => {
     // Image is 1000x800; bbox of 0.01 x 0.01 → 10x8 px crop → rejected
     sharp._chain.metadata.mockResolvedValue({ width: 1000, height: 800 });
 
-    db.query.mockResolvedValueOnce({ rows: [{ id: 1, filename: 'test-uuid.jpg', s3_key: 'test-uuid.jpg' }] });
+    db.query.mockResolvedValueOnce({ rows: [{ id: 1, filename: 'test-uuid.jpg', s3_key: 'test-uuid.jpg', user_id: 10 }] });
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/1/tag-person')
@@ -1407,6 +1409,18 @@ describe('POST /photos/:id/tag-person', () => {
 
     expect(res.status).toBe(403);
     expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when editor tags faces on another user\'s photo', async () => {
+    // Photo owned by userId 99, session is userId 10 (editor)
+    db.query.mockResolvedValueOnce({ rows: [{ id: 1, filename: 'x.jpg', s3_key: 'x.jpg', user_id: 99 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: 'Alice', bbox: VALID_BBOX });
+
+    expect(res.status).toBe(403);
+    expect(storage.downloadPhoto).not.toHaveBeenCalled();
   });
 });
 
@@ -1426,6 +1440,7 @@ describe('DELETE /photos/:id/tag-person/:faceId', () => {
       .delete('/photos/1/tag-person/7');
 
     expect(res.status).toBe(204);
+    expect(storage.deletePhoto).toHaveBeenCalledWith('faces/crop.jpg');
     expect(db.query).toHaveBeenCalledWith(
       expect.stringContaining('DELETE FROM person_faces'),
       [7]

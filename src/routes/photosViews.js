@@ -300,12 +300,13 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
   var drawing = false, startX = 0, startY = 0, rect = null, nameForm = null;
 
   function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
   // Remove-face buttons (already rendered server-side + dynamically added)
   function bindRemoveBtn(btn) {
     btn.addEventListener('click', function(){
       var faceId = btn.dataset.faceId;
-      fetch('/photos/' + PHOTO_ID + '/tag-person/' + faceId, { method: 'DELETE' })
+      fetch('/photos/' + PHOTO_ID + '/tag-person/' + faceId, { method: 'DELETE', headers: { 'X-CSRF-Token': csrf } })
         .then(function(r){
           if (r.ok || r.status === 204) { btn.closest('span').remove(); }
           else { alert('Could not remove face tag.'); }
@@ -317,34 +318,23 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
 
   if (!tagBtn) return;
 
-  tagBtn.addEventListener('click', function(){
+  function startTagging() {
     overlay.style.display = 'block';
     tagBtn.textContent = '× Cancel tagging';
-    tagBtn.onclick = function(){ resetMode(); };
-  });
+    tagBtn.removeEventListener('click', startTagging);
+    tagBtn.addEventListener('click', resetMode);
+  }
 
-  function resetMode(){
+  function resetMode() {
     overlay.style.display = 'none';
     drawing = false;
     if (rect) { rect.remove(); rect = null; }
     if (nameForm) { nameForm.remove(); nameForm = null; }
     tagBtn.textContent = '✎ Tag a person';
-    tagBtn.onclick = null;
-    tagBtn.addEventListener('click', function(){ /* re-attach handled by click listener */ });
-    // Re-attach original listener
-    tagBtn.onclick = null;
-    tagBtn.removeEventListener('click', arguments.callee);
+    tagBtn.removeEventListener('click', resetMode);
     tagBtn.addEventListener('click', startTagging);
   }
 
-  function startTagging(){
-    overlay.style.display = 'block';
-    tagBtn.textContent = '× Cancel tagging';
-    tagBtn.onclick = resetMode;
-  }
-
-  // Replace the initial listener with the proper one
-  tagBtn.removeEventListener('click', tagBtn._startListener);
   tagBtn.addEventListener('click', startTagging);
 
   overlay.addEventListener('mousedown', function(e){
@@ -447,7 +437,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
 
       fetch('/photos/' + PHOTO_ID + '/tag-person', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         body: JSON.stringify({ personName: nameVal, bbox: { x: bboxX, y: bboxY, width: bboxW, height: bboxH } }),
       })
         .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })

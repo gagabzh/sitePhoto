@@ -284,14 +284,20 @@ router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
   ) {
     return res.status(422).json({ error: 'bbox fields must be numbers in [0, 1]' });
   }
+  if (x + width > 1 || y + height > 1) {
+    return res.status(422).json({ error: 'bbox extends beyond image boundary' });
+  }
 
-  // Fetch photo
+  // Fetch photo (include user_id for ownership check)
   const { rows: photoRows } = await db.query(
-    'SELECT id, filename, s3_key FROM photos WHERE id = $1',
+    'SELECT id, filename, s3_key, user_id FROM photos WHERE id = $1',
     [photoId]
   );
   if (!photoRows.length) return res.status(404).json({ error: 'Photo not found' });
   const photo = photoRows[0];
+
+  // Ownership check — only the photo owner or admin may tag faces
+  if (!canModify(req.session, photo)) return res.status(403).json({ error: 'Access denied' });
 
   // Download full-resolution from S3
   const buffer = await downloadPhoto(photo.s3_key);
@@ -326,13 +332,19 @@ router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
      RETURNING id`,
     [personName.toLowerCase()]
   );
-  const tagId = tagRows[0].id; // eslint-disable-line no-unused-vars
+  const tagId = tagRows[0].id;
 
   // Insert person_faces record
   const { rows: faceRows } = await db.query(
     `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [req.session.userId, personName, photoId, JSON.stringify({ x, y, width, height }), cropKey]
+  );
+
+  // Link person tag to photo so it appears in tag search
+  await db.query(
+    'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [photoId, tagId]
   );
 
   res.status(201).json({ id: faceRows[0].id, personName, cropKey });
@@ -356,7 +368,11 @@ router.delete('/:photoId/tag-person/:personFaceId', requireEditor, wrapAsync(asy
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  // Delete S3 crop — fire and forget
+  // Delete S3 crop — fire and forget, guard against non-face keys
+  if (!face.crop_s3_key.startsWith('faces/')) {
+    console.error('[tag-person] Refusing to delete non-face S3 key:', face.crop_s3_key);
+    return res.status(500).json({ error: 'Internal error' });
+  }
   deletePhoto(face.crop_s3_key).catch(err => {
     console.warn('[tag-person] S3 crop delete failed:', err.message);
   });
