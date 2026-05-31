@@ -283,14 +283,15 @@ function selectionScript() {
 }
 
 function lbOverlay() {
-  return `<div id="lb" class="lb-overlay" role="dialog" aria-modal="true" aria-label="Photo viewer">
+  return `<div id="lightbox" class="lb-overlay" role="dialog" aria-modal="true" aria-label="Photo viewer">
     <button class="lb-close" id="lb-close" aria-label="Close">&#x2715;</button>
-    <button class="lb-btn lb-prev" id="lb-prev" aria-label="Previous">&#x2039;</button>
+    <button class="lb-prev" id="lb-prev" aria-label="Previous photo">&#x2190;</button>
     <div class="lb-img-wrap">
-      <img id="lb-img" src="" alt="">
+      <img id="lb-img" src="" alt="" onerror="this.style.display='none';document.getElementById('lb-err').style.display='block';">
+      <div id="lb-err" style="display:none;color:var(--paper);font-family:var(--hand);font-size:18px;text-align:center;padding:2rem;">Photo unavailable</div>
       <div class="lb-caption" id="lb-caption"></div>
     </div>
-    <button class="lb-btn lb-next" id="lb-next" aria-label="Next">&#x203a;</button>
+    <button class="lb-next" id="lb-next" aria-label="Next photo">&#x2192;</button>
     <div class="lb-counter" id="lb-counter"></div>
   </div>`;
 }
@@ -298,48 +299,81 @@ function lbOverlay() {
 function lbScript() {
   return `<script>
     (function () {
-      var overlay  = document.getElementById('lb');
+      var overlay  = document.getElementById('lightbox');
       var img      = document.getElementById('lb-img');
+      var errMsg   = document.getElementById('lb-err');
       var caption  = document.getElementById('lb-caption');
       var counter  = document.getElementById('lb-counter');
       var btnClose = document.getElementById('lb-close');
       var btnPrev  = document.getElementById('lb-prev');
       var btnNext  = document.getElementById('lb-next');
+      var focusTrap = [btnClose, btnPrev, btnNext];
+      var triggerEl = null;
 
-      var photos = Array.prototype.map.call(
-        document.querySelectorAll('[data-lb-src]'),
-        function (el) { return { src: el.getAttribute('data-lb-src'), title: el.getAttribute('data-lb-title') || '' }; }
-      );
+      var photos = (typeof LB_PHOTOS !== 'undefined') ? LB_PHOTOS : [];
       var current = 0;
 
-      function show(i) {
+      function updateNav() {
+        if (photos.length <= 1) {
+          btnPrev.setAttribute('disabled', '');
+          btnNext.setAttribute('disabled', '');
+        } else {
+          if (current === 0) {
+            btnPrev.setAttribute('disabled', '');
+          } else {
+            btnPrev.removeAttribute('disabled');
+          }
+          if (current === photos.length - 1) {
+            btnNext.setAttribute('disabled', '');
+          } else {
+            btnNext.removeAttribute('disabled');
+          }
+        }
+      }
+
+      function show(i, trigger) {
+        if (!photos.length) return;
         current = (i + photos.length) % photos.length;
+        img.style.display = '';
+        errMsg.style.display = 'none';
         img.src = photos[current].src;
-        img.alt = photos[current].title;
-        caption.textContent = photos[current].title;
+        img.alt = photos[current].title || '';
+        caption.textContent = photos[current].title || '';
         counter.textContent = (current + 1) + ' / ' + photos.length;
-        btnPrev.style.display = photos.length > 1 ? '' : 'none';
-        btnNext.style.display = photos.length > 1 ? '' : 'none';
+        updateNav();
+        if (trigger) triggerEl = trigger;
         overlay.classList.add('lb-open');
         document.body.style.overflow = 'hidden';
+        btnClose.focus();
       }
 
       function close() {
         overlay.classList.remove('lb-open');
         img.src = '';
         document.body.style.overflow = '';
+        if (triggerEl) { triggerEl.focus(); triggerEl = null; }
       }
 
-      document.querySelectorAll('[data-lb-src]').forEach(function (el, idx) {
+      /* Thumbnail click handlers — index matches LB_PHOTOS array position */
+      document.querySelectorAll('[data-lb-index]').forEach(function (el) {
         el.addEventListener('click', function (e) {
           e.preventDefault();
-          show(idx);
+          show(parseInt(el.getAttribute('data-lb-index'), 10), el);
+        });
+      });
+
+      /* Editor fullscreen button */
+      document.querySelectorAll('.ad-lb-btn[data-lb-index]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          show(parseInt(btn.getAttribute('data-lb-index'), 10), btn);
         });
       });
 
       btnClose.addEventListener('click', close);
-      btnPrev.addEventListener('click', function () { show(current - 1); });
-      btnNext.addEventListener('click', function () { show(current + 1); });
+      btnPrev.addEventListener('click', function () { if (!btnPrev.disabled) show(current - 1, triggerEl); });
+      btnNext.addEventListener('click', function () { if (!btnNext.disabled) show(current + 1, triggerEl); });
 
       overlay.addEventListener('click', function (e) {
         if (e.target === overlay) close();
@@ -347,9 +381,21 @@ function lbScript() {
 
       document.addEventListener('keydown', function (e) {
         if (!overlay.classList.contains('lb-open')) return;
-        if (e.key === 'Escape')     close();
-        if (e.key === 'ArrowLeft')  show(current - 1);
-        if (e.key === 'ArrowRight') show(current + 1);
+        if (e.key === 'Escape')     { close(); return; }
+        if (e.key === 'ArrowLeft')  { if (!btnPrev.disabled) show(current - 1, triggerEl); return; }
+        if (e.key === 'ArrowRight') { if (!btnNext.disabled) show(current + 1, triggerEl); return; }
+        /* Focus trap: Tab cycles only through close/prev/next */
+        if (e.key === 'Tab') {
+          var focusable = focusTrap.filter(function (b) { return !b.disabled; });
+          if (!focusable.length) { e.preventDefault(); return; }
+          var idx = focusable.indexOf(document.activeElement);
+          e.preventDefault();
+          if (e.shiftKey) {
+            focusable[(idx - 1 + focusable.length) % focusable.length].focus();
+          } else {
+            focusable[(idx + 1) % focusable.length].focus();
+          }
+        }
       });
     })();
   </script>`;

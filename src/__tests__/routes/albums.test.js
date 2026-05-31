@@ -301,7 +301,7 @@ describe('GET /albums/:id — album detail', () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
     expect(res.text).toContain('href="/photos/5/edit?from=/albums/1"');
     expect(res.text).toContain('class="ad-lb-btn"');
-    expect(res.text).not.toMatch(/href="\/photos\/5"[^>]*data-lb-src/);
+    expect(res.text).not.toMatch(/href="\/photos\/5"[^>]*data-lb-index/);
   });
 
   it('ALB-1: viewer thumbnail is a lightbox link (unchanged)', async () => {
@@ -311,7 +311,7 @@ describe('GET /albums/:id — album detail', () => {
       .mockResolvedValueOnce({ rows: [{ 1: 1 }] });
 
     const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1');
-    expect(res.text).toContain('data-lb-src="/uploads/test.jpg"');
+    expect(res.text).toContain('data-lb-index="0"');
     expect(res.text).not.toContain('href="/photos/5/edit"');
     expect(res.text).not.toContain('class="ad-lb-btn"');
   });
@@ -381,6 +381,32 @@ describe('GET /albums/:id — album detail', () => {
     // first 9 in mosaic, rest in overflow grid
     expect(res.text).toContain('p10.jpg');
     expect(res.text).toContain('p12.jpg');
+  });
+
+  it('album detail page includes LB_PHOTOS script tag with photo data', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('LB_PHOTOS');
+    // src value contains the filename
+    expect(res.text).toContain('/uploads/test.jpg');
+  });
+
+  it('LB_PHOTOS photo titles are JSON-encoded (XSS prevention)', async () => {
+    const xssPhoto = { id: 6, filename: 'xss.jpg', title: '</script><script>alert(1)', user_id: 10 };
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [xssPhoto] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.status).toBe(200);
+    // </script> is escaped to <\/script> so a raw closing tag cannot break out of the script block
+    expect(res.text).not.toContain('</script><script>alert(1)');
+    // The escaped form is present instead
+    expect(res.text).toContain('<\\/script>');
   });
 });
 

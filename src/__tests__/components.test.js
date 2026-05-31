@@ -218,12 +218,16 @@ describe('selectionScript', () => {
 describe('lbOverlay', () => {
   it('returns the lightbox overlay HTML with all required elements', () => {
     const html = lbOverlay();
-    expect(html).toContain('id="lb"');
+    expect(html).toContain('id="lightbox"');
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
+    expect(html).toContain('aria-label="Photo viewer"');
     expect(html).toContain('id="lb-close"');
+    expect(html).toContain('aria-label="Close"');
     expect(html).toContain('id="lb-prev"');
+    expect(html).toContain('aria-label="Previous photo"');
     expect(html).toContain('id="lb-next"');
+    expect(html).toContain('aria-label="Next photo"');
     expect(html).toContain('id="lb-img"');
     expect(html).toContain('id="lb-caption"');
     expect(html).toContain('id="lb-counter"');
@@ -256,9 +260,9 @@ describe('lbScript', () => {
     expect(s).toContain('ArrowRight');
   });
 
-  it('handles data-lb-src attributes', () => {
+  it('uses LB_PHOTOS array and data-lb-index attributes', () => {
     const s = lbScript();
-    expect(s).toContain('data-lb-src');
-    expect(s).toContain('data-lb-title');
+    expect(s).toContain('LB_PHOTOS');
+    expect(s).toContain('data-lb-index');
   });
 });

@@ -119,39 +119,50 @@ function renderAlbumDetailPage({ album, photos, canEdit, from, session }) {
 
   const uniqueContributors = new Set(photos.map(p => p.user_id)).size;
 
+  /* LB_PHOTOS — serialised with JSON.stringify; </script> escaped to prevent script injection */
+  const lbPhotosJson = JSON.stringify(photos.map(p => ({
+    id: p.id,
+    title: p.title,
+    src: `/uploads/${p.filename}`,
+  }))).replace(/<\/script>/gi, '<\\/script>');
+
   const mosaic = photos.slice(0, 9);
   const rest = photos.slice(9);
 
-  const mosaicCells = mosaic.map(p => `
+  const mosaicCells = mosaic.map((p, idx) => `
     <div class="ad-cell${canEdit ? ' sel-tile' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
-      <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}"`}>
+      <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-index="${idx}"`}>
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
       </a>
-      ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>
+      ${canEdit ? `<button class="ad-lb-btn" data-lb-index="${idx}" title="View fullscreen" type="button">⛶</button>
       <button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
       <div class="press-ring"></div>
       <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
     </div>`).join('');
 
   const restGrid = rest.length > 0
-    ? `<div class="photo-grid" style="margin-top:1rem">${rest.map(p => `
+    ? `<div class="photo-grid" style="margin-top:1rem">${rest.map((p, i) => {
+        const idx = 9 + i;
+        return `
         <div class="photo-card${canEdit ? ' sel-tile' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
           <div class="photo-thumb">
-            <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}"`}>
+            <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-index="${idx}"`}>
               <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
             </a>
-            ${canEdit ? `<button class="ad-lb-btn" data-lb-src="/uploads/${esc(p.filename)}" data-lb-title="${esc(p.title)}" title="View fullscreen" type="button">⛶</button>
+            ${canEdit ? `<button class="ad-lb-btn" data-lb-index="${idx}" title="View fullscreen" type="button">⛶</button>
             <button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
             <div class="press-ring"></div>
             <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
           </div>
           <div class="photo-meta"><strong>${esc(p.title)}</strong></div>
-        </div>`).join('')}
+        </div>`;
+      }).join('')}
       </div>` : '';
 
   const photoSection = photos.length === 0
     ? `<p class="tl-empty">No photos yet.${canEdit ? ` <a href="/albums/${album.id}/photos/add">Add some.</a>` : ''}</p>`
-    : `<form method="POST" action="/albums/${album.id}/photos/bulk-remove" data-sel-form>
+    : `<script>const LB_PHOTOS = ${lbPhotosJson};</script>
+      <form method="POST" action="/albums/${album.id}/photos/bulk-remove" data-sel-form>
         ${canEdit ? selectionBar({
           removeAction: `/albums/${album.id}/photos/bulk-remove`,
           deleteAction:  `/albums/${album.id}/photos/bulk-delete`,
