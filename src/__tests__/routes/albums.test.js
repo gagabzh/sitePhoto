@@ -316,6 +316,40 @@ describe('GET /albums/:id — album detail', () => {
     expect(res.text).not.toContain('class="ad-lb-btn"');
   });
 
+  it('editor thumbnail links to /photos/:id/edit?from=/albums/:id', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.text).toContain('href="/photos/5/edit?from=/albums/1"');
+    // The anchor itself must NOT carry data-lb-index (lightbox is on the separate button)
+    expect(res.text).not.toMatch(/href="\/photos\/5\/edit[^"]*"\s[^>]*data-lb-index/);
+  });
+
+  it('editor thumbnail has lb-btn with data-lb-index', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] });
+
+    const res = await request(makeApp(EDITOR_SESSION)).get('/albums/1');
+    expect(res.text).toContain('class="ad-lb-btn"');
+    expect(res.text).toContain('data-lb-index="0"');
+  });
+
+  it('viewer thumbnail has data-lb-index on anchor', async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })
+      .mockResolvedValueOnce({ rows: [FAKE_PHOTO] })
+      .mockResolvedValueOnce({ rows: [{ 1: 1 }] });
+
+    const res = await request(makeApp(VIEWER_SESSION)).get('/albums/1');
+    // data-lb-index must appear on the <a> tag itself
+    expect(res.text).toMatch(/data-lb-index="0"/);
+    // no ad-lb-btn for viewer
+    expect(res.text).not.toContain('class="ad-lb-btn"');
+  });
+
   it('returns 200 for viewer with access', async () => {
     db.query
       .mockResolvedValueOnce({ rows: [FAKE_ALBUM] })

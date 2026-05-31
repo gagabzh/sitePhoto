@@ -166,16 +166,25 @@ function renderUploadPage({ error, session }) {
   `, session, true);
 }
 
+function backLabel(from) {
+  if (!from) return '← back to photos';
+  if (/^\/albums\/\d+$/.test(from)) return '← back to album';
+  if (from === '/photos') return '← back to photos';
+  if (/^\/travels\/[a-z0-9-]+$/.test(from)) return '← back to travel';
+  return '← back to photos';
+}
+
 function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
   return page(photo.title, `
     <div style="max-width:820px;margin:0 auto">
       <div class="top-bar" style="margin-bottom:1rem">
-        <a href="${from || '/photos'}" style="color:#888;font-size:0.9rem;text-decoration:none">← Back</a>
+        <a href="${esc(from || '/photos')}" class="back-link" style="color:#888;font-size:0.9rem;text-decoration:none">${backLabel(from)}</a>
         ${canEdit ? `
           <div class="row">
             <a class="btn btn-secondary" href="/photos/${photo.id}/edit${from ? '?from=' + encodeURIComponent(from) : ''}">Edit</a>
             <form class="inline" method="POST" action="/photos/${photo.id}/delete"
               onsubmit="return confirm('Delete this photo permanently?')">
+              ${from ? `<input type="hidden" name="from" value="${esc(from)}">` : ''}
               <button class="btn btn-danger btn-icon" title="Delete"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>
             </form>
           </div>` : ''}
@@ -271,7 +280,7 @@ function renderPhotoEditPage({ photo, from, albumChoices, session }) {
   return page(`Edit — ${photo.title}`, `
     <div class="top-bar">
       <h1>Edit photo</h1>
-      <a class="btn btn-secondary" href="${from || '/photos/' + photo.id}">← Back</a>
+      <a class="btn btn-secondary back-link" href="${esc(from || '/photos/' + photo.id)}">${backLabel(from)}</a>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
       <img src="/uploads/${esc(photo.filename)}" alt="${esc(photo.title)}"
@@ -311,7 +320,7 @@ function renderPhotoEditPage({ photo, from, albumChoices, session }) {
 </fieldset>` : ''}
           <div class="row">
             <button class="btn" type="submit">Save</button>
-            <a class="btn btn-secondary" href="/photos/${photo.id}">Cancel</a>
+            <a class="btn btn-secondary" href="/photos/${photo.id}${from ? '?from=' + encodeURIComponent(from) : ''}">Cancel</a>
           </div>
         </form>
       </div>
