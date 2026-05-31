@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { wrapAsync } = require('../middleware');
 const { notifyUser } = require('../notifications');
+const { downloadPhoto } = require('../storage');
 const db = require('../db');
 
 function requireWorkerSecret(req, res, next) {
@@ -117,6 +118,39 @@ router.post('/nextcloud-import-progress', requireWorkerSecret, wrapAsync(async (
   const { done, total, failed } = rows[0];
   notifyUser(userId, { importId, done, total, failed }, 'nextcloud-import-progress');
   res.json({ ok: true, done, total, failed });
+}));
+
+// AI-4: Fetch known face crops for a user — called by worker before Ollama identification
+router.get('/known-faces/:userId', requireWorkerSecret, wrapAsync(async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  if (!Number.isInteger(userId)) return res.status(400).json({ error: 'Invalid userId' });
+
+  // Fetch most recent crop per distinct person_name, limit 20
+  const { rows } = await db.query(
+    `SELECT DISTINCT ON (person_name) person_name, crop_s3_key
+       FROM person_faces
+      WHERE user_id = $1
+      ORDER BY person_name, created_at DESC
+      LIMIT 20`,
+    [userId]
+  );
+
+  if (!rows.length) return res.json([]);
+
+  const results = await Promise.all(rows.map(async row => {
+    try {
+      const buffer = await downloadPhoto(row.crop_s3_key);
+      return {
+        personName: row.person_name,
+        cropBase64: buffer.toString('base64'),
+        mimeType: 'image/jpeg',
+      };
+    } catch {
+      return null; // skip missing crops
+    }
+  }));
+
+  res.json(results.filter(Boolean));
 }));
 
 module.exports = router;

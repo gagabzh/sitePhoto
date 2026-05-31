@@ -66,4 +66,15 @@ async function insertImportedPhoto(payload) {
   return res.json();
 }
 
-module.exports = { postIdentificationResult, postDescribePersonResult, postNextcloudImportProgress, insertImportedPhoto };
+// AI-4: Fetch known face crops for a user from Instance-1
+async function fetchKnownFaces(userId) {
+  const url = `${BASE_URL}/internal/known-faces/${userId}`;
+  const resp = await fetch(url, {
+    headers: { 'x-worker-secret': SECRET },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!resp.ok) throw new Error(`known-faces ${resp.status}`);
+  return resp.json();
+}
+
+module.exports = { postIdentificationResult, postDescribePersonResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces };
