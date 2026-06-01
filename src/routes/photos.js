@@ -1,4 +1,6 @@
 const router = require('express').Router();
+const crypto = require('crypto');
+const sharp = require('sharp');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { filterOwnedPhotoIds } = require('../permissions');
 const { extractMetadata } = require('../extractMetadata');
@@ -6,6 +8,7 @@ const {
   upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
 } = require('../uploadHelpers');
 const { addIdentificationJob } = require('../queue/producer');
+const { uploadPhoto, downloadPhoto, deletePhoto } = require('../storage');
 const db = require('../db');
 const {
   renderPhotoListPage, renderUploadPage, renderPhotoDetailPage, renderPhotoEditPage,
@@ -14,6 +17,7 @@ const {
   fetchPhotoPage, fetchPhotoStats, fetchLatestAlbum, bulkApplyTag, bulkRemoveTag,
   insertPhoto, fetchPhotoWithTags, fetchPhotoForEdit, getPhotoOwner,
 } = require('../repositories/photos');
+const { fetchPersonFacesForPhoto } = require('../repositories/personFaces');
 const { fetchAlbumsForPhoto, fetchAlbumsForPhotoEdit } = require('../repositories/albums');
 
 function parseFrom(raw) {
@@ -172,8 +176,13 @@ router.get('/:id', wrapAsync(async (req, res) => {
     photoAlbums = await fetchAlbumsForPhoto(req.params.id, req.session);
   } catch { /* fail silently — page still renders */ }
 
+  let personFaces = [];
+  try {
+    personFaces = await fetchPersonFacesForPhoto(req.params.id);
+  } catch { /* fail silently — page still renders */ }
+
   const canEdit = canModify(req.session, photo);
-  res.send(renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session: req.session }));
+  res.send(renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces, session: req.session }));
 }));
 
 // US-P3: Edit form
@@ -249,6 +258,129 @@ router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   }
 
   res.redirect(`/photos/${req.params.id}`);
+}));
+
+// AI-3: Tag a person face on a photo
+router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
+  const photoId = parseInt(req.params.id, 10);
+  const { personName: rawName, bbox } = req.body;
+
+  // Validate personName
+  const personName = typeof rawName === 'string' ? rawName.trim() : '';
+  if (!personName || personName.length > 100) {
+    return res.status(422).json({ error: 'personName is required and must be ≤ 100 characters' });
+  }
+
+  // Validate bbox
+  if (!bbox || typeof bbox !== 'object') {
+    return res.status(422).json({ error: 'bbox is required' });
+  }
+  const { x, y, width, height } = bbox;
+  if (
+    typeof x !== 'number' || typeof y !== 'number' ||
+    typeof width !== 'number' || typeof height !== 'number' ||
+    x < 0 || x > 1 || y < 0 || y > 1 ||
+    width < 0 || width > 1 || height < 0 || height > 1
+  ) {
+    return res.status(422).json({ error: 'bbox fields must be numbers in [0, 1]' });
+  }
+  if (x + width > 1 || y + height > 1) {
+    return res.status(422).json({ error: 'bbox extends beyond image boundary' });
+  }
+
+  // Fetch photo (include user_id for ownership check)
+  const { rows: photoRows } = await db.query(
+    'SELECT id, filename, s3_key, user_id FROM photos WHERE id = $1',
+    [photoId]
+  );
+  if (!photoRows.length) return res.status(404).json({ error: 'Photo not found' });
+  const photo = photoRows[0];
+
+  // Ownership check — only the photo owner or admin may tag faces
+  if (!canModify(req.session, photo)) return res.status(403).json({ error: 'Access denied' });
+
+  // Download full-resolution from S3
+  const buffer = await downloadPhoto(photo.s3_key);
+
+  // Get image dimensions
+  const { width: imgWidth, height: imgHeight } = await sharp(buffer).metadata();
+
+  // Compute crop region
+  const cropX      = Math.round(x * imgWidth);
+  const cropY      = Math.round(y * imgHeight);
+  const cropWidth  = Math.round(width * imgWidth);
+  const cropHeight = Math.round(height * imgHeight);
+
+  if (cropWidth < 20 || cropHeight < 20) {
+    return res.status(422).json({ error: 'Bounding box is too small (minimum 20×20 px)' });
+  }
+
+  // Crop and encode
+  const cropBuffer = await sharp(buffer)
+    .extract({ left: cropX, top: cropY, width: cropWidth, height: cropHeight })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+
+  // Upload crop to S3
+  const cropKey = 'faces/' + crypto.randomUUID() + '.jpg';
+  await uploadPhoto(cropKey, cropBuffer, 'image/jpeg');
+
+  // Upsert tag with category 'people'
+  const { rows: tagRows } = await db.query(
+    `INSERT INTO tags (name, category) VALUES ($1, 'people')
+     ON CONFLICT (name) DO UPDATE SET category = 'people'
+     RETURNING id`,
+    [personName.toLowerCase()]
+  );
+  const tagId = tagRows[0].id;
+
+  // Insert person_faces record
+  const { rows: faceRows } = await db.query(
+    `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [req.session.userId, personName, photoId, JSON.stringify({ x, y, width, height }), cropKey]
+  );
+
+  // Link person tag to photo so it appears in tag search
+  await db.query(
+    'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [photoId, tagId]
+  );
+
+  res.status(201).json({ id: faceRows[0].id, personName, cropKey });
+}));
+
+// AI-3: Delete a person face tag
+router.delete('/:photoId/tag-person/:personFaceId', requireEditor, wrapAsync(async (req, res) => {
+  const photoId     = parseInt(req.params.photoId, 10);
+  const faceId      = parseInt(req.params.personFaceId, 10);
+
+  // Fetch face record
+  const { rows: faceRows } = await db.query(
+    'SELECT id, user_id, crop_s3_key FROM person_faces WHERE id = $1 AND photo_id = $2',
+    [faceId, photoId]
+  );
+  if (!faceRows.length) return res.status(404).json({ error: 'Face tag not found' });
+  const face = faceRows[0];
+
+  // Ownership check — owner or admin
+  if (face.user_id !== req.session.userId && req.session.role !== 'admin') {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  // Delete S3 crop — fire and forget, guard against non-face keys
+  if (!face.crop_s3_key.startsWith('faces/')) {
+    console.error('[tag-person] Refusing to delete non-face S3 key:', face.crop_s3_key);
+    return res.status(500).json({ error: 'Internal error' });
+  }
+  deletePhoto(face.crop_s3_key).catch(err => {
+    console.warn('[tag-person] S3 crop delete failed:', err.message);
+  });
+
+  // Delete DB record
+  await db.query('DELETE FROM person_faces WHERE id = $1', [faceId]);
+
+  res.status(204).end();
 }));
 
 // US-P4: Delete

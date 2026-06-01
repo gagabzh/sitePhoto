@@ -9,6 +9,7 @@ const {
   postDescribePersonResult,
   postNextcloudImportProgress,
   insertImportedPhoto,
+  fetchKnownFaces,
 } = require('./instance1-api');
 const { downloadFileAsBuffer, EXT_MAP } = require('./nextcloudWebdav');
 
@@ -51,13 +52,28 @@ const worker = new Worker('identification', async (job) => {
   const { photoId, userId, photoS3Key } = job.data;
   console.log(`[worker] job ${job.id} — photo ${photoId} (${photoS3Key})`);
 
+  // AI-4: fetch known faces for few-shot injection (fail gracefully)
+  let knownFaces = [];
+  try {
+    knownFaces = await fetchKnownFaces(userId);
+  } catch (err) {
+    console.warn('[worker] known-faces fetch failed, proceeding without:', err.message);
+  }
+
   const photoBuffer = await downloadPhoto(photoS3Key);
   const base64 = photoBuffer.toString('base64');
 
-  const result = await generate({
-    prompt: IDENTIFICATION_PROMPT,
-    images: [base64],
-  });
+  // Build images array: known face crops first, then the photo to identify
+  const images = [...knownFaces.map(f => f.cropBase64), base64];
+
+  // Build prompt with optional few-shot section
+  let prompt = IDENTIFICATION_PROMPT;
+  if (knownFaces.length) {
+    const names = knownFaces.map(f => `- ${f.personName}`).join('\n');
+    prompt = `Known people in this collection:\n${names}\n\nIdentify the people visible in the last image. For each person, provide their name if they match a known person, or describe them briefly if unknown. Also describe the scene.`;
+  }
+
+  const result = await generate({ prompt, images });
 
   await postIdentificationResult({ photoId, userId, tags: result.response });
   console.log(`[worker] job ${job.id} done`);

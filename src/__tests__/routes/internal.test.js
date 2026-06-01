@@ -1,16 +1,21 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../notifications', () => ({ notifyUser: jest.fn(), initSocketIO: jest.fn() }));
+jest.mock('../../storage', () => ({
+  downloadPhoto: jest.fn(),
+}));
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const { notifyUser } = require('../../notifications');
+const storage = require('../../storage');
 
 const VALID_SECRET = 'test-secret-abc123';
 
 beforeEach(() => {
   jest.resetAllMocks();
   process.env.WORKER_API_SECRET = VALID_SECRET;
+  storage.downloadPhoto.mockResolvedValue(Buffer.from('fakecropbytes'));
 });
 
 afterAll(() => {
@@ -434,5 +439,92 @@ describe('POST /internal/nextcloud-import-progress — DB error', () => {
       .send({ userId: '7', importId: 42, succeeded: true });
 
     expect(res.status).toBe(500);
+  });
+});
+
+// ── GET /internal/known-faces/:userId ────────────────────────────────────────
+
+describe('GET /internal/known-faces/:userId', () => {
+  it('returns array of {personName, cropBase64, mimeType} for known faces', async () => {
+    const fakeBuffer = Buffer.from('fakepng');
+    // 1. SELECT DISTINCT ON (person_name) ... FROM person_faces
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { person_name: 'Alice', crop_s3_key: 'faces/alice.jpg' },
+        { person_name: 'Bob',   crop_s3_key: 'faces/bob.jpg' },
+      ],
+    });
+    storage.downloadPhoto
+      .mockResolvedValueOnce(fakeBuffer)   // Alice crop
+      .mockResolvedValueOnce(fakeBuffer);  // Bob crop
+
+    const res = await request(makeApp())
+      .get('/internal/known-faces/7')
+      .set('x-worker-secret', VALID_SECRET);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toMatchObject({
+      personName: 'Alice',
+      cropBase64: fakeBuffer.toString('base64'),
+      mimeType: 'image/jpeg',
+    });
+    expect(res.body[1]).toMatchObject({
+      personName: 'Bob',
+      cropBase64: fakeBuffer.toString('base64'),
+      mimeType: 'image/jpeg',
+    });
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('SELECT DISTINCT ON (person_name)'),
+      [7]
+    );
+  });
+
+  it('returns empty array when user has no faces', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp())
+      .get('/internal/known-faces/42')
+      .set('x-worker-secret', VALID_SECRET);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+    expect(storage.downloadPhoto).not.toHaveBeenCalled();
+  });
+
+  it('skips faces whose S3 crop is missing (null filtered out)', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { person_name: 'Alice', crop_s3_key: 'faces/alice.jpg' },
+        { person_name: 'Bob',   crop_s3_key: 'faces/bob.jpg' },
+      ],
+    });
+    storage.downloadPhoto
+      .mockResolvedValueOnce(Buffer.from('alicecrop'))    // Alice succeeds
+      .mockRejectedValueOnce(new Error('S3 not found'));  // Bob fails
+
+    const res = await request(makeApp())
+      .get('/internal/known-faces/7')
+      .set('x-worker-secret', VALID_SECRET);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].personName).toBe('Alice');
+  });
+
+  it('returns 403 without worker secret', async () => {
+    const res = await request(makeApp())
+      .get('/internal/known-faces/7');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 for non-integer userId', async () => {
+    const res = await request(makeApp())
+      .get('/internal/known-faces/abc')
+      .set('x-worker-secret', VALID_SECRET);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/invalid/i);
   });
 });

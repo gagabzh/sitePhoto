@@ -174,7 +174,17 @@ function backLabel(from) {
   return '← back to photos';
 }
 
-function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
+function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces, session }) {
+  const facesHtml = (personFaces && personFaces.length)
+    ? personFaces.map(f => `
+      <span class="tag" style="display:inline-flex;align-items:center;gap:0.35rem">
+        ${esc(f.person_name)}
+        ${canEdit ? `<button class="remove-face-btn" data-face-id="${f.id}"
+          style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:0.9rem;line-height:1;padding:0"
+          aria-label="Remove face tag">&#x2717;</button>` : ''}
+      </span>`).join('')
+    : `<span style="color:var(--ink-faint);font-size:0.85rem">No faces tagged yet.</span>`;
+
   return page(photo.title, `
     <div style="max-width:820px;margin:0 auto">
       <div class="top-bar" style="margin-bottom:1rem">
@@ -189,8 +199,11 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
             </form>
           </div>` : ''}
       </div>
-      <img src="/uploads/${esc(photo.filename)}" alt="${esc(photo.title)}"
-        style="width:100%;max-height:560px;object-fit:contain;border-radius:8px;background:#111;margin-bottom:1.5rem">
+      <div style="position:relative;display:inline-block;width:100%">
+        <img id="photo-img" src="/uploads/${esc(photo.filename)}" alt="${esc(photo.title)}"
+          style="width:100%;max-height:560px;object-fit:contain;background:#111;margin-bottom:1.5rem;display:block">
+        ${canEdit ? `<div id="bbox-overlay" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair"></div>` : ''}
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem">
         <div>
           <h1 style="margin-bottom:0.25rem">${esc(photo.title)}</h1>
@@ -225,6 +238,16 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
             ${photo.focal_length ? `<dt>Focale</dt><dd>${esc(String(photo.focal_length))} mm</dd>` : ''}
           </dl>` : ''}
           ${photo.nextcloud_url ? `<div style="margin-top:1rem"><a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a></div>` : ''}
+
+          <!-- AI-3: People in this photo -->
+          <div style="margin-top:1.25rem">
+            <h3 style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:2px;margin-bottom:0.5rem">People in this photo</h3>
+            <div id="person-faces-list" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem">
+              ${facesHtml}
+            </div>
+            ${canEdit ? `<button id="tag-person-btn" style="margin-top:0.5rem;font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:2px">&#x270E; Tag a person</button>` : ''}
+          </div>
+
           ${canEdit ? `
           <div id="ai-people" style="margin-top:1.25rem">
             <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem">Identify people</button>
@@ -253,13 +276,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
                       chip.querySelectorAll('button')[0].addEventListener('click', function(){
                         fetch('/api/ai/confirm-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID, tagId:s.tagId})})
                           .then(function(){
-                            var refBtn = s.hasReference ? '' : ' <button title="Set reference: ' + s.name + '" style="background:none;border:none;cursor:pointer;font-size:0.9rem;padding:0;opacity:0.6" data-ref="1">📌</button>';
-                            chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>' + refBtn;
-                            var rb = chip.querySelector('[data-ref]');
-                            if (rb) rb.addEventListener('click', function(){
-                              fetch('/api/ai/set-reference', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tagId:s.tagId, photoId:PHOTO_ID})})
-                                .then(function(){ rb.textContent='📌'; rb.title='Reference set'; rb.disabled=true; rb.style.opacity='1'; });
-                            });
+                            chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>';
                           });
                       });
                       chip.querySelectorAll('button')[1].addEventListener('click', function(){ chip.remove(); });
@@ -273,6 +290,177 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, session }) {
         </div>
       </div>
     </div>
+    ${canEdit ? `<script>
+(function(){
+  var PHOTO_ID = ${photo.id};
+  var img = document.getElementById('photo-img');
+  var overlay = document.getElementById('bbox-overlay');
+  var tagBtn = document.getElementById('tag-person-btn');
+  var faceList = document.getElementById('person-faces-list');
+  var drawing = false, startX = 0, startY = 0, rect = null, nameForm = null;
+
+  function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  // Remove-face buttons (already rendered server-side + dynamically added)
+  function bindRemoveBtn(btn) {
+    btn.addEventListener('click', function(){
+      var faceId = btn.dataset.faceId;
+      fetch('/photos/' + PHOTO_ID + '/tag-person/' + faceId, { method: 'DELETE', headers: { 'X-CSRF-Token': csrf } })
+        .then(function(r){
+          if (r.ok || r.status === 204) { btn.closest('span').remove(); }
+          else { alert('Could not remove face tag.'); }
+        })
+        .catch(function(){ alert('Network error removing face tag.'); });
+    });
+  }
+  Array.from(faceList.querySelectorAll('.remove-face-btn')).forEach(bindRemoveBtn);
+
+  if (!tagBtn) return;
+
+  function startTagging() {
+    overlay.style.display = 'block';
+    tagBtn.textContent = '× Cancel tagging';
+    tagBtn.removeEventListener('click', startTagging);
+    tagBtn.addEventListener('click', resetMode);
+  }
+
+  function resetMode() {
+    overlay.style.display = 'none';
+    drawing = false;
+    if (rect) { rect.remove(); rect = null; }
+    if (nameForm) { nameForm.remove(); nameForm = null; }
+    tagBtn.textContent = '✎ Tag a person';
+    tagBtn.removeEventListener('click', resetMode);
+    tagBtn.addEventListener('click', startTagging);
+  }
+
+  tagBtn.addEventListener('click', startTagging);
+
+  overlay.addEventListener('mousedown', function(e){
+    if (nameForm) return;
+    drawing = true;
+    var bounds = overlay.getBoundingClientRect();
+    startX = e.clientX - bounds.left;
+    startY = e.clientY - bounds.top;
+    if (rect) rect.remove();
+    rect = document.createElement('div');
+    rect.style.cssText = 'position:absolute;border:2px dashed var(--accent);pointer-events:none;box-sizing:border-box';
+    rect.style.left = startX + 'px';
+    rect.style.top = startY + 'px';
+    rect.style.width = '0';
+    rect.style.height = '0';
+    overlay.appendChild(rect);
+  });
+
+  overlay.addEventListener('mousemove', function(e){
+    if (!drawing || !rect) return;
+    var bounds = overlay.getBoundingClientRect();
+    var curX = e.clientX - bounds.left;
+    var curY = e.clientY - bounds.top;
+    rect.style.left = Math.min(startX, curX) + 'px';
+    rect.style.top  = Math.min(startY, curY) + 'px';
+    rect.style.width  = Math.abs(curX - startX) + 'px';
+    rect.style.height = Math.abs(curY - startY) + 'px';
+  });
+
+  overlay.addEventListener('mouseup', function(e){
+    if (!drawing) return;
+    drawing = false;
+    var bounds = overlay.getBoundingClientRect();
+    var curX = e.clientX - bounds.left;
+    var curY = e.clientY - bounds.top;
+    var rx = Math.min(startX, curX), ry = Math.min(startY, curY);
+    var rw = Math.abs(curX - startX), rh = Math.abs(curY - startY);
+    if (rw < 5 || rh < 5) { if (rect) { rect.remove(); rect = null; } return; }
+
+    // Show inline form at bottom of rect
+    nameForm = document.createElement('div');
+    nameForm.style.cssText = 'position:absolute;background:var(--paper);border:1.5px solid var(--ink);padding:0.5rem;z-index:10;font-family:var(--hand-tight);font-size:0.9rem';
+    nameForm.style.left = rx + 'px';
+    nameForm.style.top  = (ry + rh + 6) + 'px';
+    nameForm.innerHTML =
+      '<input id="face-name-input" type="text" placeholder="Person name" style="font-family:var(--hand-tight);font-size:0.9rem;border:1.5px solid var(--ink);padding:0.25rem 0.5rem;margin-right:0.4rem" autofocus>'
+      + '<button id="face-save-btn" style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;margin-right:0.3rem">Save</button>'
+      + '<button id="face-cancel-btn" style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px">Cancel</button>'
+      + '<div id="face-msg" style="font-size:0.8rem;margin-top:0.25rem;color:var(--accent)"></div>';
+    overlay.appendChild(nameForm);
+
+    document.getElementById('face-cancel-btn').addEventListener('click', function(){
+      resetMode();
+    });
+
+    document.addEventListener('keydown', function onEsc(ev){
+      if (ev.key === 'Escape') { resetMode(); document.removeEventListener('keydown', onEsc); }
+    });
+
+    document.getElementById('face-save-btn').addEventListener('click', function(){
+      var nameVal = (document.getElementById('face-name-input').value || '').trim();
+      if (!nameVal) { document.getElementById('face-msg').textContent = 'Name is required.'; return; }
+
+      // Compute fractions using natural image dimensions
+      var naturalW = img.naturalWidth;
+      var naturalH = img.naturalHeight;
+      var rendered = img.getBoundingClientRect();
+      // The <img> uses object-fit:contain — rendered dimensions may include letterbox
+      // We compute the actual image area within the rendered box
+      var imgAspect = naturalW / naturalH;
+      var boxAspect = rendered.width / rendered.height;
+      var imgDisplayW, imgDisplayH, imgOffsetX, imgOffsetY;
+      if (imgAspect > boxAspect) {
+        imgDisplayW = rendered.width;
+        imgDisplayH = rendered.width / imgAspect;
+        imgOffsetX = 0;
+        imgOffsetY = (rendered.height - imgDisplayH) / 2;
+      } else {
+        imgDisplayH = rendered.height;
+        imgDisplayW = rendered.height * imgAspect;
+        imgOffsetX = (rendered.width - imgDisplayW) / 2;
+        imgOffsetY = 0;
+      }
+
+      // Overlay is positioned over the whole img element (including letterbox)
+      // Adjust rx/ry relative to the actual image content area
+      var adjX = rx - imgOffsetX;
+      var adjY = ry - imgOffsetY;
+
+      var bboxX = adjX / imgDisplayW;
+      var bboxY = adjY / imgDisplayH;
+      var bboxW = rw / imgDisplayW;
+      var bboxH = rh / imgDisplayH;
+
+      // Clamp to [0, 1]
+      bboxX = Math.max(0, Math.min(1, bboxX));
+      bboxY = Math.max(0, Math.min(1, bboxY));
+      bboxW = Math.max(0, Math.min(1 - bboxX, bboxW));
+      bboxH = Math.max(0, Math.min(1 - bboxY, bboxH));
+
+      fetch('/photos/' + PHOTO_ID + '/tag-person', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+        body: JSON.stringify({ personName: nameVal, bbox: { x: bboxX, y: bboxY, width: bboxW, height: bboxH } }),
+      })
+        .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
+        .then(function(res){
+          if (!res.ok) { document.getElementById('face-msg').textContent = res.data.error || 'Error saving.'; return; }
+          var chip = document.createElement('span');
+          chip.className = 'tag';
+          chip.style.cssText = 'display:inline-flex;align-items:center;gap:0.35rem';
+          chip.innerHTML = escHtml(nameVal)
+            + '<button class="remove-face-btn" data-face-id="' + res.data.id + '"'
+            + ' style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:0.9rem;line-height:1;padding:0" aria-label="Remove face tag">&#x2717;</button>';
+          bindRemoveBtn(chip.querySelector('.remove-face-btn'));
+          // Remove the "no faces" placeholder if present
+          var placeholder = faceList.querySelector('span[style*="ink-faint"]');
+          if (placeholder && !placeholder.classList.contains('tag')) placeholder.remove();
+          faceList.appendChild(chip);
+          resetMode();
+        })
+        .catch(function(){ document.getElementById('face-msg').textContent = 'Network error.'; });
+    });
+  });
+})();
+</script>` : ''}
   `, session, true);
 }
 

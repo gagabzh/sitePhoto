@@ -3,6 +3,9 @@ jest.mock('../../repositories/albums', () => ({
   fetchAlbumsForPhoto: jest.fn(),
   fetchAlbumsForPhotoEdit: jest.fn(),
 }));
+jest.mock('../../repositories/personFaces', () => ({
+  fetchPersonFacesForPhoto: jest.fn().mockResolvedValue([]),
+}));
 jest.mock('../../queue/producer', () => ({ addIdentificationJob: jest.fn().mockResolvedValue() }));
 jest.mock('../../imageOptimizer', () => ({ optimizeBuffer: jest.fn() }));
 jest.mock('../../extractMetadata', () => ({ extractMetadata: jest.fn().mockResolvedValue({}) }));
@@ -25,17 +28,32 @@ jest.mock('../../uploadHelpers', () => {
   const actual = jest.requireActual('../../uploadHelpers');
   return { ...actual, upload: { single: jest.fn(), array: jest.fn() }, processAndUpload: jest.fn() };
 });
+jest.mock('sharp', () => {
+  const chain = {
+    metadata: jest.fn().mockResolvedValue({ width: 1000, height: 800 }),
+    extract:  jest.fn(),
+    jpeg:     jest.fn(),
+    toBuffer: jest.fn().mockResolvedValue(Buffer.from('crop')),
+  };
+  chain.extract.mockReturnValue(chain);
+  chain.jpeg.mockReturnValue(chain);
+  const sharpFn = jest.fn(() => chain);
+  sharpFn._chain = chain;
+  return sharpFn;
+});
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const fs = require('fs');
+const sharp = require('sharp');
 const { upload, processAndUpload } = require('../../uploadHelpers');
 const storage = require('../../storage');
 const { addIdentificationJob } = require('../../queue/producer');
 const { extractMetadata } = require('../../extractMetadata');
 const { selectionBar, selectionScript } = require('../../components');
 const { fetchAlbumsForPhoto, fetchAlbumsForPhotoEdit } = require('../../repositories/albums');
+const { fetchPersonFacesForPhoto } = require('../../repositories/personFaces');
 
 let mockClient;
 
@@ -47,6 +65,8 @@ beforeEach(() => {
   });
   processAndUpload.mockResolvedValue({ filename: 'test-uuid.jpg', size: 4000 });
   storage.deletePhoto.mockRejectedValue(new Error('S3 not configured'));
+  storage.uploadPhoto.mockResolvedValue();
+  storage.downloadPhoto.mockResolvedValue(Buffer.from('fakeimagebytes'));
   addIdentificationJob.mockResolvedValue();
   extractMetadata.mockResolvedValue({});
   fs.promises.unlink.mockResolvedValue();
@@ -54,8 +74,16 @@ beforeEach(() => {
   selectionScript.mockReturnValue('<script>/* sel-script-mock */</script>');
   fetchAlbumsForPhoto.mockResolvedValue([]);
   fetchAlbumsForPhotoEdit.mockResolvedValue([]);
+  fetchPersonFacesForPhoto.mockResolvedValue([]);
   mockClient = { query: jest.fn().mockResolvedValue({ rows: [] }), release: jest.fn() };
   db.pool.connect = jest.fn().mockResolvedValue(mockClient);
+  // Re-configure sharp chain after resetAllMocks clears implementations
+  const sc = sharp._chain;
+  sharp.mockImplementation(() => sc);
+  sc.metadata.mockResolvedValue({ width: 1000, height: 800 });
+  sc.extract.mockReturnValue(sc);
+  sc.jpeg.mockReturnValue(sc);
+  sc.toBuffer.mockResolvedValue(Buffer.from('crop'));
 });
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
@@ -77,6 +105,7 @@ const FAKE_PHOTO = {
 
 function makeApp(sessionData) {
   const app = express();
+  app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
   app.use((req, res, next) => {
     req.session = { ...sessionData, destroy: (cb) => cb() };
@@ -1294,5 +1323,148 @@ describe('ALB-2: parseFrom regex — valid and invalid paths', () => {
     const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1?from=%2Fadmin');
     // Falls back to /photos
     expect(res.text).toContain('href="/photos"');
+  });
+});
+
+// ── AI-3: POST /photos/:id/tag-person ────────────────────────────────────────
+
+describe('POST /photos/:id/tag-person', () => {
+  const VALID_BBOX = { x: 0.1, y: 0.1, width: 0.3, height: 0.4 };
+
+  it('returns 201 with id, personName, cropKey on success', async () => {
+    // 1. SELECT photo (includes user_id for canModify)
+    // 2. INSERT tags RETURNING id
+    // 3. INSERT person_faces RETURNING id
+    // 4. INSERT photo_tags (no return needed)
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 1, filename: 'test-uuid.jpg', s3_key: 'test-uuid.jpg', user_id: 10 }] }) // 1. SELECT photo
+      .mockResolvedValueOnce({ rows: [{ id: 5 }] })  // 2. INSERT tags
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] })  // 3. INSERT person_faces
+      .mockResolvedValueOnce({ rows: [] });            // 4. INSERT photo_tags
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: 'Alice', bbox: VALID_BBOX });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe(7);
+    expect(res.body.personName).toBe('Alice');
+    expect(res.body.cropKey).toMatch(/^faces\//);
+    expect(storage.downloadPhoto).toHaveBeenCalledWith('test-uuid.jpg');
+    expect(storage.uploadPhoto).toHaveBeenCalledWith(
+      expect.stringMatching(/^faces\//),
+      expect.any(Buffer),
+      'image/jpeg'
+    );
+  });
+
+  it('returns 404 when photo not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] }); // SELECT photo → empty
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/999/tag-person')
+      .send({ personName: 'Bob', bbox: VALID_BBOX });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it('returns 422 when personName is empty', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: '   ', bbox: VALID_BBOX });
+
+    expect(res.status).toBe(422);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when bbox is out of range', async () => {
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: 'Alice', bbox: { x: 1.5, y: 0.1, width: 0.3, height: 0.4 } });
+
+    expect(res.status).toBe(422);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 when computed crop is smaller than 20x20', async () => {
+    // Image is 1000x800; bbox of 0.01 x 0.01 → 10x8 px crop → rejected
+    sharp._chain.metadata.mockResolvedValue({ width: 1000, height: 800 });
+
+    db.query.mockResolvedValueOnce({ rows: [{ id: 1, filename: 'test-uuid.jpg', s3_key: 'test-uuid.jpg', user_id: 10 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: 'Alice', bbox: { x: 0.0, y: 0.0, width: 0.01, height: 0.01 } });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/too small/i);
+    expect(storage.uploadPhoto).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 for viewer', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: 'Alice', bbox: VALID_BBOX });
+
+    expect(res.status).toBe(403);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when editor tags faces on another user\'s photo', async () => {
+    // Photo owned by userId 99, session is userId 10 (editor)
+    db.query.mockResolvedValueOnce({ rows: [{ id: 1, filename: 'x.jpg', s3_key: 'x.jpg', user_id: 99 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/1/tag-person')
+      .send({ personName: 'Alice', bbox: VALID_BBOX });
+
+    expect(res.status).toBe(403);
+    expect(storage.downloadPhoto).not.toHaveBeenCalled();
+  });
+});
+
+// ── AI-3: DELETE /photos/:id/tag-person/:faceId ──────────────────────────────
+
+describe('DELETE /photos/:id/tag-person/:faceId', () => {
+  it('returns 204 and deletes face record', async () => {
+    // 1. SELECT person_faces WHERE id AND photo_id
+    // 2. DELETE person_faces WHERE id
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 7, user_id: 10, crop_s3_key: 'faces/crop.jpg' }] }) // 1. SELECT face
+      .mockResolvedValueOnce({ rows: [] }); // 2. DELETE
+
+    storage.deletePhoto.mockResolvedValue(); // S3 delete succeeds
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .delete('/photos/1/tag-person/7');
+
+    expect(res.status).toBe(204);
+    expect(storage.deletePhoto).toHaveBeenCalledWith('faces/crop.jpg');
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM person_faces'),
+      [7]
+    );
+  });
+
+  it('returns 404 when face not found', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] }); // SELECT → empty
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .delete('/photos/1/tag-person/999');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 403 when non-owner editor tries to delete', async () => {
+    // Face belongs to userId 99, session is userId 10 (editor, not admin)
+    db.query.mockResolvedValueOnce({ rows: [{ id: 7, user_id: 99, crop_s3_key: 'faces/crop.jpg' }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .delete('/photos/1/tag-person/7');
+
+    expect(res.status).toBe(403);
+    // No DELETE query should have been called
+    expect(db.query).toHaveBeenCalledTimes(1);
   });
 });
