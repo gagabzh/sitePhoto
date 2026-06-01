@@ -44,17 +44,17 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | IMP-2 | Batch upload                                                | Photos | Done | — |
 | IMP-3 | Back buttons at the top of pages                            | Photos | Done | — |
 | IMP-4 | Select all                                                  | Photos | Done | — |
-| LB-1 | Lightbox / fullscreen viewer in album                       | Photos | Backlog | — |
+| LB-1 | Lightbox / fullscreen viewer in album                       | Photos | Done | #97 — vanilla JS lightbox, keyboard nav, prev/next — src/routes/albums.js + albumsViews.js |
 | US-A1 | Create an album                                             | Albums | Done | — |
 | US-A2 | Add / remove photos from an album                           | Albums | Done | — |
 | US-A3 | Edit / delete an album                                      | Albums | Done | — |
 | IMP-5 | One album per photo                                         | Albums | Done | — |
-| MA-1 | A photo can belong to multiple albums                       | Albums | Backlog | — |
-| MA-2 | Photo detail shows album memberships                        | Albums | Backlog | — |
-| MA-3 | Manage album memberships from the edit form                 | Albums | Backlog | — |
-| ALB-1 | Click-to-edit in album, explicit lightbox button            | Albums | Backlog | — |
-| ALB-2 | Context-aware back button on photo detail and edit pages    | Albums | Backlog | — |
-| RA-1 | Create a snapshot album from a tag recipe                   | Albums | Backlog | — |
+| MA-1 | A photo can belong to multiple albums                       | Albums | Done | #96 — album_photos join table, add/remove routes — src/repositories/albums.js + routes/photos.js |
+| MA-2 | Photo detail shows album memberships                        | Albums | Done | #96 — album membership list on photo detail — src/repositories/albums.js + routes/photos.js |
+| MA-3 | Manage album memberships from the photo edit form           | Albums | Done | #96 — transactional checklist reconciliation — src/repositories/albums.js + routes/photos.js |
+| ALB-1 | Click-to-edit in album, explicit lightbox button            | Albums | Done | #98 — editor thumbnail → edit link, lb-btn lightbox icon — src/routes/albumsViews.js |
+| ALB-2 | Context-aware back button on photo detail and edit pages    | Albums | Done | #98 — backLabel(from) helper, from propagated through cancel/delete — src/routes/photosViews.js |
+| RA-1 | Create a snapshot album from a tag recipe                   | Albums | Done | #99 — POST /albums/from-recipe, transactional bulk insert — src/routes/albums.js |
 | US-AC1 | Grant viewer access to an album                             | Access Control | Done | — |
 | US-AC2 | Revoke viewer access                                        | Access Control | Done | — |
 | US-V1 | Browse albums                                               | Browsing | Done | — |
@@ -86,8 +86,8 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-NC5 | Import progress feedback                                    | Nextcloud | Done | #93 |
 | AI-1 | Duplicate photo detection                                   | Local AI | Done | admin-ai.js |
 | AI-2 | People identification and tagging                           | Local AI | Done | worker.js |
-| AI-3 | Manual person tagging                                       | Local AI | Backlog | — |
-| AI-4 | AI learns from manual tags                                  | Local AI | Backlog | — |
+| AI-3 | Manual person tagging                                       | Local AI | Done | #101 — POST /photos/:id/tag-person, sharp crop → S3 faces/, person_faces table (v15) — src/routes/photos.js |
+| AI-4 | AI learns from manual tags                                  | Local AI | Done | #101 — GET /internal/known-faces/:userId, worker few-shot injection — src/routes/internal.js + worker/src/worker.js |
 | IQ-1 | Application security hardening                              | Infrastructure | Backlog | — |
 | IQ-2 | Dependency CVE monitoring                                   | Infrastructure | Backlog | — |
 | IQ-3 | Linter                                                      | Infrastructure | Done | package.json |
