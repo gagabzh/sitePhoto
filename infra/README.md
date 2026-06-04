@@ -231,10 +231,7 @@ Run the DB migration and start the stack:
 # Start the full stack (first run also creates the DB schema via init-db.sql)
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 
-# Run the V9 migration (adds s3_key column)
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T db \
-  psql -U sitephoto -d sitephoto -f /dev/stdin < migrations/v9.sql
-
+# Migrations run automatically on startup via src/migrate.js — no manual step needed.
 # Verify everything is up
 docker compose -f docker-compose.prod.yml --env-file .env.prod ps
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs app --tail=20
@@ -440,7 +437,7 @@ OVH bills stopped instances. Use **shelve** instead of stop to avoid charges:
 OVH Manager → Public Cloud → Instances → Instance-2 → Shelve
 ```
 
-Or via OVH API — the optional Phase 11 in `docs/v4-summary.md` covers automatic lifecycle management.
+Or via OVH API — the optional Phase 11 in `docs/history/v4-summary.md` covers automatic lifecycle management.
 
 ---
 
