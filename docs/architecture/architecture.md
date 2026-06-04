@@ -64,8 +64,8 @@ sequenceDiagram
     participant Ollama
 
     User->>App: POST /photos (multipart)
-    App->>S3: upload buffer → photos/{userId}/{uuid}/{filename}
-    App->>Redis: BullMQ — addIdentificationJob({ photoId, s3Key, socketId })
+    App->>S3: upload buffer → {uuid}{ext}
+    App->>Redis: BullMQ — addIdentificationJob({ photoId, userId, photoS3Key })
     App-->>User: 201 Created (photo saved, identification pending)
 
     Worker->>Redis: consume job
@@ -85,7 +85,7 @@ sequenceDiagram
 graph LR
     Push([git push → main])
 
-    Push -- "src/** / public/**\nDockerfile / package*.json" --> WF1
+    Push -- "src/** / public/**\nDockerfile / package*.json\nmigrations/** / init-db.sql\nCaddyfile / scripts/**\n.npm-audit-exceptions" --> WF1
 
     Push -- "worker/**" --> WF2
 

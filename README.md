@@ -20,6 +20,12 @@ A self-hosted photo gallery built with Express.js and PostgreSQL. It supports al
 
 **Timeline** — chronological view with album/tag/date-range filters
 
+**Nextcloud integration** — link photos to Nextcloud originals, download originals from a Nextcloud share, import an entire shared Nextcloud folder with real-time progress feedback
+
+**Travel pages** — create travel records with GPX routes, link albums and photos, view routes and waypoints on an interactive map or in a journal view, share travels with viewers
+
+**Manual face tagging** — draw bounding boxes on the photo detail page to name people; tagged face crops feed back into AI identification as few-shot examples, improving future recognition accuracy
+
 **Infrastructure** — S3-compatible object storage, async BullMQ queue (upload returns immediately), real-time WebSocket notifications (socket.io), on-demand worker lifecycle (unshelve on job / shelve after idle), PostgreSQL session persistence, nightly instance scheduling via GitHub Actions
 
 ---
@@ -202,8 +208,9 @@ Two AI features are available under **Admin -> AI Tools**:
 
 - **Duplicate detection** — perceptual hash (dHash) scan over all photos; groups near-identical images for review. No extra setup required.
 - **People identification** — sends photos to a local vision model (Ollama) and matches faces against existing people tags. Requires Ollama running on the host.
+- **Manual face tagging** — draw bounding boxes on the photo detail page to name a person; the tagged crop is stored and injected as a few-shot example into future Ollama identification requests, progressively improving accuracy without retraining the model.
 
-If Ollama is not running, duplicate detection still works and people identification returns a graceful error.
+If Ollama is not running, duplicate detection and manual face tagging still work; Ollama-based identification returns a graceful error.
 
 ### Installing Ollama
 

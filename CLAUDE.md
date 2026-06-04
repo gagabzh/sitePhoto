@@ -44,10 +44,24 @@ Self-hosted photo gallery with albums, tags, timeline, GPS map, Nextcloud integr
 | `permissions.js` | Album sharing / viewer permission checks |
 | `queue/producer.js` | BullMQ `addIdentificationJob({ photoId, userId, photoS3Key })` |
 | `queue/events.js` | BullMQ queue events (triggers instance lifecycle) |
-| `routes/internal.js` | `POST /internal/identification-result` and `POST /internal/describe-person-result` — worker callback, guarded by `requireWorkerSecret` |
+| `routes/internal.js` | Worker callbacks, all guarded by `requireWorkerSecret`: `POST /internal/identification-result`, `POST /internal/describe-person-result`, `POST /internal/nextcloud-photo`, `POST /internal/nextcloud-import-progress`, `GET /internal/known-faces/:userId` |
 | `routes/photos.js` | Photo CRUD, upload, delete |
 | `routes/albums.js` | Album management + sharing |
 | `routes/admin-ai.js` | Duplicate detection + manual AI trigger |
+
+### `src/repositories/`
+
+| File | Purpose |
+|---|---|
+| `albums.js` | DB query logic for album operations |
+| `map.js` | DB query logic for map / GPS operations |
+| `personFaces.js` | DB query logic for person face records |
+| `photos.js` | DB query logic for photo CRUD |
+| `tags.js` | DB query logic for tag operations |
+| `timeline.js` | DB query logic for timeline view |
+| `travels.js` | DB query logic for travel records |
+
+Each repository file is imported by the corresponding route file and owns all SQL for its domain.
 
 ### `worker/src/`
 
@@ -106,7 +120,7 @@ See `infra/README.md` for full deployment runbook and `docs/architecture/archite
 
 - `migrations/v*.sql` — numbered SQL files, applied in order at startup by `src/migrate.js`. **This is the source of truth.**
 - `init-db.sql` — Docker init script that runs only on a completely fresh volume. Contains a snapshot equivalent to running all migrations. Do not add new schema changes here; add a new `migrations/vN.sql` file instead.
-- Current files: `v1.sql` through `v9.sql`.
+- Current files: `v1.sql` through `v15.sql`.
 
 ---
 
