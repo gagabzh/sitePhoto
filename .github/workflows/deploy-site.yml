@@ -12,6 +12,17 @@ on:
       - 'init-db.sql'
       - 'Caddyfile'
       - 'docker-compose.prod.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'migrations/**'
+      - 'Dockerfile'
+      - 'package*.json'
+      - 'init-db.sql'
+      - 'Caddyfile'
+      - 'docker-compose.prod.yml'
 
 jobs:
   test:

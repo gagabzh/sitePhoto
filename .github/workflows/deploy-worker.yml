@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'worker/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'worker/**'
   workflow_dispatch:
 
 jobs:
