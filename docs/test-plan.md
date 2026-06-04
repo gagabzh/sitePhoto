@@ -3,8 +3,10 @@
 ## Preconditions
 
 - App is running (`docker compose up`)
-- You are logged in as an admin (`saev.bzh@pm.me` / `changeme`)
+- You are logged in as an admin (`ADMIN_EMAIL` / `ADMIN_PASSWORD`)
 - At least one other user exists for edit/delete/password tests
+
+> **Note**: Replace `ADMIN_EMAIL` and `ADMIN_PASSWORD` with your actual admin credentials.
 
 ---
 
@@ -400,6 +402,118 @@
 **Expected:**
 - The page reloads.
 - The viewer disappears from the main list and reappears in the sidebar candidates list.
+
+---
+
+## Feature: Browsing (US-V1 to US-V4)
+
+### Preconditions
+- Multiple albums exist with photos
+- Some albums are accessible to the current user, some are not
+
+---
+
+### US-V1 — Browse albums
+
+**Steps:**
+1. Log in as any role.
+2. Navigate to the albums page.
+
+**Expected:**
+- All albums accessible to the current user are displayed
+- Albums show thumbnail, title, and photo count
+- Navigation is intuitive
+
+---
+
+### US-V2 — View album content
+
+**Steps:**
+1. Navigate to an album you have access to.
+2. Click on the album.
+
+**Expected:**
+- Album detail page loads
+- All photos in the album are displayed
+- Photo thumbnails, titles, and metadata are visible
+
+---
+
+### US-V3 — Browse by tag
+
+**Steps:**
+1. Navigate to the tags page or use the tag filter.
+2. Click on a tag.
+
+**Expected:**
+- All photos with that tag are displayed
+- Tag name and photo count are visible
+- Can navigate back to full photo list
+
+---
+
+### US-V4 — Access denied
+
+**Steps:**
+1. As a viewer, try to access an album you don't have permission for.
+   - Either via direct URL or navigation.
+
+**Expected:**
+- Access denied page is displayed
+- Clear message explaining you don't have permission
+- Option to navigate back to accessible content
+- No error or crash
+
+---
+
+## Feature: Tags (TG-1, TG-2)
+
+### Preconditions
+- Multiple photos exist with various tags
+- At least 3 different tags are in use
+
+---
+
+### TG-1 — Multi-tag filter
+
+**Steps:**
+1. Navigate to the tag combinator page.
+2. Select AND logic.
+3. Choose two tags (e.g., "beach" AND "summer").
+4. Apply the filter.
+
+**Expected:**
+- Only photos with BOTH tags are displayed
+- Photo count updates to reflect the filter
+- Can switch between AND/ANY/NOT logic
+
+**AND logic:**
+- Photos must have ALL selected tags
+
+**ANY logic:**
+- Photos must have ANY of the selected tags
+
+**NOT logic:**
+- Photos must NOT have the selected tags
+
+---
+
+### TG-2 — Tag autocomplete
+
+**Steps:**
+1. Navigate to the tag input field (on photo upload or edit).
+2. Start typing a tag name (e.g., "vac").
+
+**Expected:**
+- Dropdown appears with matching tag suggestions
+- Suggestions update as you type
+- Can select a suggestion with mouse or keyboard
+- Selected tag is added to the photo
+
+**Edge case — No matches:**
+- Type a tag that doesn't exist yet
+- Continue typing the full tag name
+- Can create a new tag
 
 ---
 
