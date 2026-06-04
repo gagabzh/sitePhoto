@@ -11,6 +11,6 @@
     "@aws-sdk/lib-storage": "^3.0.0",
     "@xmldom/xmldom": "^0.9.10",
     "bullmq": "^5.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^11.0.0"
   }
 }
