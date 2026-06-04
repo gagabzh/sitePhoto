@@ -68,6 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     needs: test
+    if: github.event_name != 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
