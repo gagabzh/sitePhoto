@@ -32,9 +32,91 @@ A self-hosted photo gallery built with Express.js and PostgreSQL. It supports al
 
 ## Architecture
 
-Instance-1 (always on) runs the Express app, PostgreSQL, Redis, and Caddy. Instance-2 (shelved when idle) runs the BullMQ worker and Ollama. Both instances share an OVH Object Storage bucket over the public internet; internal traffic (Redis, worker callbacks) stays on the private vRack (`10.0.0.0/24`). The worker POSTs results back to Instance-1's internal API, which then pushes a WebSocket notification to the browser.
+### Production Architecture
 
-See [docs/architecture/architecture.md](docs/architecture/architecture.md) for diagrams and full design notes.
+SitePhoto runs on **two OVH Public Cloud instances** on a private vRack network, designed for cost efficiency and scalability:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         OVH Public Cloud                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────────┐       vRack Private Network              │
+│  │    Instance-1         │         10.0.0.0/24                       │
+│  │    (b3-4)             │                                           │
+│  │  ┌─────────────────┐ │  ┌─────────────────┐                      │
+│  │  │  Express.js     │ │  │  Instance-2     │                      │
+│  │  │  (Node.js)      │ │  │  (c3-8)         │                      │
+│  │  └────────┬────────┘ │  │  ┌─────────────┐ │                      │
+│  │           │          │  │  │  BullMQ      │ │                      │
+│  │  ┌────────▼────────┐ │  │  │  Worker     │ │                      │
+│  │  │  Caddy          │◄┼──┼──▶│  (Node.js)   │ │                      │
+│  │  │  (HTTPS/HTTP)   │ │  │  └─────────────┘ │                      │
+│  │  └─────────────────┘ │  │  ┌─────────────┐ │                      │
+│  │                     │  │  │  Ollama      │ │                      │
+│  │  ┌─────────────────┐ │  │  │  (llava)    │ │                      │
+│  │  │  PostgreSQL    │ │  │  └─────────────┘ │                      │
+│  │  │  (Photos, DB)  │ │  │                 │ │                      │
+│  │  └─────────────────┘ │  │                 │ │                      │
+│  │                     │  │  ┌─────────────┐ │                      │
+│  │  ┌─────────────────┐ │  │  │  Redis       │ │                      │
+│  │  │  MinIO          │ │  │  │  (Queue)    │ │                      │
+│  │  │  (Local Dev)    │ │  │  └─────────────┘ │                      │
+│  │  └─────────────────┘ │  │                 │ │                      │
+│  └──────────────────────┘  └─────────────────┘                      │
+│                            │                                        │
+│                     OVH Object Storage (S3)                          │
+│                     ┌──────────────────────┐                         │
+│                     │   Photos Bucket      │                         │
+│                     │   (Private)          │                         │
+│                     └──────────────────────┘                         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### Instance-1 (Always On — b3-4)
+- **Role**: Web application server
+- **Services**: Express.js app, PostgreSQL, Redis, Caddy (HTTPS reverse proxy)
+- **Storage**: Local Docker volumes + OVH Object Storage
+- **Cost**: ~€XX/month (2 vCPU, 4 GB RAM)
+- **Uptime**: 24/7
+
+#### Instance-2 (On-Demand — c3-8)
+- **Role**: AI processing worker
+- **Services**: BullMQ worker, Ollama (llava model)
+- **Lifecycle**: Shelved when idle, auto-unshelved on job arrival
+- **Cost**: ~€YY/month when active, ~€0.01/GB/month when shelved
+- **Cost Savings**: ~€10/month via nightly shelve/unshelve schedule
+
+#### Network Design
+- **Public**: Internet → Caddy (HTTPS) → Express app
+- **Private (vRack)**: Instance-1 ↔ Instance-2 (10.0.0.0/24)
+  - Redis: Instance-1:6379 ←→ Instance-2 (queue communication)
+  - Worker callbacks: Instance-2 → Instance-1 internal API
+- **Storage**: Both instances → OVH Object Storage (public endpoints, private access via keys)
+
+#### Data Flow
+```
+User Upload → Express → S3 → Redis Queue → Worker → Ollama → Internal API → Socket.io → Browser
+                 ↓
+            PostgreSQL
+              (metadata)
+```
+
+1. User uploads photo via Express app
+2. Photo stored in S3, metadata in PostgreSQL
+3. Job queued in Redis (BullMQ)
+4. Worker (Instance-2) polls queue, downloads from S3
+5. Ollama processes image (llava model)
+6. Results POSTed to `/internal/identification-result` on Instance-1
+7. Socket.io notifies client browser in real-time
+
+#### Cost Optimization Features
+- **Instance-2 Auto-Shelving**: Worker instance is shelved (stopped, disk preserved) when idle and automatically unshelved when jobs arrive
+- **Nightly Schedule**: Instance-1 is shelved nightly (23:00-06:00 CET) via GitHub Actions
+- **S3 Storage**: Cheaper than block storage, scales independently
+- **Docker Compose**: Lightweight container orchestration
+
+See [docs/architecture/architecture.md](docs/architecture/architecture.md) for detailed diagrams and design notes.
 
 ---
 
