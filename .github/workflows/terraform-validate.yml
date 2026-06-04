@@ -1,0 +1,32 @@
+name: Terraform Validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-validate.yml'
+
+jobs:
+  terraform-validate:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: latest
+          terraform_wrapper: false
+
+      # terraform validate checks config syntax without needing provider auth
+      # It does need init to download provider schemas for full validation
+      - name: Terraform Init (local backend only, no auth required)
+        run: terraform init -no-color -backend=false
+        working-directory: infra
+
+      - name: Terraform Validate
+        run: terraform validate -no-color
+        working-directory: infra
