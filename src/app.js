@@ -1,5 +1,6 @@
 const express = require('express');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const sessionMiddleware = require('./session');
 const { UPLOAD_DIR } = require('./uploadHelpers');
@@ -16,6 +17,23 @@ const app = express();
 // the real client IP from X-Forwarded-For instead of Caddy's container IP.
 app.set('trust proxy', 1);
 
+// Rate limiters — applied before auth routes and globally after static serving.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'Too many attempts, please try again later.' }),
+});
+
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'Too many attempts, please try again later.' }),
+});
+
 // Nonce must be set before helmet so the CSP header can reference it
 app.use(nonceMiddleware);
 app.use(helmet({
@@ -31,7 +49,17 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"], // existing onclick= handlers in views
     },
   },
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+  frameguard: { action: 'deny' },
+  noSniff: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
+
+// Permissions-Policy is not yet part of helmet's defaults; set it manually.
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -64,9 +92,15 @@ app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1y', imm
 app.use('/vendor/leaflet', express.static(path.join(__dirname, '..', 'node_modules', 'leaflet', 'dist')));
 app.use('/vendor/leaflet.markercluster', express.static(path.join(__dirname, '..', 'node_modules', 'leaflet.markercluster', 'dist')));
 
+// Global rate limit — after static assets so files are not counted against the limit.
+app.use(globalLimiter);
+
 // Internal worker endpoint — authenticated by WORKER_API_SECRET, not by session
 app.use('/internal', require('./routes/internal'));
 
+// Auth rate limit — applied to login and register before the auth router handles them.
+app.post('/login', authLimiter);
+app.post('/register', authLimiter);
 app.use(require('./routes/auth'));
 app.use(requireAuth);
 app.use(csrfMiddleware);

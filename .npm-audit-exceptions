@@ -1,0 +1,3 @@
+# npm audit advisory exceptions
+# Add one advisory ID per line to exempt it from CI failure.
+# Example: 1234567
