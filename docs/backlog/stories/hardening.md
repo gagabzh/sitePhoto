@@ -69,3 +69,37 @@ As a developer, I want `DELETE /account/sessions/:sid` to have a `returns 500 wh
 As a developer, I want `express-rate-limit` mocked in `account.test.js` so that `sessionRevokeLimiter`'s in-memory store cannot cause spurious 429 responses as the test suite grows.
 
 *Technical note:* `sessionRevokeLimiter` uses an in-memory store that is not reset between tests. If the number of `DELETE` route test cases grows past 30, tests will start returning 429 instead of their expected status codes. Add `jest.mock('express-rate-limit', () => () => (req, res, next) => next())` at the top of `account.test.js`, matching the pattern already used by the avatar tests in the same file.
+
+---
+
+## IQ-1 Follow-up (PR #102)
+
+The following items were identified as non-blocking observations during the tech-lead review of PR #102 (`feat/iq-hardening`). All are low-priority improvements or deliberate decisions to document.
+
+**IQ-7 — Add `skipSuccessfulRequests: true` to `authLimiter`**
+As a legitimate user, I can log in successfully from multiple devices or manage sessions without triggering the brute-force lockout — because the auth rate limiter only counts failed login attempts, not successful ones.
+
+- `authLimiter` in `src/app.js` is configured with `skipSuccessfulRequests: true`.
+- A user who logs in successfully 10 times in a 15-minute window from the same IP (e.g. different devices, re-authentication after session revocation) is never rate-limited.
+- An attacker who submits 10 incorrect passwords still hits the 429 limit on the 11th attempt — the behaviour for failed attempts is unchanged.
+- The existing test for the 429 response path continues to pass (tests use failed login attempts, so `skipSuccessfulRequests` does not affect them).
+
+*Technical note:* Add `skipSuccessfulRequests: true` to the `authLimiter` options object in `src/app.js` (or `src/rateLimits.js` if extracted). The `express-rate-limit` v8 API supports this option natively — no additional dependency needed. A "successful request" is defined as any response with status < 400, which covers the HTTP 302 redirect on successful login.
+
+**IQ-10 — Document or address the unmetered `/uploads/:filename` route**
+As a developer, I want a recorded decision on whether the public photo-serving route requires rate-limiting or authentication — so the current absence of a rate limit is intentional and visible in code, not an oversight.
+
+- Either the route acquires an `express-rate-limit` instance appropriate for media serving (e.g. 200 req/min per IP), OR a code comment in `src/app.js` at the route registration explicitly documents why rate-limiting is omitted (e.g. "Intentionally unmetered: CDN/Caddy handles egress; S3 keys are UUIDs and not guessable.").
+- If rate-limiting is added: the limiter is registered directly on the `/uploads/:filename` route handler, not via `globalLimiter`, to avoid conflating the two concerns.
+- If rate-limiting is omitted: the decision notes whether S3 key guessability, CDN egress limits, or authentication is the accepted mitigation.
+- The chosen approach is reflected in `src/app.js`; no other file requires changes.
+
+*Technical note:* The route is registered before `requireAuth` because photos shared via links must be accessible to unauthenticated viewers. The current `globalLimiter` does not cover this route (it is registered earlier in `app.js`). The risk is unlimited egress for anyone who knows a valid S3 key — S3 keys are UUIDs and therefore not enumerable, but confirmed leaked keys (e.g. via share links) can be replayed without bound.
+
+**IQ-11 — Document the `Referrer-Policy` override as a deliberate policy decision**
+As a developer reading `src/app.js`, I can see why `Referrer-Policy` is set to `strict-origin-when-cross-origin` instead of Helmet 8's default `no-referrer` — so no future reviewer removes it thinking it is accidental.
+
+- A code comment in `src/app.js` at the Helmet configuration block explains: (1) that Helmet 8 defaults to `no-referrer`, (2) that `strict-origin-when-cross-origin` was chosen deliberately, and (3) the concrete reason (e.g. cross-origin navigations to map tile providers or share targets require the `Origin` header to be forwarded).
+- The comment is 2–4 lines and follows the existing comment style in `src/app.js`.
+- No functional change to the header value or Helmet options — documentation only.
+- `npm test` is unaffected.
