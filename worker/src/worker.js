@@ -10,8 +10,9 @@ const {
   postNextcloudImportProgress,
   insertImportedPhoto,
   fetchKnownFaces,
+  downloadNextcloudFile,
 } = require('./instance1-api');
-const { downloadFileAsBuffer, EXT_MAP } = require('./nextcloudWebdav');
+const { EXT_MAP } = require('./nextcloudWebdav');
 
 const IDENTIFICATION_PROMPT =
   process.env.IDENTIFICATION_PROMPT ||
@@ -100,8 +101,8 @@ const ncWorker = new Worker('nextcloud-import', async (job) => {
 
   let succeeded = false;
   try {
-    // Step a: download from Nextcloud
-    const buffer = await downloadFileAsBuffer(shareUrl, fileName);
+    // Step a: download from Nextcloud via Instance-1 proxy
+    const buffer = await downloadNextcloudFile(shareUrl, fileName);
 
     // Step b: generate S3 key
     const ext = EXT_MAP[mimeType] || '.jpg';

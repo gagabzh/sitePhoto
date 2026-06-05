@@ -5,6 +5,7 @@ const { wrapAsync } = require('../middleware');
 const { notifyUser } = require('../notifications');
 const { downloadPhoto } = require('../storage');
 const db = require('../db');
+const { downloadFileAsBuffer } = require('../nextcloudWebdav');
 
 function requireWorkerSecret(req, res, next) {
   const secret = process.env.WORKER_API_SECRET;
@@ -151,6 +152,25 @@ router.get('/known-faces/:userId', requireWorkerSecret, wrapAsync(async (req, re
   }));
 
   res.json(results.filter(Boolean));
+}));
+
+// GET /internal/nextcloud-file — proxy download from Nextcloud for worker
+// Query params: shareUrl, fileName
+// Returns: file buffer
+router.get('/nextcloud-file', requireWorkerSecret, wrapAsync(async (req, res) => {
+  const { shareUrl, fileName } = req.query;
+  if (!shareUrl || !fileName) {
+    return res.status(400).json({ error: 'Missing shareUrl or fileName' });
+  }
+  
+  try {
+    const buffer = await downloadFileAsBuffer(shareUrl, fileName);
+    res.set('Content-Type', 'application/octet-stream');
+    res.send(buffer);
+  } catch (err) {
+    console.error('[internal] nextcloud-file proxy failed:', err.message);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
 }));
 
 module.exports = router;
