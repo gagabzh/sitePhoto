@@ -2,7 +2,7 @@
 
 const http = require('http');
 
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 300_000;
 const HOST  = process.env.OLLAMA_HOST  || '127.0.0.1';
 const PORT  = parseInt(process.env.OLLAMA_PORT  || '11434', 10);
 const MODEL = process.env.OLLAMA_MODEL || 'llava';
