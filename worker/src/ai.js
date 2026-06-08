@@ -38,7 +38,7 @@ async function generate({ model = MODEL, prompt, images = [] }) {
     );
     req.setTimeout(TIMEOUT_MS, () => {
       req.destroy();
-      reject(new Error('Ollama: request timed out after 120 s'));
+      reject(new Error(`Ollama: request timed out after ${TIMEOUT_MS / 1000} s`));
     });
     req.on('error', (err) => reject(new Error(`Ollama unreachable: ${err.message}`)));
     req.write(payload);
