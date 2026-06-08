@@ -154,7 +154,7 @@ jobs:
             echo "Worker deploy complete: $(date)"
 
       - name: Shelve Instance-2 after deploy
-        if: always()
+        if: false  # DEBUGGING: Shelving deactivated for Instance-2
         env:
           OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
           OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
