@@ -54,6 +54,21 @@ describe('GET /photos/nextcloud-import — import form', () => {
     const res = await request(makeApp(VIEWER_SESSION)).get('/photos/nextcloud-import');
     expect(res.status).toBe(403);
   });
+
+  it('includes nc-tags input field', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/nextcloud-import');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('id="nc-tags"');
+    expect(res.text).toContain('placeholder="Paris, Vacation"');
+  });
+
+  it('includes tag autocomplete script for nc-tags', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/nextcloud-import');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('document.getElementById(\'nc-tags\')');
+    expect(res.text).toContain('/tags/autocomplete?q=');
+    expect(res.text).toContain('tag-ac-wrap');
+  });
 });
 
 // ── POST /photos/nextcloud-import — preview ───────────────────────────────────
