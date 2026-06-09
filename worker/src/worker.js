@@ -10,8 +10,9 @@ const {
   postNextcloudImportProgress,
   insertImportedPhoto,
   fetchKnownFaces,
+  downloadNextcloudFile,
 } = require('./instance1-api');
-const { downloadFileAsBuffer, EXT_MAP } = require('./nextcloudWebdav');
+const { EXT_MAP } = require('./nextcloudWebdav');
 
 const IDENTIFICATION_PROMPT =
   process.env.IDENTIFICATION_PROMPT ||
@@ -39,7 +40,11 @@ const worker = new Worker('identification', async (job) => {
     }
     if (!images.length) throw new Error('could not download any photos for describe-person');
 
-    const prompt = `Describe the physical appearance of the main person in the photo${images.length > 1 ? 's' : ''}: hair color and style, approximate age, and one or two distinctive features.`;
+    const prompt = `Analyze all the people in the photo${images.length > 1 ? 's' : ''}:
+1. For each person, describe their physical appearance: hair color/style, approximate age, distinctive features.
+2. If you recognize the same person from other photos in this collection, state their name.
+3. If unknown, provide a unique identifier based on their appearance (e.g., "blonde woman with glasses").
+4. Note the person's position in the photo (left/center/right, foreground/background).`;
     const result = await generate({ prompt, images });
     const description = (result.response || '').trim().replace(/^["']|["']$/g, '').slice(0, 500);
 
@@ -48,9 +53,10 @@ const worker = new Worker('identification', async (job) => {
     return;
   }
 
-  // identify-photo
-  const { photoId, userId, photoS3Key } = job.data;
-  console.log(`[worker] job ${job.id} — photo ${photoId} (${photoS3Key})`);
+  // identify-photo or manual-identify-photo
+  const { photoId, userId, photoS3Key, source } = job.data;
+  const isManual = source === 'manual';
+  console.log(`[worker] job ${job.id} — photo ${photoId} (${photoS3Key})${isManual ? ' [manual]' : ''}`);
 
   // AI-4: fetch known faces for few-shot injection (fail gracefully)
   let knownFaces = [];
@@ -73,9 +79,28 @@ const worker = new Worker('identification', async (job) => {
     prompt = `Known people in this collection:\n${names}\n\nIdentify the people visible in the last image. For each person, provide their name if they match a known person, or describe them briefly if unknown. Also describe the scene.`;
   }
 
-  const result = await generate({ prompt, images });
+  let ollamaResponse;
+  try {
+    ollamaResponse = await generate({ prompt, images });
+  } catch (err) {
+    // For manual jobs, post error to client; for nextcloud jobs, let the existing error handling work
+    if (isManual) {
+      await postIdentifyPeopleResult({ photoId, userId, error: err.message });
+    }
+    throw err;
+  }
 
-  await postIdentificationResult({ photoId, userId, tags: result.response });
+  const responseText = (ollamaResponse.response || '').toLowerCase();
+  const tagRows = knownFaces.map(f => ({ id: f.personName, name: f.personName }));
+  const suggestions = tagRows
+    .filter(t => responseText.includes(t.name.toLowerCase()))
+    .map(t => ({ tagId: t.id, name: t.name, hasReference: true }));
+
+  if (isManual) {
+    await postIdentifyPeopleResult({ photoId, userId, suggestions });
+  } else {
+    await postIdentificationResult({ photoId, userId, tags: responseText });
+  }
   console.log(`[worker] job ${job.id} done`);
 }, { connection });
 
@@ -100,8 +125,8 @@ const ncWorker = new Worker('nextcloud-import', async (job) => {
 
   let succeeded = false;
   try {
-    // Step a: download from Nextcloud
-    const buffer = await downloadFileAsBuffer(shareUrl, fileName);
+    // Step a: download from Nextcloud via Instance-1 proxy
+    const buffer = await downloadNextcloudFile(shareUrl, fileName);
 
     // Step b: generate S3 key
     const ext = EXT_MAP[mimeType] || '.jpg';

@@ -1,6 +1,6 @@
 const http = require('http');
 
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 300_000;
 const HOST  = process.env.OLLAMA_HOST  || '127.0.0.1';
 const PORT  = parseInt(process.env.OLLAMA_PORT  || '11434', 10);
 const MODEL = process.env.OLLAMA_MODEL || 'llava';
@@ -39,7 +39,7 @@ async function generate({ model = MODEL, prompt, images = [] }) {
     );
     req.setTimeout(TIMEOUT_MS, () => {
       req.destroy();
-      reject(new Error('Ollama: request timed out after 120 s'));
+      reject(new Error(`Ollama: request timed out after ${TIMEOUT_MS / 1000} s`));
     });
     req.on('error', (err) => {
       reject(new Error(`Ollama unreachable: ${err.message}`));

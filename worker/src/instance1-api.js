@@ -18,6 +18,21 @@ async function postIdentificationResult(result) {
   }
 }
 
+async function postIdentifyPeopleResult(result) {
+  const res = await fetch(`${BASE_URL}/internal/identify-people-result`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-worker-secret': SECRET,
+    },
+    body: JSON.stringify(result),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Instance-1 API responded ${res.status}: ${text}`);
+  }
+}
+
 async function postDescribePersonResult(result) {
   const res = await fetch(`${BASE_URL}/internal/describe-person-result`, {
     method: 'POST',
@@ -77,4 +92,21 @@ async function fetchKnownFaces(userId) {
   return resp.json();
 }
 
-module.exports = { postIdentificationResult, postDescribePersonResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces };
+// Download a file from Nextcloud via Instance-1 proxy
+// Returns: Buffer
+async function downloadNextcloudFile(shareUrl, fileName) {
+  const url = `${BASE_URL}/internal/nextcloud-file?shareUrl=${encodeURIComponent(shareUrl)}&fileName=${encodeURIComponent(fileName)}`;
+  const resp = await fetch(url, {
+    headers: { 'x-worker-secret': SECRET },
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    const err = new Error(`Nextcloud file download failed: ${resp.status} ${text}`);
+    err.statusCode = resp.status;
+    throw err;
+  }
+  return Buffer.from(await resp.arrayBuffer());
+}
+
+module.exports = { postIdentificationResult, postDescribePersonResult, postIdentifyPeopleResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces, downloadNextcloudFile };
