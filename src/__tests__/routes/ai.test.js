@@ -1,14 +1,17 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../ollama', () => ({ generate: jest.fn() }));
 jest.mock('../../storage', () => ({ readPhotoBuffer: jest.fn() }));
-jest.mock('../../queue/producer', () => ({ addDescribePersonJob: jest.fn().mockResolvedValue({}) }));
+jest.mock('../../queue/producer', () => ({
+  addDescribePersonJob: jest.fn().mockResolvedValue({}),
+  addIdentificationJob: jest.fn().mockResolvedValue({}),
+}));
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const { generate } = require('../../ollama');
 const { readPhotoBuffer } = require('../../storage');
-const { addDescribePersonJob } = require('../../queue/producer');
+const { addDescribePersonJob, addIdentificationJob } = require('../../queue/producer');
 
 beforeEach(() => jest.resetAllMocks());
 
@@ -42,80 +45,65 @@ describe('POST /api/ai/identify-people', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns suggestions matching Ollama response against known people tags', async () => {
+  it('enqueues an identification job and returns queued: true', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
-      .mockResolvedValueOnce({ rows: [ALICE_TAG, BOB_TAG] });
-    readPhotoBuffer.mockResolvedValue(Buffer.from('fake-image'));
-    generate.mockResolvedValue({ response: 'I can see alice in the photo.' });
+      .mockResolvedValueOnce({ rows: [{ s3_key: 'photo.jpg' }] });
+    addIdentificationJob.mockResolvedValue({});
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/api/ai/identify-people').send({ photoId: 1 });
 
     expect(res.status).toBe(200);
-    expect(res.body.suggestions).toEqual([{ tagId: 7, name: 'alice', hasReference: false }]);
-    expect(res.body.rawResponse).toContain('alice');
+    expect(res.body.queued).toBe(true);
+    expect(addIdentificationJob).toHaveBeenCalledWith({
+      photoId: 1,
+      userId: 2,
+      photoS3Key: 'photo.jpg',
+      source: 'manual'
+    });
   });
 
-  it('includes description in the prompt when tag has one', async () => {
+  it('passes photoS3Key to the job', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
-      .mockResolvedValueOnce({ rows: [BOB_TAG] }); // bob has description 'tall, glasses'
-    readPhotoBuffer.mockResolvedValue(Buffer.from('img'));
-    generate.mockResolvedValue({ response: 'none' });
+      .mockResolvedValueOnce({ rows: [{ s3_key: 'my-photo-key' }] });
+    addIdentificationJob.mockResolvedValue({});
 
     await request(makeApp(EDITOR_SESSION))
       .post('/api/ai/identify-people').send({ photoId: 1 });
 
-    const [{ prompt }] = generate.mock.calls[0];
-    expect(prompt).toContain('tall, glasses');
+    expect(addIdentificationJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        photoS3Key: 'my-photo-key'
+      })
+    );
   });
 
-  it('sends reference photo as first image when tag has a reference', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
-      .mockResolvedValueOnce({ rows: [ALICE_W_REF] });
-    // query photo is read first, then reference photos in the loop
-    readPhotoBuffer
-      .mockResolvedValueOnce(Buffer.from('query-image'))  // photo.jpg (query)
-      .mockResolvedValueOnce(Buffer.from('ref-image'));    // ref.jpg (alice's reference)
-    generate.mockResolvedValue({ response: 'alice' });
-
-    await request(makeApp(EDITOR_SESSION))
+  it('returns 403 when not editor', async () => {
+    const res = await request(makeApp(VIEWER_SESSION))
       .post('/api/ai/identify-people').send({ photoId: 1 });
-
-    const [{ images, prompt }] = generate.mock.calls[0];
-    expect(images).toHaveLength(2); // ref + query
-    expect(images[0]).toBe(Buffer.from('ref-image').toString('base64'));
-    expect(prompt).toContain('reference photo of alice');
+    
+    expect(res.status).toBe(403);
   });
 
-  it('marks hasReference true when tag already has a reference photo', async () => {
+  it('handles database errors gracefully', async () => {
+    db.query.mockRejectedValue(new Error('DB error'));
+    
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/api/ai/identify-people').send({ photoId: 1 });
+    
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when job enqueue fails', async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
-      .mockResolvedValueOnce({ rows: [ALICE_W_REF] });
-    readPhotoBuffer.mockResolvedValue(Buffer.from('img'));
-    generate.mockResolvedValue({ response: 'alice' });
+      .mockResolvedValueOnce({ rows: [{ s3_key: 'photo.jpg' }] });
+    addIdentificationJob.mockRejectedValue(new Error('Queue error'));
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/api/ai/identify-people').send({ photoId: 1 });
 
-    expect(res.body.suggestions[0].hasReference).toBe(true);
-  });
-
-  it('returns 503 with error message when Ollama is unreachable', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ filename: 'photo.jpg' }] })
-      .mockResolvedValueOnce({ rows: [ALICE_TAG] });
-    readPhotoBuffer.mockResolvedValue(Buffer.from('img'));
-    generate.mockRejectedValue(new Error('Ollama unreachable: ECONNREFUSED'));
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/identify-people').send({ photoId: 1 });
-
-    expect(res.status).toBe(503);
-    expect(res.body.error).toContain('Ollama unreachable');
-    expect(res.body.suggestions).toEqual([]);
+    expect(res.status).toBe(500);
+    expect(res.text).toContain('Queue error');
   });
 
   it('returns 403 when called by a viewer', async () => {
