@@ -117,3 +117,4 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | HRD-10 | Unit-test parseUserAgent and relativeTime helpers           | Hardening | Done | #92 |
 | HRD-11 | Add 500 error path test for individual session revoke       | Hardening | Done | #92 |
 | HRD-12 | Mock express-rate-limit in account.test.js                  | Hardening | Done | #92 |
+| BUG-1 | Tag autocompletion missing on Nextcloud import form        | Bugs | Backlog | — |
