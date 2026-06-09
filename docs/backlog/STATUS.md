@@ -124,3 +124,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | BUG-3 | Extra leading space when inserting tag from autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
 | BUG-4 | No loading state indicator for tag autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
 | BUG-5 | Duplicate tags can be added via autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
+| INF-4 | Monitor Instance-1 performance during Nextcloud imports (post US-NC6) | Infrastructure | Backlog | Monitor CPU/network after PR113 merge |
+| Q-4 | Add rate limiting to /photos/nextcloud-import/confirm endpoint | Infrastructure | Backlog | Prevent excessive concurrent imports |
+| IMP-6 | Consider parallel file downloads with concurrency limit for Nextcloud import | Performance | Backlog | Future enhancement for US-NC6 |
+| T-1 | Remove unused addNextcloudImportJob from producer.js | Cleanup | Backlog | No longer used after US-NC6 implementation |
