@@ -1,6 +1,5 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../queue/producer', () => ({
-  addNextcloudImportJob: jest.fn().mockResolvedValue(),
   addIdentificationJob: jest.fn().mockResolvedValue(),
 }));
 jest.mock('../../nextcloudWebdav', () => ({
@@ -15,7 +14,7 @@ jest.mock('../../storage', () => ({ uploadPhoto: jest.fn().mockResolvedValue() }
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
-const { addNextcloudImportJob, addIdentificationJob } = require('../../queue/producer');
+const { addIdentificationJob } = require('../../queue/producer');
 const { isValidNextcloudShareUrl, propfindShare, downloadFileAsBuffer } = require('../../nextcloudWebdav');
 const { notifyUser } = require('../../notifications');
 const { uploadPhoto } = require('../../storage');
@@ -212,9 +211,9 @@ describe('POST /photos/nextcloud-import — preview', () => {
 
 // ── POST /photos/nextcloud-import/confirm ─────────────────────────────────────
 
-describe('POST /photos/nextcloud-import/confirm', () => {
-  const SHARE_URL = 'https://cloud.example.com/s/abc123';
+const SHARE_URL = 'https://cloud.example.com/s/abc123';
 
+describe('POST /photos/nextcloud-import/confirm — validation', () => {
   it('returns 422 when shareUrl is invalid', async () => {
     isValidNextcloudShareUrl.mockReturnValue(false);
     const res = await request(makeApp(EDITOR_SESSION))
@@ -258,6 +257,63 @@ describe('POST /photos/nextcloud-import/confirm', () => {
     expect(res.body.error).toMatch(/already exists/i);
   });
 
+  it('returns 422 when file count > 500 on confirm re-check', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const bigList = Array.from({ length: 501 }, (_, i) => ({
+      name: `IMG_${i}.jpg`, size: 1000, mimeType: 'image/jpeg',
+    }));
+    propfindShare.mockResolvedValue(bigList);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/too many photos/i);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /photos/nextcloud-import/confirm — propfindShare errors', () => {
+  it('forwards 422 from propfindShare on confirm (expired share)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const err = Object.assign(new Error('Could not access this Nextcloud share.'), { httpStatus: 422 });
+    propfindShare.mockRejectedValue(err);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatch(/Could not access/i);
+  });
+
+  it('forwards 504 from propfindShare on confirm (timeout)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const err = Object.assign(new Error('Nextcloud did not respond in time.'), { httpStatus: 504 });
+    propfindShare.mockRejectedValue(err);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(504);
+  });
+
+  it('forwards 502 from propfindShare on confirm (XML parse failure)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const err = Object.assign(new Error('Unexpected response from Nextcloud.'), { httpStatus: 502 });
+    propfindShare.mockRejectedValue(err);
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL });
+
+    expect(res.status).toBe(502);
+  });
+});
+
+describe('POST /photos/nextcloud-import/confirm — US-NC6 single file', () => {
   it('processes single file on Instance-1 (US-NC6)', async () => {
     isValidNextcloudShareUrl.mockReturnValue(true);
     const files = [
@@ -293,6 +349,42 @@ describe('POST /photos/nextcloud-import/confirm', () => {
     expect(notifyUser).toHaveBeenCalledTimes(1);
   });
 
+  it('creates album and passes albumId to jobs', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    propfindShare.mockResolvedValue([
+      { name: 'IMG_001.jpg', size: 1000, mimeType: 'image/jpeg' },
+    ]);
+    // 1. SELECT albums — not found
+    // 2. INSERT album RETURNING id
+    // 3. INSERT nextcloud_imports RETURNING id
+    db.query
+      .mockResolvedValueOnce({ rows: [] })           // SELECT albums
+      .mockResolvedValueOnce({ rows: [{ id: 55 }] }) // INSERT album
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] }); // INSERT nextcloud_imports
+    // downloadFileAsBuffer returns a buffer
+    downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
+    // uploadPhoto resolves successfully
+    uploadPhoto.mockResolvedValue();
+    // INSERT photo
+    db.query.mockResolvedValueOnce({ rows: [{ id: 200 }] }); // INSERT photo
+    // UPDATE nextcloud_imports
+    db.query.mockResolvedValueOnce({ rows: [{ done: 1, total: 1, failed: 0 }] });
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL, albumName: 'Summer 2024' });
+
+    expect(res.status).toBe(200);
+    // Verify US-NC6: Instance-1 processes files directly with albumId
+    expect(downloadFileAsBuffer).toHaveBeenCalledWith(SHARE_URL, 'IMG_001.jpg');
+    expect(uploadPhoto).toHaveBeenCalled();
+    expect(addIdentificationJob).toHaveBeenCalledWith(
+      expect.objectContaining({ photoId: 200, userId: 10, photoS3Key: expect.any(String) }),
+    );
+  });
+});
+
+describe('POST /photos/nextcloud-import/confirm — US-NC6 multiple files', () => {
   it('processes multiple files on Instance-1 (US-NC6)', async () => {
     isValidNextcloudShareUrl.mockReturnValue(true);
     const files = [
@@ -348,96 +440,9 @@ describe('POST /photos/nextcloud-import/confirm', () => {
       'nextcloud-import-progress',
     );
   });
+});
 
-  it('creates album and passes albumId to jobs', async () => {
-    isValidNextcloudShareUrl.mockReturnValue(true);
-    propfindShare.mockResolvedValue([
-      { name: 'IMG_001.jpg', size: 1000, mimeType: 'image/jpeg' },
-    ]);
-    // 1. SELECT albums — not found
-    // 2. INSERT album RETURNING id
-    // 3. INSERT nextcloud_imports RETURNING id
-    db.query
-      .mockResolvedValueOnce({ rows: [] })           // SELECT albums
-      .mockResolvedValueOnce({ rows: [{ id: 55 }] }) // INSERT album
-      .mockResolvedValueOnce({ rows: [{ id: 12 }] }); // INSERT nextcloud_imports
-    // downloadFileAsBuffer returns a buffer
-    downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
-    // uploadPhoto resolves successfully
-    uploadPhoto.mockResolvedValue();
-    // INSERT photo
-    db.query.mockResolvedValueOnce({ rows: [{ id: 200 }] }); // INSERT photo
-    // UPDATE nextcloud_imports
-    db.query.mockResolvedValueOnce({ rows: [{ done: 1, total: 1, failed: 0 }] });
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/photos/nextcloud-import/confirm')
-      .send({ shareUrl: SHARE_URL, albumName: 'Summer 2024' });
-
-    expect(res.status).toBe(200);
-    // Verify US-NC6: Instance-1 processes files directly with albumId
-    expect(downloadFileAsBuffer).toHaveBeenCalledWith(SHARE_URL, 'IMG_001.jpg');
-    expect(uploadPhoto).toHaveBeenCalled();
-    expect(addIdentificationJob).toHaveBeenCalledWith(
-      expect.objectContaining({ photoId: 200, userId: 10, photoS3Key: expect.any(String) }),
-    );
-  });
-
-  it('forwards 422 from propfindShare on confirm (expired share)', async () => {
-    isValidNextcloudShareUrl.mockReturnValue(true);
-    const err = Object.assign(new Error('Could not access this Nextcloud share.'), { httpStatus: 422 });
-    propfindShare.mockRejectedValue(err);
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/photos/nextcloud-import/confirm')
-      .send({ shareUrl: SHARE_URL });
-
-    expect(res.status).toBe(422);
-    expect(res.body.error).toMatch(/Could not access/i);
-  });
-
-  it('forwards 504 from propfindShare on confirm (timeout)', async () => {
-    isValidNextcloudShareUrl.mockReturnValue(true);
-    const err = Object.assign(new Error('Nextcloud did not respond in time.'), { httpStatus: 504 });
-    propfindShare.mockRejectedValue(err);
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/photos/nextcloud-import/confirm')
-      .send({ shareUrl: SHARE_URL });
-
-    expect(res.status).toBe(504);
-  });
-
-  it('forwards 502 from propfindShare on confirm (XML parse failure)', async () => {
-    isValidNextcloudShareUrl.mockReturnValue(true);
-    const err = Object.assign(new Error('Unexpected response from Nextcloud.'), { httpStatus: 502 });
-    propfindShare.mockRejectedValue(err);
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/photos/nextcloud-import/confirm')
-      .send({ shareUrl: SHARE_URL });
-
-    expect(res.status).toBe(502);
-  });
-
-  it('returns 422 when file count > 500 on confirm re-check', async () => {
-    isValidNextcloudShareUrl.mockReturnValue(true);
-    const bigList = Array.from({ length: 501 }, (_, i) => ({
-      name: `IMG_${i}.jpg`, size: 1000, mimeType: 'image/jpeg',
-    }));
-    propfindShare.mockResolvedValue(bigList);
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/photos/nextcloud-import/confirm')
-      .send({ shareUrl: SHARE_URL });
-
-    expect(res.status).toBe(422);
-    expect(res.body.error).toMatch(/too many photos/i);
-    expect(db.query).not.toHaveBeenCalled();
-  });
-
-  // US-NC6 Error handling tests
-
+describe('POST /photos/nextcloud-import/confirm — US-NC6 error handling', () => {
   it('handles download failure for a file and continues with next file', async () => {
     isValidNextcloudShareUrl.mockReturnValue(true);
     const files = [
