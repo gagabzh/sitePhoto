@@ -1,6 +1,7 @@
 jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../queue/producer', () => ({
   addNextcloudImportJob: jest.fn().mockResolvedValue(),
+  addIdentificationJob: jest.fn().mockResolvedValue(),
 }));
 jest.mock('../../nextcloudWebdav', () => ({
   isValidNextcloudShareUrl: jest.fn(),
@@ -9,12 +10,15 @@ jest.mock('../../nextcloudWebdav', () => ({
   EXT_MAP: { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' },
 }));
 jest.mock('../../notifications', () => ({ notifyUser: jest.fn() }));
+jest.mock('../../storage', () => ({ uploadPhoto: jest.fn().mockResolvedValue() }));
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
-const { addNextcloudImportJob } = require('../../queue/producer');
-const { isValidNextcloudShareUrl, propfindShare } = require('../../nextcloudWebdav');
+const { addNextcloudImportJob, addIdentificationJob } = require('../../queue/producer');
+const { isValidNextcloudShareUrl, propfindShare, downloadFileAsBuffer } = require('../../nextcloudWebdav');
+const { notifyUser } = require('../../notifications');
+const { uploadPhoto } = require('../../storage');
 
 const EDITOR_SESSION = { userId: 10, name: 'Alice', role: 'editor' };
 const VIEWER_SESSION = { userId: 20, name: 'Bob',   role: 'viewer' };
@@ -254,15 +258,26 @@ describe('POST /photos/nextcloud-import/confirm', () => {
     expect(res.body.error).toMatch(/already exists/i);
   });
 
-  it('enqueues jobs and returns importId on happy path (no album)', async () => {
+  it('processes single file on Instance-1 (US-NC6)', async () => {
     isValidNextcloudShareUrl.mockReturnValue(true);
     const files = [
       { name: 'IMG_001.jpg', size: 1000, mimeType: 'image/jpeg' },
-      { name: 'IMG_002.jpg', size: 2000, mimeType: 'image/jpeg' },
     ];
     propfindShare.mockResolvedValue(files);
     // INSERT nextcloud_imports
     db.query.mockResolvedValueOnce({ rows: [{ id: 7 }] });
+    // downloadFileAsBuffer returns a buffer
+    downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
+    // uploadPhoto resolves successfully
+    uploadPhoto.mockResolvedValue();
+    // INSERT photos
+    db.query.mockResolvedValueOnce({ rows: [{ id: 101 }] });
+    // INSERT tags
+    db.query.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    // INSERT photo_tags
+    db.query.mockResolvedValueOnce({ rows: [] });
+    // UPDATE nextcloud_imports
+    db.query.mockResolvedValueOnce({ rows: [{ done: 1, total: 1, failed: 0 }] });
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/nextcloud-import/confirm')
@@ -270,20 +285,67 @@ describe('POST /photos/nextcloud-import/confirm', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.importId).toBe(7);
+    expect(res.body.total).toBe(1);
+    expect(downloadFileAsBuffer).toHaveBeenCalledTimes(1);
+    expect(downloadFileAsBuffer).toHaveBeenCalledWith(SHARE_URL, 'IMG_001.jpg');
+    expect(uploadPhoto).toHaveBeenCalledTimes(1);
+    expect(addIdentificationJob).toHaveBeenCalledTimes(1);
+    expect(notifyUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('processes multiple files on Instance-1 (US-NC6)', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const files = [
+      { name: 'IMG_001.jpg', size: 1000, mimeType: 'image/jpeg' },
+      { name: 'IMG_002.jpg', size: 2000, mimeType: 'image/jpeg' },
+    ];
+    propfindShare.mockResolvedValue(files);
+    // downloadFileAsBuffer returns a buffer (called twice)
+    downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
+    // uploadPhoto resolves successfully (called twice)
+    uploadPhoto.mockResolvedValue();
+    // All db.query calls in order of execution:
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] }) // 1. INSERT nextcloud_imports
+      .mockResolvedValueOnce({ rows: [{ id: 101 }] }) // 2. INSERT photos (file 1)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // 3. INSERT tags (file 1)
+      .mockResolvedValueOnce({ rows: [] }) // 4. INSERT photo_tags (file 1)
+      .mockResolvedValueOnce({ rows: [{ done: 1, total: 2, failed: 0 }] }) // 5. UPDATE nextcloud_imports (file 1 done)
+      .mockResolvedValueOnce({ rows: [{ id: 102 }] }) // 6. INSERT photos (file 2)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // 7. INSERT tags (file 2)
+      .mockResolvedValueOnce({ rows: [] }) // 8. INSERT photo_tags (file 2)
+      .mockResolvedValueOnce({ rows: [{ done: 2, total: 2, failed: 0 }] }); // 9. UPDATE nextcloud_imports (file 2 done)
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL, tags: ['paris'], latitude: 48.8566, longitude: 2.3522 });
+
+
+    expect(res.status).toBe(200);
+    expect(res.body.importId).toBe(7);
     expect(res.body.total).toBe(2);
-    expect(addNextcloudImportJob).toHaveBeenCalledTimes(2);
-    expect(addNextcloudImportJob).toHaveBeenCalledWith(
+    // Verify US-NC6: Instance-1 processes files directly
+    expect(downloadFileAsBuffer).toHaveBeenCalledTimes(2);
+    expect(downloadFileAsBuffer).toHaveBeenCalledWith(SHARE_URL, 'IMG_001.jpg');
+    expect(uploadPhoto).toHaveBeenCalledTimes(2);
+    expect(addIdentificationJob).toHaveBeenCalledTimes(2);
+    expect(addIdentificationJob).toHaveBeenCalledWith(
       expect.objectContaining({
-        shareUrl: SHARE_URL,
-        fileName: 'IMG_001.jpg',
-        mimeType: 'image/jpeg',
+        photoId: 101,
         userId: 10,
-        tags: ['paris'],
-        latitude: 48.8566,
-        longitude: 2.3522,
-        albumId: null,
-        importId: 7,
+        photoS3Key: expect.any(String),
       }),
+    );
+    expect(notifyUser).toHaveBeenCalledTimes(2);
+    expect(notifyUser).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({
+        importId: 7,
+        done: 1,
+        total: 2,
+        failed: 0,
+      }),
+      'nextcloud-import-progress',
     );
   });
 
@@ -299,14 +361,25 @@ describe('POST /photos/nextcloud-import/confirm', () => {
       .mockResolvedValueOnce({ rows: [] })           // SELECT albums
       .mockResolvedValueOnce({ rows: [{ id: 55 }] }) // INSERT album
       .mockResolvedValueOnce({ rows: [{ id: 12 }] }); // INSERT nextcloud_imports
+    // downloadFileAsBuffer returns a buffer
+    downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
+    // uploadPhoto resolves successfully
+    uploadPhoto.mockResolvedValue();
+    // INSERT photo
+    db.query.mockResolvedValueOnce({ rows: [{ id: 200 }] }); // INSERT photo
+    // UPDATE nextcloud_imports
+    db.query.mockResolvedValueOnce({ rows: [{ done: 1, total: 1, failed: 0 }] });
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/nextcloud-import/confirm')
       .send({ shareUrl: SHARE_URL, albumName: 'Summer 2024' });
 
     expect(res.status).toBe(200);
-    expect(addNextcloudImportJob).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: 55, importId: 12 }),
+    // Verify US-NC6: Instance-1 processes files directly with albumId
+    expect(downloadFileAsBuffer).toHaveBeenCalledWith(SHARE_URL, 'IMG_001.jpg');
+    expect(uploadPhoto).toHaveBeenCalled();
+    expect(addIdentificationJob).toHaveBeenCalledWith(
+      expect.objectContaining({ photoId: 200, userId: 10, photoS3Key: expect.any(String) }),
     );
   });
 
@@ -362,6 +435,85 @@ describe('POST /photos/nextcloud-import/confirm', () => {
     expect(res.body.error).toMatch(/too many photos/i);
     expect(db.query).not.toHaveBeenCalled();
   });
+
+  // US-NC6 Error handling tests
+
+  it('handles download failure for a file and continues with next file', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const files = [
+      { name: 'IMG_001.jpg', size: 1000, mimeType: 'image/jpeg' },
+      { name: 'IMG_002.jpg', size: 2000, mimeType: 'image/jpeg' },
+    ];
+    propfindShare.mockResolvedValue(files);
+    downloadFileAsBuffer
+      .mockResolvedValueOnce(Buffer.from('fake-image-data-1')) // file 1 succeeds
+      .mockRejectedValueOnce(new Error('Download failed')); // file 2 fails
+    uploadPhoto.mockResolvedValue();
+    // All db.query calls in order of execution:
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] }) // 1. INSERT nextcloud_imports
+      .mockResolvedValueOnce({ rows: [{ id: 101 }] }) // 2. INSERT photos (file 1)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // 3. INSERT tags (file 1)
+      .mockResolvedValueOnce({ rows: [] }) // 4. INSERT photo_tags (file 1)
+      .mockResolvedValueOnce({ rows: [{ done: 1, total: 2, failed: 0 }] }) // 5. UPDATE done (file 1)
+      // File 2 fails at downloadFileAsBuffer, so we go to catch block
+      .mockResolvedValueOnce({ rows: [{ done: 1, total: 2, failed: 1 }] }); // 6. UPDATE failed (file 2)
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL, tags: ['paris'] });
+
+    expect(res.status).toBe(200);
+    expect(downloadFileAsBuffer).toHaveBeenCalledTimes(2);
+    expect(uploadPhoto).toHaveBeenCalledTimes(1); // only file 1 uploaded
+    expect(addIdentificationJob).toHaveBeenCalledTimes(1); // only file 1 enqueued
+    expect(notifyUser).toHaveBeenCalledTimes(2);
+    // Check that progress was reported for both files (one success, one failure)
+    expect(notifyUser).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({ importId: 7, done: 1, total: 2, failed: 0 }),
+      'nextcloud-import-progress',
+    );
+    expect(notifyUser).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({ importId: 7, done: 1, total: 2, failed: 1 }),
+      'nextcloud-import-progress',
+    );
+  });
+
+  it('handles S3 upload failure for a file and continues with next file', async () => {
+    isValidNextcloudShareUrl.mockReturnValue(true);
+    const files = [
+      { name: 'IMG_001.jpg', size: 1000, mimeType: 'image/jpeg' },
+      { name: 'IMG_002.jpg', size: 2000, mimeType: 'image/jpeg' },
+    ];
+    propfindShare.mockResolvedValue(files);
+    downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
+    uploadPhoto
+      .mockResolvedValueOnce() // file 1 succeeds
+      .mockRejectedValueOnce(new Error('S3 upload failed')); // file 2 fails
+    // All db.query calls in order of execution:
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 7 }] }) // 1. INSERT nextcloud_imports
+      .mockResolvedValueOnce({ rows: [{ id: 101 }] }) // 2. INSERT photos (file 1)
+      .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // 3. INSERT tags (file 1)
+      .mockResolvedValueOnce({ rows: [] }) // 4. INSERT photo_tags (file 1)
+      .mockResolvedValueOnce({ rows: [{ done: 1, total: 2, failed: 0 }] }) // 5. UPDATE done (file 1)
+      .mockResolvedValueOnce({ rows: [{ id: 102 }] }) // 6. INSERT photos (file 2)
+      // File 2 fails at uploadPhoto, so we go to catch block
+      .mockResolvedValueOnce({ rows: [{ done: 1, total: 2, failed: 1 }] }); // 7. UPDATE failed (file 2)
+
+    const res = await request(makeApp(EDITOR_SESSION))
+      .post('/photos/nextcloud-import/confirm')
+      .send({ shareUrl: SHARE_URL, tags: ['paris'] });
+
+    expect(res.status).toBe(200);
+    expect(downloadFileAsBuffer).toHaveBeenCalledTimes(2);
+    expect(uploadPhoto).toHaveBeenCalledTimes(2);
+    expect(addIdentificationJob).toHaveBeenCalledTimes(1); // only file 1 enqueued
+    expect(notifyUser).toHaveBeenCalledTimes(2);
+  });
+
 });
 
 // ── GET /photos/nextcloud-import/:importId ────────────────────────────────────

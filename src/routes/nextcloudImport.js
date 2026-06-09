@@ -2,12 +2,15 @@
 
 const router = require('express').Router();
 const rateLimit = require('express-rate-limit');
+const { v4: uuidv4 } = require('uuid');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { page } = require('../layout');
+const { notifyUser } = require('../notifications');
 const db = require('../db');
 const { parseCoord } = require('../uploadHelpers');
-const { addNextcloudImportJob } = require('../queue/producer');
-const { isValidNextcloudShareUrl, propfindShare } = require('../nextcloudWebdav');
+const { uploadPhoto } = require('../storage');
+const { addIdentificationJob } = require('../queue/producer');
+const { isValidNextcloudShareUrl, propfindShare, downloadFileAsBuffer, EXT_MAP } = require('../nextcloudWebdav');
 
 // Rate limit: 10 preview requests per 5 minutes per user.
 // The route is always behind requireEditor so userId is always set;
@@ -285,26 +288,74 @@ router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
     albumId = newAlbum.id;
   }
 
-  // Insert the import tracking row BEFORE enqueueing jobs
+  // Insert the import tracking row BEFORE processing files
   const { rows: [importRow] } = await db.query(
     'INSERT INTO nextcloud_imports (user_id, share_url, total) VALUES ($1, $2, $3) RETURNING id',
     [userId, shareUrl, files.length],
   );
   const importId = importRow.id;
 
-  // Enqueue one job per image file
+  // US-NC6: Process files sequentially on Instance-1 (download + S3 + DB + AI queue)
+  // For each file: download → upload to S3 → insert DB row → enqueue AI job → emit progress
   for (const file of files) {
-    await addNextcloudImportJob({
-      shareUrl,
-      fileName: file.name,
-      mimeType: file.mimeType,
-      userId,
-      tags,
-      latitude,
-      longitude,
-      albumId,
-      importId,
-    });
+    const ext = EXT_MAP[file.mimeType] || '.jpg';
+    const s3Key = `${uuidv4()}${ext}`;
+    const displayName = file.name;
+    const ncUrl = shareUrl;
+
+    try {
+      // Step 1: Download file from Nextcloud
+      const buffer = await downloadFileAsBuffer(shareUrl, file.name);
+
+      // Step 2: Upload to S3
+      await uploadPhoto(s3Key, buffer, file.mimeType);
+
+      // Step 3: Insert photo record into DB
+      const lat = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
+      const lon = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
+
+      const { rows: [photo] } = await db.query(
+        `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, album_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+         RETURNING id`,
+        [userId, s3Key, displayName, s3Key, displayName, file.mimeType || 'image/jpeg', buffer.length, ncUrl, lat, lon, albumId],
+      );
+      const photoId = photo.id;
+
+      // Step 4: Insert tags for this photo
+      if (tags && tags.length) {
+        const cleanTags = tags.map(t => String(t).trim().toLowerCase()).filter(Boolean);
+        if (cleanTags.length) {
+          const { rows: tagRows } = await db.query(
+            'INSERT INTO tags (name) SELECT unnest($1::text[]) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+            [cleanTags],
+          );
+          await db.query(
+            'INSERT INTO photo_tags (photo_id, tag_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+            [photoId, tagRows.map(r => r.id)],
+          );
+        }
+      }
+
+      // Step 5: Enqueue AI identification job for Instance-2
+      await addIdentificationJob({ photoId, userId, photoS3Key: s3Key });
+
+      // Step 6: Update progress and emit event
+      const { rows: [progress] } = await db.query(
+        `UPDATE nextcloud_imports SET done = done + 1 WHERE id = $1 RETURNING done, total, failed`,
+        [importId],
+      );
+      notifyUser(userId, { importId, done: progress.done, total: progress.total, failed: progress.failed }, 'nextcloud-import-progress');
+
+    } catch (err) {
+      // Error state: increment failed count, emit progress, continue with next file
+      console.error(`[nextcloud-import] file ${file.name} failed:`, err.message);
+      const { rows: [progress] } = await db.query(
+        `UPDATE nextcloud_imports SET failed = failed + 1 WHERE id = $1 RETURNING done, total, failed`,
+        [importId],
+      );
+      notifyUser(userId, { importId, done: progress.done, total: progress.total, failed: progress.failed }, 'nextcloud-import-progress');
+    }
   }
 
   return res.json({ importId, total: files.length });
