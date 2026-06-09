@@ -87,6 +87,58 @@ function importFormScript() {
   var errorEl    = document.getElementById('nc-error');
   var confirmErr = document.getElementById('nc-confirm-error');
   var summaryEl  = document.getElementById('nc-preview-summary');
+  
+  // Tag autocomplete for #nc-tags
+  (function() {
+    var input = document.getElementById('nc-tags');
+    if (!input) return;
+    var wrap = input.parentNode;
+    wrap.classList.add('tag-ac-wrap');
+    var drop = null, active = -1;
+    function close() { if (drop) { drop.remove(); drop = null; active = -1; } }
+    function open(items) {
+      close();
+      if (!items.length) return;
+      drop = document.createElement('div');
+      drop.className = 'tag-ac';
+      items.forEach(function(s, i) {
+        var d = document.createElement('div');
+        d.className = 'tag-ac-item';
+        d.textContent = s;
+        d.addEventListener('mousedown', function(e) { e.preventDefault(); pick(s); });
+        drop.appendChild(d);
+      });
+      wrap.appendChild(drop);
+    }
+    function pick(s) {
+      var parts = input.value.split(',');
+      parts[parts.length - 1] = ' ' + s;
+      input.value = parts.join(',') + ', ';
+      close(); input.focus();
+    }
+    function highlight(i) {
+      if (!drop) return;
+      var items = drop.querySelectorAll('.tag-ac-item');
+      items.forEach(function(el, j) { el.classList.toggle('active', j === i); });
+      active = i;
+    }
+    input.addEventListener('input', function() {
+      var parts = this.value.split(',');
+      var q = parts[parts.length - 1].trim();
+      if (!q) { close(); return; }
+      fetch('/tags/autocomplete?q=' + encodeURIComponent(q))
+        .then(function(r) { return r.json(); }).then(open).catch(close);
+    });
+    input.addEventListener('keydown', function(e) {
+      if (!drop) return;
+      var items = drop.querySelectorAll('.tag-ac-item');
+      if (e.key === 'ArrowDown') { e.preventDefault(); highlight(Math.min(active + 1, items.length - 1)); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(Math.max(active - 1, 0)); }
+      else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); pick(items[active].textContent); }
+      else if (e.key === 'Escape') { close(); }
+    });
+    input.addEventListener('blur', function() { setTimeout(close, 150); });
+  })();
 
   function showError(el, msg) { el.textContent = msg; el.style.display = 'block'; }
   function hideError(el) { el.style.display = 'none'; }
