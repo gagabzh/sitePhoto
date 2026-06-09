@@ -379,3 +379,62 @@ As an editor, after launching a Nextcloud folder import, I see a live status on 
 > **No new migration needed for NC-5.** The `nextcloud_imports` table is created in `v12.sql` (NC-4).
 >
 > **Out of scope:** Email notification when import completes. Per-photo progress within the import (only aggregate counts). Persistent import history page. Import cancellation. Retry of failed individual files.
+
+---
+
+**US-NC6 — Faster Nextcloud import by downloading on Instance-1**
+As an editor, when I import photos from Nextcloud, I want the download to happen immediately on the main instance rather than waiting for Instance-2 to unshelve, so the import starts faster and I see my photos sooner.
+
+**Acceptance criteria:**
+
+1. When `POST /photos/nextcloud-import/confirm` is called on Instance-1, instead of only enqueueing jobs to BullMQ for Instance-2, Instance-1 now downloads the photos directly from Nextcloud.
+2. Instance-1 uploads each downloaded file to S3 using the existing `uploadToS3` mechanism (same as regular photo uploads).
+3. Instance-1 inserts the photo record into the database (via `POST /internal/nextcloud-photo` or directly) with all metadata (user_id, filename, s3_key, nextcloud_url, tags, GPS coordinates, album membership).
+4. After each photo is stored in S3 and DB, Instance-1 enqueues an AI identification job to the `identification` queue for Instance-2 to process asynchronously.
+5. The `nextcloud_imports` row is updated with progress (done/failed counts) as each photo is successfully stored, matching the existing NC-5 progress reporting.
+6. The socket.io progress events (`nextcloud-import-progress`) are emitted by Instance-1 as photos are downloaded and stored, not by Instance-2.
+7. If Instance-2 is shelved when jobs are enqueued, it is automatically unshelved by `instance-lifecycle.js` (existing IV4-3 mechanism) to process the AI identification jobs.
+8. The user sees photos appearing in their library as soon as they are downloaded and stored by Instance-1, without waiting for AI identification to complete.
+
+**Error states:**
+- Nextcloud download failure for a specific file: increment `failed` count, emit progress event, continue with next file.
+- S3 upload failure: increment `failed` count, emit progress event, continue with next file.
+- Database insert failure: increment `failed` count, emit progress event, continue with next file.
+- All files fail: import row records the failure, banner shows "Import failed — 0 of N photos could be imported."
+
+**Edge cases:**
+- Instance-2 is down when AI jobs are enqueued: jobs remain in BullMQ queue and are processed when Instance-2 becomes available. Photos are already in S3 and visible to users.
+- Network partition between Instance-1 and Instance-2: downloads and storage on Instance-1 succeed; AI jobs queue for later processing.
+- Very large files (> 100MB): download and upload may take longer, but progress is still reported per-file.
+- Instance-1 runs out of memory during download: the specific file fails, `failed` count is incremented, import continues with remaining files.
+
+**Access control:**
+- Same as NC-4: `POST /photos/nextcloud-import/confirm` is protected by `requireAuth` and `requireEditor`.
+- All photos created are owned by `req.session.userId`.
+- AI identification jobs are enqueued with the same user context.
+
+**Test data:**
+- Nextcloud folder with 3 JPEG files (basic happy path).
+- Nextcloud folder with 1 large file (> 50MB) to test memory handling.
+- Instance-2 shelved at start of import — verify Instance-1 can still download and store photos, and Instance-2 unshelves for AI processing.
+- Network failure between Instance-1 and Nextcloud — verify failure handling and progress reporting.
+
+**Browser/device support:** No change from NC-4; the UI remains the same, only the backend flow changes.
+
+> **Technical notes:**
+>
+> **Architecture change:** The current flow (NC-4) has Instance-2 (worker) performing both download and AI identification. The new flow splits these: Instance-1 handles download+storage, Instance-2 handles AI only.
+>
+> **Download on Instance-1:** Reuse the existing `downloadFileAsBuffer` from `src/nextcloudWebdav.js` (already used by the `/internal/nextcloud-file` proxy). Call it directly from `POST /photos/nextcloud-import/confirm` handler in `src/routes/nextcloudImport.js`.
+>
+> **Sequential vs parallel downloads:** Download files sequentially (not in parallel) to avoid overwhelming Instance-1 memory. Each file: download → upload to S3 → insert DB row → enqueue AI job → emit progress.
+>
+> **Queue separation:** The `identification` queue (for AI processing) remains on Instance-2. The `nextcloud-import` queue (used in current NC-4 for download+AI) can be deprecated or repurposed.
+>
+> **Progress tracking:** The `nextcloud_imports` table and NC-5 progress banner mechanism remain unchanged. Instance-1 updates the `done` and `failed` counts directly.
+>
+> **AI job enqueueing:** After storing each photo, Instance-1 calls `addIdentificationJob({ photoId, userId })` from `src/queue/producer.js` to enqueue AI identification on Instance-2.
+>
+> **No new migration needed.** Reuses existing tables and endpoints.
+>
+> **Out of scope:** Changing the BullMQ queue structure. Changing the AI identification worker logic. Adding retry logic for failed downloads.
