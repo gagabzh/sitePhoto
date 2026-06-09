@@ -2,14 +2,13 @@ jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../ollama', () => ({ generate: jest.fn() }));
 jest.mock('../../storage', () => ({ readPhotoBuffer: jest.fn() }));
 jest.mock('../../queue/producer', () => ({
-  addDescribePersonJob: jest.fn().mockResolvedValue({}),
   addIdentificationJob: jest.fn().mockResolvedValue({}),
 }));
 
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
-const { addDescribePersonJob, addIdentificationJob } = require('../../queue/producer');
+const { addIdentificationJob } = require('../../queue/producer');
 const { errorHandler } = require('../../middleware');
 
 beforeEach(() => jest.resetAllMocks());
@@ -138,98 +137,5 @@ describe('POST /api/ai/confirm-tag', () => {
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/api/ai/confirm-tag').send({ photoId: 99, tagId: 7 });
     expect(res.status).toBe(404);
-  });
-});
-
-describe('POST /api/ai/set-reference', () => {
-  it('sets reference_photo_id on the tag and returns ok', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ id: 7 }] })   // tag exists and is people
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] })   // photo exists
-      .mockResolvedValueOnce({ rows: [] });             // UPDATE
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/set-reference').send({ tagId: 7, photoId: 1 });
-
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE tags SET reference_photo_id'), [1, 7]
-    );
-  });
-
-  it('returns 400 for invalid params', async () => {
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/set-reference').send({ tagId: 'abc', photoId: 1 });
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 404 when tag is not a people tag', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [] })             // tag not found or not people
-      .mockResolvedValueOnce({ rows: [{ id: 1 }] });
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/set-reference').send({ tagId: 99, photoId: 1 });
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 403 when called by a viewer', async () => {
-    const res = await request(makeApp(VIEWER_SESSION))
-      .post('/api/ai/set-reference').send({ tagId: 7, photoId: 1 });
-    expect(res.status).toBe(403);
-  });
-});
-
-describe('POST /api/ai/describe-person', () => {
-  it('enqueues a describe-person job and returns queued:true', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })  // people tag
-      .mockResolvedValueOnce({ rows: [{ filename: 'a.jpg' }] });     // photos
-
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
-
-    expect(res.status).toBe(200);
-    expect(res.body.queued).toBe(true);
-    expect(addDescribePersonJob).toHaveBeenCalledWith({
-      tagId: 7,
-      tagName: 'alice',
-      photoFilenames: ['a.jpg'],
-      userId: EDITOR_SESSION.userId,
-    });
-  });
-
-  it('returns 400 for missing photoIds', async () => {
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [] });
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 for invalid tagId', async () => {
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 'x', photoIds: [1] });
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 404 when tag is not a people tag', async () => {
-    db.query.mockResolvedValueOnce({ rows: [] });
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 99, photoIds: [1] });
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 404 when no photos found', async () => {
-    db.query
-      .mockResolvedValueOnce({ rows: [{ id: 7, name: 'alice' }] })
-      .mockResolvedValueOnce({ rows: [] });
-    const res = await request(makeApp(EDITOR_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [99] });
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 403 when called by a viewer', async () => {
-    const res = await request(makeApp(VIEWER_SESSION))
-      .post('/api/ai/describe-person').send({ tagId: 7, photoIds: [1] });
-    expect(res.status).toBe(403);
   });
 });

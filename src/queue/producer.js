@@ -22,16 +22,6 @@ async function addIdentificationJob(payload) {
   return job;
 }
 
-// payload: { tagId, tagName, photoFilenames, userId }
-async function addDescribePersonJob(payload) {
-  const job = await identificationQueue.add('describe-person', payload, {
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 5000 },
-  });
-  onJobAdded(); // non-blocking: unshelve Instance-2 if needed
-  return job;
-}
-
 // payload: { shareUrl, fileName, mimeType, userId, tags, place, albumId, importId }
 async function addNextcloudImportJob(payload) {
   const job = await nextcloudImportQueue.add('import-file', payload, {
@@ -42,4 +32,4 @@ async function addNextcloudImportJob(payload) {
   return job;
 }
 
-module.exports = { addIdentificationJob, addDescribePersonJob, addNextcloudImportJob };
+module.exports = { addIdentificationJob, addNextcloudImportJob };

@@ -33,21 +33,6 @@ async function postIdentifyPeopleResult(result) {
   }
 }
 
-async function postDescribePersonResult(result) {
-  const res = await fetch(`${BASE_URL}/internal/describe-person-result`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-worker-secret': SECRET,
-    },
-    body: JSON.stringify(result),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Instance-1 API responded ${res.status}: ${text}`);
-  }
-}
-
 // payload: { userId, importId, succeeded: true|false }
 async function postNextcloudImportProgress(payload) {
   const res = await fetch(`${BASE_URL}/internal/nextcloud-import-progress`, {
@@ -109,4 +94,4 @@ async function downloadNextcloudFile(shareUrl, fileName) {
   return Buffer.from(await resp.arrayBuffer());
 }
 
-module.exports = { postIdentificationResult, postDescribePersonResult, postIdentifyPeopleResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces, downloadNextcloudFile };
+module.exports = { postIdentificationResult, postIdentifyPeopleResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces, downloadNextcloudFile };

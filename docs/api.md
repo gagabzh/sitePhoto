@@ -720,30 +720,6 @@ Worker posts identification results back to main app.
 
 ---
 
-### POST /internal/describe-person-result
-
-Worker posts person description results.
-
-**Auth**: Worker secret (`x-worker-secret` header)
-
-**Request**:
-```json
-{
-  "tagId": 1,
-  "userId": 1,
-  "description": "Person at the beach",
-  "error": null
-}
-```
-
-**Response**: `200 OK`
-
-```json
-{ "ok": true }
-```
-
----
-
 ### GET /internal/known-faces/:userId
 
 Get known face crops for a user (for few-shot learning).
@@ -936,19 +912,6 @@ Fired when AI identification completes for a photo.
 {
   "photoId": 1,
   "tags": ["person", "beach"]
-}
-```
-
-#### `describe-person-complete`
-
-Fired when person description completes.
-
-**Payload**:
-```json
-{
-  "tagId": 1,
-  "description": "Person at the beach",
-  "error": null
 }
 ```
 

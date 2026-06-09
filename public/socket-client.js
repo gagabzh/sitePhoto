@@ -16,10 +16,6 @@
     showToast('👤 Photo #' + photoId + ' identified — ' + label);
   });
 
-  socket.on('describe-person-complete', function (data) {
-    document.dispatchEvent(new CustomEvent('sp:describe-person-complete', { detail: data }));
-  });
-
   function showToast(msg) {
     var t = document.createElement('div');
     t.className = 'sp-toast';

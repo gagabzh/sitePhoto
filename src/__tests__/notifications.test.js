@@ -223,15 +223,6 @@ describe('notifyUser()', () => {
     expect(mockToEmit).toHaveBeenCalledWith('identification-complete', expect.any(Object));
   });
 
-  it('accepts a custom event name', () => {
-    const userId = uid();
-    setupWithSockets([userId, `sid-${userId}`]);
-
-    notifyUser(userId, { tagId: 7 }, 'describe-person-complete');
-
-    expect(mockToEmit).toHaveBeenCalledWith('describe-person-complete', { tagId: 7 });
-  });
-
   it('coerces string userId to Number when looking up sockets', () => {
     const userId = uid();
     // Socket registered with numeric userId

@@ -12,7 +12,7 @@ jest.mock('../../instance-lifecycle', () => ({ onJobAdded: jest.fn() }));
 
 const { Queue } = require('bullmq');
 const { onJobAdded } = require('../../instance-lifecycle');
-const { addIdentificationJob, addDescribePersonJob } = require('../../queue/producer');
+const { addIdentificationJob } = require('../../queue/producer');
 
 afterEach(() => {
   jest.resetAllMocks();
@@ -57,50 +57,6 @@ describe('addIdentificationJob()', () => {
     mockAdd.mockRejectedValueOnce(new Error('queue failure'));
     await expect(
       addIdentificationJob({ photoId: 1, userId: 1, photoS3Key: 'photos/1.jpg' }),
-    ).rejects.toThrow();
-    expect(onJobAdded).not.toHaveBeenCalled();
-  });
-});
-
-// ── addDescribePersonJob ──────────────────────────────────────────────────────
-
-describe('addDescribePersonJob()', () => {
-  it('calls queue.add with job name "describe-person" and the given payload', async () => {
-    const fakeJob = { id: '3', name: 'describe-person' };
-    mockAdd.mockResolvedValueOnce(fakeJob);
-
-    const payload = { tagId: 5, tagName: 'alice', photoFilenames: ['a.jpg', 'b.jpg'], userId: 7 };
-    const result = await addDescribePersonJob(payload);
-
-    expect(mockAdd).toHaveBeenCalledTimes(1);
-    expect(mockAdd).toHaveBeenCalledWith(
-      'describe-person',
-      payload,
-      expect.objectContaining({
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      }),
-    );
-    expect(result).toBe(fakeJob);
-  });
-
-  it('calls onJobAdded after successfully enqueuing the job', async () => {
-    mockAdd.mockResolvedValueOnce({ id: '4' });
-    await addDescribePersonJob({ tagId: 1, tagName: 'bob', photoFilenames: [], userId: 2 });
-    expect(onJobAdded).toHaveBeenCalledTimes(1);
-  });
-
-  it('propagates the error when queue.add rejects', async () => {
-    mockAdd.mockRejectedValueOnce(new Error('BullMQ unavailable'));
-    await expect(
-      addDescribePersonJob({ tagId: 1, tagName: 'bob', photoFilenames: [], userId: 2 }),
-    ).rejects.toThrow('BullMQ unavailable');
-  });
-
-  it('does not call onJobAdded when queue.add rejects', async () => {
-    mockAdd.mockRejectedValueOnce(new Error('queue failure'));
-    await expect(
-      addDescribePersonJob({ tagId: 1, tagName: 'bob', photoFilenames: [], userId: 2 }),
     ).rejects.toThrow();
     expect(onJobAdded).not.toHaveBeenCalled();
   });
