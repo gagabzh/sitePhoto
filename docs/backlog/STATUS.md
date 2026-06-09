@@ -120,7 +120,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | HRD-11 | Add 500 error path test for individual session revoke       | Hardening | Done | #92 |
 | HRD-12 | Mock express-rate-limit in account.test.js                  | Hardening | Done | #92 |
 | BUG-1 | Tag autocompletion missing on Nextcloud import form        | Bugs | Done | PR #112 (fix/bug-1-tag-autocomplete-nextcloud-import) |
-| BUG-2 | No debouncing on tag autocomplete input in Nextcloud import form | Bugs | Backlog | — |
-| BUG-3 | Extra leading space when inserting tag from autocomplete in Nextcloud import | Bugs | Backlog | — |
-| BUG-4 | No loading state indicator for tag autocomplete in Nextcloud import | Bugs | Backlog | — |
-| BUG-5 | Duplicate tags can be added via autocomplete in Nextcloud import | Bugs | Backlog | — |
+| BUG-2 | No debouncing on tag autocomplete input in Nextcloud import form | Bugs | Done | Fixed in main |
+| BUG-3 | Extra leading space when inserting tag from autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
+| BUG-4 | No loading state indicator for tag autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
+| BUG-5 | Duplicate tags can be added via autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
