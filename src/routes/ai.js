@@ -1,13 +1,7 @@
 const router = require('express').Router();
 const db = require('../db');
-const { generate } = require('../ollama');
 const { requireEditor, wrapAsync } = require('../middleware');
-const { readPhotoBuffer } = require('../storage');
 const { addDescribePersonJob, addIdentificationJob } = require('../queue/producer');
-
-async function readB64(filename) {
-  return (await readPhotoBuffer(filename)).toString('base64');
-}
 
 // ── POST /api/ai/identify-people ──────────────────────────────────────────────
 // Accepts { photoId }. Enqueues a manual-identify-photo job on Instance-2.

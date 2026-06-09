@@ -9,8 +9,6 @@ jest.mock('../../queue/producer', () => ({
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
-const { generate } = require('../../ollama');
-const { readPhotoBuffer } = require('../../storage');
 const { addDescribePersonJob, addIdentificationJob } = require('../../queue/producer');
 
 beforeEach(() => jest.resetAllMocks());
@@ -25,11 +23,6 @@ function makeApp(session) {
   app.use('/api/ai', require('../../routes/ai'));
   return app;
 }
-
-// Stub for a people tag row as returned by the updated query
-const ALICE_TAG    = { id: 7, name: 'alice', description: null,           reference_photo_id: null, ref_filename: null };
-const ALICE_W_REF  = { id: 7, name: 'alice', description: 'red hair',     reference_photo_id: 1,    ref_filename: 'ref.jpg' };
-const BOB_TAG      = { id: 8, name: 'bob',   description: 'tall, glasses', reference_photo_id: null, ref_filename: null };
 
 describe('POST /api/ai/identify-people', () => {
   it('returns 400 for missing or non-integer photoId', async () => {
