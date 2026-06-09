@@ -53,6 +53,21 @@ router.post('/describe-person-result', requireWorkerSecret, wrapAsync(async (req
   res.json({ ok: true });
 }));
 
+// ── POST /internal/identify-people-result ─────────────────────────────────────
+// Called by worker after processing an identify-photo job.
+// Body: { photoId, userId, suggestions, error? }
+router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req, res) => {
+  const { photoId, userId, suggestions, error } = req.body;
+  if (!photoId || !userId) return res.status(400).json({ error: 'Missing photoId or userId' });
+
+  if (error) {
+    notifyUser(userId, { photoId, error }, 'identify-people-complete');
+  } else {
+    notifyUser(userId, { photoId, suggestions: suggestions || [] }, 'identify-people-complete');
+  }
+  res.json({ ok: true });
+}));
+
 // POST /internal/nextcloud-photo — called by worker to insert imported photo row + tags
 // Body: { userId, s3Key, mimeType, shareUrl, latitude, longitude, albumId, tags, importId }
 // Returns { photoId }

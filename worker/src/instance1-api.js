@@ -18,6 +18,21 @@ async function postIdentificationResult(result) {
   }
 }
 
+async function postIdentifyPeopleResult(result) {
+  const res = await fetch(`${BASE_URL}/internal/identify-people-result`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-worker-secret': SECRET,
+    },
+    body: JSON.stringify(result),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Instance-1 API responded ${res.status}: ${text}`);
+  }
+}
+
 async function postDescribePersonResult(result) {
   const res = await fetch(`${BASE_URL}/internal/describe-person-result`, {
     method: 'POST',
@@ -94,4 +109,4 @@ async function downloadNextcloudFile(shareUrl, fileName) {
   return Buffer.from(await resp.arrayBuffer());
 }
 
-module.exports = { postIdentificationResult, postDescribePersonResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces, downloadNextcloudFile };
+module.exports = { postIdentificationResult, postDescribePersonResult, postIdentifyPeopleResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces, downloadNextcloudFile };
