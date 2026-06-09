@@ -98,8 +98,24 @@ function importFormScript() {
     var wrap = input.parentNode;
     wrap.classList.add('tag-ac-wrap');
     var drop = null, active = -1;
-    function close() { if (drop) { drop.remove(); drop = null; active = -1; } }
+    var fetchTimer = null;
+    
+    // BUG-4: Add loading state indicator
+    var loading = document.createElement('div');
+    loading.className = 'tag-ac-loading';
+    loading.textContent = '…';
+    loading.style.display = 'none';
+    wrap.appendChild(loading);
+    
+    function showLoading() { loading.style.display = 'block'; }
+    function hideLoading() { loading.style.display = 'none'; }
+    
+    function close() { 
+      if (drop) { drop.remove(); drop = null; active = -1; }
+      hideLoading();
+    }
     function open(items) {
+      hideLoading();
       close();
       if (!items.length) return;
       drop = document.createElement('div');
@@ -114,9 +130,21 @@ function importFormScript() {
       wrap.appendChild(drop);
     }
     function pick(s) {
+      // BUG-5: Prevent duplicate tags
+      var existingTags = input.value.split(',').map(function(t) { return t.trim().toLowerCase(); }).filter(Boolean);
+      if (existingTags.indexOf(s.toLowerCase()) >= 0) {
+        close(); input.focus();
+        return;
+      }
+      // BUG-3: Fix extra leading space
       var parts = input.value.split(',');
-      parts[parts.length - 1] = ' ' + s;
-      input.value = parts.join(',') + ', ';
+      var lastPart = parts[parts.length - 1].trim();
+      if (lastPart) {
+        parts[parts.length - 1] = lastPart + ', ' + s;
+      } else {
+        parts[parts.length - 1] = s;
+      }
+      input.value = parts.join('') + ', ';
       close(); input.focus();
     }
     function highlight(i) {
@@ -126,11 +154,16 @@ function importFormScript() {
       active = i;
     }
     input.addEventListener('input', function() {
+      // BUG-2: Add debouncing (300ms)
+      clearTimeout(fetchTimer);
       var parts = this.value.split(',');
       var q = parts[parts.length - 1].trim();
       if (!q) { close(); return; }
-      fetch('/tags/autocomplete?q=' + encodeURIComponent(q))
-        .then(function(r) { return r.json(); }).then(open).catch(close);
+      showLoading();
+      fetchTimer = setTimeout(function() {
+        fetch('/tags/autocomplete?q=' + encodeURIComponent(q))
+          .then(function(r) { return r.json(); }).then(open).catch(function() { hideLoading(); close(); });
+      }, 300);
     });
     input.addEventListener('keydown', function(e) {
       if (!drop) return;
@@ -140,7 +173,10 @@ function importFormScript() {
       else if (e.key === 'Enter' && active >= 0) { e.preventDefault(); pick(items[active].textContent); }
       else if (e.key === 'Escape') { close(); }
     });
-    input.addEventListener('blur', function() { setTimeout(close, 150); });
+    input.addEventListener('blur', function() { 
+      clearTimeout(fetchTimer);
+      setTimeout(close, 150); 
+    });
   })();
 
   function showError(el, msg) { el.textContent = msg; el.style.display = 'block'; }

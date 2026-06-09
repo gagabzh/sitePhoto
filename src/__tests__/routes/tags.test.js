@@ -3,6 +3,7 @@ jest.mock('../../db', () => ({ query: jest.fn() }));
 const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
+const { errorHandler } = require('../../middleware');
 
 // resetAllMocks clears both call history and the mockResolvedValueOnce queues,
 // preventing stale mocks from a timed-out test bleeding into the next one.
@@ -22,6 +23,7 @@ function makeApp(sessionData) {
   });
   app.use('/tags', require('../../routes/tags'));
   app.use('/api',  require('../../routes/api'));
+  app.use(errorHandler);
   return app;
 }
 

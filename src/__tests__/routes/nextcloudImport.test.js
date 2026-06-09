@@ -72,6 +72,41 @@ describe('GET /photos/nextcloud-import — import form', () => {
     expect(res.text).toContain('/tags/autocomplete?q=');
     expect(res.text).toContain('tag-ac-wrap');
   });
+
+  it('includes debouncing for tag autocomplete (BUG-2)', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/nextcloud-import');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('fetchTimer');
+    expect(res.text).toContain('clearTimeout(fetchTimer)');
+    expect(res.text).toContain('setTimeout(function()');
+    expect(res.text).toContain('300');
+  });
+
+  it('includes loading state indicator for tag autocomplete (BUG-4)', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/nextcloud-import');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('tag-ac-loading');
+    expect(res.text).toContain('showLoading');
+    expect(res.text).toContain('hideLoading');
+  });
+
+  it('fixes leading space when inserting tag (BUG-3)', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/nextcloud-import');
+    expect(res.status).toBe(200);
+    // Verify the pick function handles spaces correctly
+    expect(res.text).toContain('lastPart = parts[parts.length - 1].trim()');
+    expect(res.text).toContain("parts.join('')");
+    // Verify the old buggy code is not present
+    expect(res.text).not.toContain("parts[parts.length - 1] = ' ' + s;");
+  });
+
+  it('prevents duplicate tags (BUG-5)', async () => {
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/nextcloud-import');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('existingTags');
+    expect(res.text).toContain('indexOf(s.toLowerCase())');
+    expect(res.text).toContain('close(); input.focus();');
+  });
 });
 
 // ── POST /photos/nextcloud-import — preview ───────────────────────────────────

@@ -10,6 +10,7 @@ const request = require('supertest');
 const express = require('express');
 const db = require('../../db');
 const { addDescribePersonJob, addIdentificationJob } = require('../../queue/producer');
+const { errorHandler } = require('../../middleware');
 
 beforeEach(() => jest.resetAllMocks());
 
@@ -21,6 +22,7 @@ function makeApp(session) {
   app.use(express.json());
   app.use((req, res, next) => { req.session = session; next(); });
   app.use('/api/ai', require('../../routes/ai'));
+  app.use(errorHandler);
   return app;
 }
 
