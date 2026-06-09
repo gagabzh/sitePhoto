@@ -112,9 +112,15 @@ async function unshelveIfNeeded() {
 }
 
 async function shelveInstance() {
-  // DEBUGGING: Shelving deactivated for Instance-2
-  console.log('[lifecycle] Queue idle — shelving Instance-2 (DEACTIVATED FOR DEBUGGING)');
-  return;
+  const status = await getStatus();
+  if (status !== 'ACTIVE') return;
+  console.log('[lifecycle] Queue idle — shelving Instance-2');
+  await ovhRequest(
+    'POST',
+    `/cloud/project/${process.env.OVH_PROJECT_ID}/instance/${process.env.INSTANCE2_ID}/shelve`,
+  );
+  setStatus('SHELVING');
+  console.log('[lifecycle] Shelve requested');
 }
 
 function onJobAdded() {
