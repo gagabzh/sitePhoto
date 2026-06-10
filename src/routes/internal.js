@@ -43,6 +43,7 @@ router.post('/identification-result', requireWorkerSecret, wrapAsync(async (req,
 // ── POST /internal/identify-people-result ─────────────────────────────────────
 // Called by worker after processing an identify-photo job.
 // Body: { photoId, userId, suggestions, error? }
+// Suggestions format: [{ name, hasReference, bbox }]
 router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { photoId, userId, suggestions, error } = req.body;
   if (!photoId || !userId) return res.status(400).json({ error: 'Missing photoId or userId' });
@@ -50,7 +51,28 @@ router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req
   if (error) {
     notifyUser(userId, { photoId, error }, 'identify-people-complete');
   } else {
-    notifyUser(userId, { photoId, suggestions: suggestions || [] }, 'identify-people-complete');
+    // Enrich suggestions with tag IDs
+    const enrichedSuggestions = await Promise.all(
+      (suggestions || []).map(async (s) => {
+        // Upsert the tag with category 'people'
+        const { rows: tagRows } = await db.query(
+          `INSERT INTO tags (name, category) VALUES ($1, 'people')
+           ON CONFLICT (name) DO UPDATE SET category = 'people'
+           RETURNING id`,
+          [s.name.toLowerCase()]
+        );
+        const tagId = tagRows[0]?.id;
+        
+        return {
+          tagId,
+          name: s.name,
+          hasReference: s.hasReference || false,
+          bbox: s.bbox,
+        };
+      })
+    );
+    
+    notifyUser(userId, { photoId, suggestions: enrichedSuggestions }, 'identify-people-complete');
   }
   res.json({ ok: true });
 }));

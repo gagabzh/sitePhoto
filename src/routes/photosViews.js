@@ -285,7 +285,9 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
                     + '<button title="Add tag" style="background:none;border:none;cursor:pointer;color:var(--accent);font-size:1rem;line-height:1;padding:0">✓</button>'
                     + '<button title="Dismiss" style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:1rem;line-height:1;padding:0">✗</button>';
                   chip.querySelectorAll('button')[0].addEventListener('click', function(){
-                    fetch('/api/ai/confirm-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID, tagId:s.tagId})})
+                    var payload = {photoId: PHOTO_ID, tagId: s.tagId, personName: s.name};
+                    if (s.bbox) payload.bbox = s.bbox;
+                    fetch('/api/ai/confirm-tag', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
                       .then(function(){
                         chip.innerHTML = '<span style="color:var(--accent)">' + s.name + ' ✓</span>';
                       });

@@ -15,7 +15,7 @@ const { EXT_MAP } = require('./nextcloudWebdav');
 
 const IDENTIFICATION_PROMPT =
   process.env.IDENTIFICATION_PROMPT ||
-  'List the people visible in this photo. Return a plain comma-separated list of names, or "unknown" if no one is recognisable.';
+  'List the people visible in this photo. For each person, provide their name and approximate face location as (name, x1, y1, x2, y2) where coordinates are normalized to [0, 1] (top-left to bottom-right). Return one entry per line, or "unknown" if no one is recognisable.';
 
 const connection = {
   host: process.env.REDIS_HOST || '127.0.0.1',
@@ -49,7 +49,7 @@ const worker = new Worker('identification', async (job) => {
   let prompt = IDENTIFICATION_PROMPT;
   if (knownFaces.length) {
     const names = knownFaces.map(f => `- ${f.personName}`).join('\n');
-    prompt = `Known people in this collection:\n${names}\n\nIdentify the people visible in the last image. For each person, provide their name if they match a known person, or describe them briefly if unknown. Also describe the scene.`;
+    prompt = `Known people in this collection:\n${names}\n\nIdentify the people visible in the last image. For each person, provide their name (if they match a known person) and approximate face location as (name, x1, y1, x2, y2) where coordinates are normalized to [0, 1] (top-left to bottom-right). Return one entry per line. If a person is unknown, describe them briefly.`;
   }
 
   let ollamaResponse;
@@ -63,16 +63,43 @@ const worker = new Worker('identification', async (job) => {
     throw err;
   }
 
-  const responseText = (ollamaResponse.response || '').toLowerCase();
-  const tagRows = knownFaces.map(f => ({ id: f.personName, name: f.personName }));
-  const suggestions = tagRows
-    .filter(t => responseText.includes(t.name.toLowerCase()))
-    .map(t => ({ tagId: t.id, name: t.name, hasReference: true }));
+  const responseText = ollamaResponse.response || '';
+  
+  // Parse response to extract people with bounding boxes
+  // Expected format: "(name, x1, y1, x2, y2)" on each line
+  const personMatches = responseText.match(/(\w+)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)/g) || [];
+  
+  const suggestions = personMatches.map(match => {
+    const parsed = match.match(/(\w+)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)/);
+    if (!parsed) return null;
+    
+    const name = parsed[1].toLowerCase();
+    const x1 = parseFloat(parsed[2]);
+    const y1 = parseFloat(parsed[3]);
+    const x2 = parseFloat(parsed[4]);
+    const y2 = parseFloat(parsed[5]);
+    
+    // Check if this person is in our known faces
+    const knownFace = knownFaces.find(f => f.personName.toLowerCase() === name);
+    
+    // Convert bounding box from (x1,y1,x2,y2) to (x,y,width,height) format
+    const width = x2 - x1;
+    const height = y2 - y1;
+    const bbox = { x: x1, y: y1, width, height };
+    
+    return {
+      name,
+      hasReference: !!knownFace,
+      bbox, // Always include bbox
+    };
+  }).filter(Boolean);
 
   if (isManual) {
     await postIdentifyPeopleResult({ photoId, userId, suggestions });
   } else {
-    await postIdentificationResult({ photoId, userId, tags: responseText });
+    // For auto-identification (photo upload), extract just the names
+    const names = suggestions.map(s => s.name);
+    await postIdentificationResult({ photoId, userId, tags: names.join(', ') });
   }
   console.log(`[worker] job ${job.id} done`);
 }, { connection });

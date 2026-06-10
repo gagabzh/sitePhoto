@@ -115,6 +115,92 @@ describe('POST /internal/identification-result', () => {
   });
 });
 
+// ── POST /internal/identify-people-result ────────────────────────────────────
+
+describe('POST /internal/identify-people-result', () => {
+  it('returns 400 when photoId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/identify-people-result')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: '2', suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/photoId/);
+  });
+
+  it('returns 400 when userId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/identify-people-result')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: '1', suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/userId/);
+  });
+
+  it('notifies user with error when error is provided', async () => {
+    const res = await request(makeApp())
+      .post('/internal/identify-people-result')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: '1', userId: '2', error: 'Ollama timeout' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(notifyUser).toHaveBeenCalledWith('2', { photoId: '1', error: 'Ollama timeout' }, 'identify-people-complete');
+  });
+
+  it('enriches suggestions with tag IDs and notifies user', async () => {
+    const suggestions = [
+      { name: 'Alice', hasReference: true, bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } },
+      { name: 'Bob', hasReference: false, bbox: { x: 0.6, y: 0.4, width: 0.2, height: 0.2 } },
+    ];
+    
+    // 1. INSERT Alice tag RETURNING id
+    // 2. INSERT Bob tag RETURNING id
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // Alice tag
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] });  // Bob tag
+
+    const res = await request(makeApp())
+      .post('/internal/identify-people-result')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: '42', userId: '7', suggestions });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    
+    // Verify tags were upserted with category 'people'
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO tags'),
+      ['alice']
+    );
+    expect(db.query).toHaveBeenNthCalledWith(2,
+      expect.stringContaining('INSERT INTO tags'),
+      ['bob']
+    );
+    
+    // Verify notification was sent with enriched suggestions
+    // Note: name preserves original case from suggestions
+    expect(notifyUser).toHaveBeenCalledWith('7', {
+      photoId: '42',
+      suggestions: [
+        { tagId: 10, name: 'Alice', hasReference: true, bbox: suggestions[0].bbox },
+        { tagId: 11, name: 'Bob', hasReference: false, bbox: suggestions[1].bbox },
+      ]
+    }, 'identify-people-complete');
+  });
+
+  it('notifies with empty array when suggestions is empty', async () => {
+    const res = await request(makeApp())
+      .post('/internal/identify-people-result')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: '42', userId: '7', suggestions: [] });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(db.query).not.toHaveBeenCalled();
+    expect(notifyUser).toHaveBeenCalledWith('7', { photoId: '42', suggestions: [] }, 'identify-people-complete');
+  });
+});
+
 // ── POST /internal/nextcloud-photo ───────────────────────────────────────────
 
 describe('POST /internal/nextcloud-photo', () => {
