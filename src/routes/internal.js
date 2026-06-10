@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { wrapAsync } = require('../middleware');
 const { notifyUser } = require('../notifications');
-const { downloadPhoto, uploadPhoto, deletePhoto } = require('../storage');
+const { downloadPhoto, uploadPhoto } = require('../storage');
 const db = require('../db');
 const { downloadFileAsBuffer } = require('../nextcloudWebdav');
 
@@ -257,50 +257,33 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
       const cropKey = 'faces/' + crypto.randomUUID() + '.jpg';
       await uploadPhoto(cropKey, cropBuffer, 'image/jpeg');
 
-      // Track cropKey for cleanup if needed
-      let dbOperationsFailed = false;
-      
-      try {
-        // Upsert tag with category 'people'
-        const { rows: tagRows } = await db.query(
-          `INSERT INTO tags (name, category) VALUES ($1, 'people')
-           ON CONFLICT (name) DO UPDATE SET category = 'people'
-           RETURNING id`,
-          [name.toLowerCase()]
-        );
-        const tagId = tagRows[0]?.id;
+      // Upsert tag with category 'people'
+      const { rows: tagRows } = await db.query(
+        `INSERT INTO tags (name, category) VALUES ($1, 'people')
+         ON CONFLICT (name) DO UPDATE SET category = 'people'
+         RETURNING id`,
+        [name.toLowerCase()]
+      );
+      const tagId = tagRows[0]?.id;
 
-        // Link tag to photo
-        if (tagId) {
-          await db.query(
-            'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-            [photoInt, tagId]
-          );
-        }
-
-        // Store face crop
+      // Link tag to photo
+      if (tagId) {
         await db.query(
-          `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
-           VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
-          [userInt, name.toLowerCase(), photoInt, JSON.stringify(bbox), cropKey]
+          'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [photoInt, tagId]
         );
-
-        stored.push({ name, tagId });
-      } catch (dbErr) {
-        dbOperationsFailed = true;
-        console.error('[internal/store-people-faces] DB error for', name, ':', dbErr.message);
-        // Attempt to clean up orphaned S3 file
-        try {
-          await deletePhoto(cropKey);
-          console.log('[internal/store-people-faces] Cleaned up orphaned crop file:', cropKey);
-        } catch (cleanupErr) {
-          console.error('[internal/store-people-faces] Failed to cleanup orphaned crop:', cleanupErr.message);
-        }
-        throw dbErr;
       }
+
+      // Store face crop
+      await db.query(
+        `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+        [userInt, name.toLowerCase(), photoInt, JSON.stringify(bbox), cropKey]
+      );
+
+      stored.push({ name, tagId });
     } catch (err) {
       console.error('[internal/store-people-faces] Failed to store face for', name, ':', err.message);
-      // Error already logged, cleanup attempted if applicable
     }
   }
 

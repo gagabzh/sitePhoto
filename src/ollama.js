@@ -29,28 +29,11 @@ async function generate({ model = MODEL, prompt, images = [] }) {
           try {
             const parsed = JSON.parse(raw);
             if (res.statusCode >= 400) {
-              const errorMsg = parsed.error || `Ollama HTTP error ${res.statusCode}`;
-              const err = new Error(errorMsg);
-              err.statusCode = res.statusCode;
-              err.response = parsed;
-              reject(err);
-            } else if (!parsed || typeof parsed !== 'object') {
-              reject(new Error('Ollama: invalid response structure - expected object'));
-            } else if (!parsed.response && parsed.error) {
-              // Ollama returned an error in the response field
-              const err = new Error(parsed.error);
-              err.statusCode = res.statusCode;
-              err.response = parsed;
-              reject(err);
+              reject(new Error(parsed.error || `Ollama error ${res.statusCode}`));
             } else {
               resolve(parsed);
             }
-          } catch (parseErr) {
-            const err = new Error(`Ollama: invalid JSON in response: ${parseErr.message}`);
-            err.originalError = parseErr;
-            err.rawResponse = raw.substring(0, 200);
-            reject(err);
-          }
+          } catch { reject(new Error('Ollama: invalid JSON in response')); }
         });
       }
     );

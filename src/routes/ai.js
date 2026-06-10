@@ -4,7 +4,7 @@ const sharp = require('sharp');
 const db = require('../db');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { addIdentificationJob } = require('../queue/producer');
-const { uploadPhoto, downloadPhoto, deletePhoto } = require('../storage');
+const { uploadPhoto, downloadPhoto } = require('../storage');
 
 // ── POST /api/ai/identify-people ──────────────────────────────────────────────
 // Accepts { photoId }. Enqueues a manual-identify-photo job on Instance-2.
@@ -106,24 +106,12 @@ router.post('/confirm-tag', requireEditor, wrapAsync(async (req, res) => {
           const cropKey = 'faces/' + crypto.randomUUID() + '.jpg';
           await uploadPhoto(cropKey, cropBuffer, 'image/jpeg');
           
-          try {
-            // Insert person_faces record
-            await db.query(
-              `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
-               VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
-              [req.session.userId, personName.toLowerCase(), photoId, JSON.stringify(bbox), cropKey]
-            );
-          } catch (dbErr) {
-            console.error('[ai/confirm-tag] Failed to insert person_faces record:', dbErr.message);
-            // Delete orphaned S3 crop file
-            try {
-              await deletePhoto(cropKey);
-              console.log('[ai/confirm-tag] Cleaned up orphaned crop file:', cropKey);
-            } catch (cleanupErr) {
-              console.error('[ai/confirm-tag] Failed to cleanup orphaned crop file:', cleanupErr.message);
-            }
-            throw dbErr; // Re-throw to maintain error in outer catch
-          }
+          // Insert person_faces record
+          await db.query(
+            `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
+             VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+            [req.session.userId, personName.toLowerCase(), photoId, JSON.stringify(bbox), cropKey]
+          );
         }
       }
     } catch (err) {

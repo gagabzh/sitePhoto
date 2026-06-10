@@ -65,63 +65,36 @@ const worker = new Worker('identification', async (job) => {
     throw err;
   }
 
-  // Validate Ollama response structure
-  if (!ollamaResponse || typeof ollamaResponse !== 'object') {
-    const errorMsg = 'Invalid Ollama response: expected object with response field';
-    console.error(`[worker] ${errorMsg}`);
-    if (isManual) {
-      await postIdentifyPeopleResult({ photoId, userId, error: errorMsg });
-    }
-    throw new Error(errorMsg);
-  }
-
   const responseText = ollamaResponse.response || '';
   
   // Parse response to extract people with bounding boxes
   // Expected format: "(name, x1, y1, x2, y2)" on each line
-  let suggestions = [];
-  try {
-    const personMatches = responseText.match(/(\w+)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)/g) || [];
+  const personMatches = responseText.match(/(\w+)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)/g) || [];
+  
+  const suggestions = personMatches.map(match => {
+    const parsed = match.match(/(\w+)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)/);
+    if (!parsed) return null;
     
-    suggestions = personMatches.map(match => {
-      const parsed = match.match(/(\w+)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)/);
-      if (!parsed || parsed.length < 6) {
-        console.warn(`[worker] Failed to parse person match: ${match}`);
-        return null;
-      }
-      
-      const name = parsed[1].toLowerCase();
-      const x1 = parseFloat(parsed[2]);
-      const y1 = parseFloat(parsed[3]);
-      const x2 = parseFloat(parsed[4]);
-      const y2 = parseFloat(parsed[5]);
-      
-      // Validate coordinate values
-      if (!Number.isFinite(x1) || !Number.isFinite(y1) || !Number.isFinite(x2) || !Number.isFinite(y2)) {
-        console.warn(`[worker] Invalid bounding box coordinates in match: ${match}`);
-        return null;
-      }
-      
-      // Check if this person is in our known faces
-      const knownFace = knownFaces.find(f => f.personName.toLowerCase() === name);
-      
-      // Convert bounding box from (x1,y1,x2,y2) to (x,y,width,height) format
-      const width = x2 - x1;
-      const height = y2 - y1;
-      const bbox = { x: x1, y: y1, width, height };
-      
-      return {
-        name,
-        hasReference: !!knownFace,
-        bbox, // Always include bbox
-      };
-    }).filter(Boolean);
-  } catch (err) {
-    console.error(`[worker] Failed to parse Ollama response: ${err.message}`);
-    console.error(`[worker] Response text: ${responseText.substring(0, 200)}`);
-    // Continue with empty suggestions - identification can still work with tags
-    suggestions = [];
-  }
+    const name = parsed[1].toLowerCase();
+    const x1 = parseFloat(parsed[2]);
+    const y1 = parseFloat(parsed[3]);
+    const x2 = parseFloat(parsed[4]);
+    const y2 = parseFloat(parsed[5]);
+    
+    // Check if this person is in our known faces
+    const knownFace = knownFaces.find(f => f.personName.toLowerCase() === name);
+    
+    // Convert bounding box from (x1,y1,x2,y2) to (x,y,width,height) format
+    const width = x2 - x1;
+    const height = y2 - y1;
+    const bbox = { x: x1, y: y1, width, height };
+    
+    return {
+      name,
+      hasReference: !!knownFace,
+      bbox, // Always include bbox
+    };
+  }).filter(Boolean);
 
   // AI-5 Step 3: Store face crops for auto-identified people only
   // For manual identification, wait for user confirmation via /api/ai/confirm-tag
