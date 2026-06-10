@@ -1,9 +1,11 @@
 'use strict';
 
 const router = require('express').Router();
+const crypto = require('crypto');
+const sharp = require('sharp');
 const { wrapAsync } = require('../middleware');
 const { notifyUser } = require('../notifications');
-const { downloadPhoto } = require('../storage');
+const { downloadPhoto, uploadPhoto } = require('../storage');
 const db = require('../db');
 const { downloadFileAsBuffer } = require('../nextcloudWebdav');
 
@@ -177,6 +179,121 @@ router.get('/known-faces/:userId', requireWorkerSecret, wrapAsync(async (req, re
   }));
 
   res.json(results.filter(Boolean));
+}));
+
+// ── POST /internal/store-people-faces ──────────────────────────────────────
+// Called by worker to store face crops for AI-identified people.
+// Body: { photoId, userId, photoS3Key, suggestions }
+// For each suggestion with a valid bbox, extracts the face crop and stores in person_faces.
+router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, res) => {
+  const { photoId, userId, photoS3Key, suggestions } = req.body;
+  if (!photoId || !userId || !photoS3Key) {
+    return res.status(400).json({ error: 'Missing photoId, userId, or photoS3Key' });
+  }
+
+  const photoInt = parseInt(photoId, 10);
+  const userInt = parseInt(userId, 10);
+  if (!Number.isInteger(photoInt) || !Number.isInteger(userInt)) {
+    return res.status(400).json({ error: 'Invalid photoId or userId' });
+  }
+
+  const validSuggestions = (suggestions || []).filter(s => 
+    s && s.name && s.bbox && 
+    s.bbox.x != null && s.bbox.y != null && s.bbox.width != null && s.bbox.height != null
+  );
+
+  if (!validSuggestions.length) {
+    return res.json({ stored: 0 });
+  }
+
+  // Download the photo once
+  let buffer;
+  try {
+    buffer = await downloadPhoto(photoS3Key);
+  } catch (err) {
+    console.warn('[internal/store-people-faces] Failed to download photo:', err.message);
+    return res.status(404).json({ error: 'Photo not found' });
+  }
+
+  // Get image dimensions
+  const { width: imgWidth, height: imgHeight } = await sharp(buffer).metadata();
+
+  // Store each valid suggestion
+  const stored = [];
+  for (const suggestion of validSuggestions) {
+    const { name, bbox } = suggestion;
+    
+    // Validate bbox
+    if (
+      typeof bbox.x !== 'number' || typeof bbox.y !== 'number' ||
+      typeof bbox.width !== 'number' || typeof bbox.height !== 'number' ||
+      bbox.x < 0 || bbox.x > 1 || bbox.y < 0 || bbox.y > 1 ||
+      bbox.width < 0 || bbox.width > 1 || bbox.height < 0 || bbox.height > 1 ||
+      bbox.x + bbox.width > 1 || bbox.y + bbox.height > 1
+    ) {
+      console.warn('[internal/store-people-faces] Invalid bbox:', bbox);
+      continue;
+    }
+
+    // Compute crop region
+    const cropX = Math.round(bbox.x * imgWidth);
+    const cropY = Math.round(bbox.y * imgHeight);
+    const cropWidth = Math.round(bbox.width * imgWidth);
+    const cropHeight = Math.round(bbox.height * imgHeight);
+
+    if (cropWidth < 20 || cropHeight < 20) {
+      console.warn('[internal/store-people-faces] Bounding box too small:', bbox);
+      continue;
+    }
+
+    try {
+      // Crop and encode
+      const cropBuffer = await sharp(buffer)
+        .extract({ left: cropX, top: cropY, width: cropWidth, height: cropHeight })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+
+      // Upload crop to S3
+      const cropKey = 'faces/' + crypto.randomUUID() + '.jpg';
+      await uploadPhoto(cropKey, cropBuffer, 'image/jpeg');
+
+      // Upsert tag with category 'people'
+      const { rows: tagRows } = await db.query(
+        `INSERT INTO tags (name, category) VALUES ($1, 'people')
+         ON CONFLICT (name) DO UPDATE SET category = 'people'
+         RETURNING id`,
+        [name.toLowerCase()]
+      );
+      const tagId = tagRows[0]?.id;
+
+      // Link tag to photo
+      if (tagId) {
+        await db.query(
+          'INSERT INTO photo_tags (photo_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [photoInt, tagId]
+        );
+      }
+
+      // Store face crop
+      await db.query(
+        `INSERT INTO person_faces (user_id, person_name, photo_id, bbox, crop_s3_key)
+         VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+        [userInt, name.toLowerCase(), photoInt, JSON.stringify(bbox), cropKey]
+      );
+
+      stored.push({ name, tagId });
+    } catch (err) {
+      console.error('[internal/store-people-faces] Failed to store face for', name, ':', err.message);
+    }
+  }
+
+  // Notify user that identification is complete and face crops have been stored
+  if (stored.length > 0) {
+    const tagNames = stored.map(s => s.name);
+    notifyUser(userId, { photoId, tags: tagNames });
+  }
+
+  res.json({ stored: stored.length, tags: stored.map(s => s.name) });
 }));
 
 // GET /internal/nextcloud-file — proxy download from Nextcloud for worker

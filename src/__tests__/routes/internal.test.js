@@ -2,7 +2,18 @@ jest.mock('../../db', () => ({ query: jest.fn() }));
 jest.mock('../../notifications', () => ({ notifyUser: jest.fn(), initSocketIO: jest.fn() }));
 jest.mock('../../storage', () => ({
   downloadPhoto: jest.fn(),
+  uploadPhoto: jest.fn(),
 }));
+jest.mock('sharp', () => {
+  const mockMetadata = { width: 1000, height: 800 };
+  const createInstance = () => ({
+    metadata: jest.fn().mockResolvedValue(mockMetadata),
+    extract: jest.fn().mockReturnThis(),
+    jpeg: jest.fn().mockReturnThis(),
+    toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock-crop-buffer')),
+  });
+  return jest.fn(() => createInstance());
+});
 
 const request = require('supertest');
 const express = require('express');
@@ -549,5 +560,258 @@ describe('GET /internal/known-faces/:userId', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/invalid/i);
+  });
+});
+
+// ── POST /internal/store-people-faces ─────────────────────────────────────────
+
+describe('POST /internal/store-people-faces', () => {
+  const mockBuffer = Buffer.from('mock-photo-data');
+  const defaultSharp = () => ({
+    metadata: jest.fn().mockResolvedValue({ width: 1000, height: 800 }),
+    extract: jest.fn().mockReturnThis(),
+    jpeg: jest.fn().mockReturnThis(),
+    toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock-crop-buffer')),
+  });
+  
+  beforeEach(() => {
+    jest.resetAllMocks();
+    storage.downloadPhoto.mockResolvedValue(mockBuffer);
+    storage.uploadPhoto.mockResolvedValue(null);
+    const sharp = require('sharp');
+    sharp.mockImplementation(() => defaultSharp());
+  });
+
+  it('returns 403 without valid x-worker-secret', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions: [] });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 400 when photoId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ userId: 1, photoS3Key: 'test.jpg', suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/photoId/);
+  });
+
+  it('returns 400 when userId is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, photoS3Key: 'test.jpg', suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/userId/);
+  });
+
+  it('returns 400 when photoS3Key is missing', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/photoS3Key/);
+  });
+
+  it('returns 400 for non-integer photoId', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 'abc', userId: 1, photoS3Key: 'test.jpg', suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid/);
+  });
+
+  it('returns 400 for non-integer userId', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 'abc', photoS3Key: 'test.jpg', suggestions: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Invalid/);
+  });
+
+  it('returns stored: 0 when suggestions is empty', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(0);
+  });
+
+  it('returns stored: 0 when suggestions have no valid bboxes', async () => {
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ 
+        photoId: 1, 
+        userId: 1, 
+        photoS3Key: 'test.jpg', 
+        suggestions: [{ name: 'Alice' }] // no bbox
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(0);
+  });
+
+  it('returns 404 when photo is not found in S3', async () => {
+    storage.downloadPhoto.mockRejectedValue(new Error('Not found'));
+    const suggestions = [{ name: 'Alice', bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } }];
+    
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions });
+    
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/Photo not found/);
+  });
+
+  it('stores face crop and applies tag on happy path', async () => {
+    const suggestions = [
+      { name: 'Alice', bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } }
+    ];
+    
+    // 1. INSERT INTO tags RETURNING id (Alice with category='people')
+    // 2. INSERT INTO photo_tags
+    // 3. INSERT INTO person_faces
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // tag upsert
+      .mockResolvedValueOnce({ rows: [] })            // photo_tags insert
+      .mockResolvedValueOnce({ rows: [] });            // person_faces insert
+
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions });
+
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(1);
+    expect(res.body.tags).toEqual(['Alice']);
+    
+    // Verify tag was upserted with category='people' (category is hardcoded in SQL)
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO tags'),
+      ['alice']
+    );
+    
+    // Verify photo_tags was linked
+    expect(db.query).toHaveBeenNthCalledWith(2,
+      expect.stringContaining('INSERT INTO photo_tags'),
+      [1, 10]
+    );
+    
+    // Verify person_faces was inserted
+    expect(db.query).toHaveBeenNthCalledWith(3,
+      expect.stringContaining('INSERT INTO person_faces'),
+      [1, 'alice', 1, JSON.stringify(suggestions[0].bbox), expect.any(String)]
+    );
+    
+    // Verify uploadPhoto was called for the crop
+    expect(storage.uploadPhoto).toHaveBeenCalledWith(
+      expect.stringMatching(/^faces\/.*\.jpg$/),
+      expect.any(Buffer),
+      'image/jpeg'
+    );
+  });
+
+  it('skips suggestions with invalid bbox coordinates', async () => {
+    const suggestions = [
+      { name: 'Alice', bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } }, // valid
+      { name: 'Bob', bbox: { x: 1.5, y: 0.3, width: 0.2, height: 0.25 } },   // invalid: x > 1
+      { name: 'Charlie', bbox: { x: 0.8, y: 0.3, width: 0.5, height: 0.25 } } // invalid: x + width > 1
+    ];
+    
+    // Only Alice should be processed
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // Alice tag upsert
+      .mockResolvedValueOnce({ rows: [] })            // Alice photo_tags insert
+      .mockResolvedValueOnce({ rows: [] });            // Alice person_faces insert
+
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions });
+
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(1);
+    expect(res.body.tags).toEqual(['Alice']);
+    
+    // Only 3 queries for Alice (Bob and Charlie skipped due to invalid bbox)
+    expect(db.query).toHaveBeenCalledTimes(3);
+  });
+
+  it('skips suggestions with bounding box too small', async () => {
+    // Override sharp mock for this test to use a small image (100x100)
+    // so a bbox of 0.05x0.05 becomes 5x5 pixels (< 20 minimum)
+    const sharp = require('sharp');
+    sharp.mockImplementation(() => ({
+      metadata: jest.fn().mockResolvedValue({ width: 100, height: 100 }),
+      extract: jest.fn().mockReturnThis(),
+      jpeg: jest.fn().mockReturnThis(),
+      toBuffer: jest.fn().mockResolvedValue(Buffer.from('crop-buffer')),
+    }));
+
+    const suggestions = [
+      { name: 'Alice', bbox: { x: 0.05, y: 0.05, width: 0.05, height: 0.05 } } // 5x5 pixels
+    ];
+
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions });
+
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(0);
+    expect(storage.uploadPhoto).not.toHaveBeenCalled();
+    
+    // Restore default sharp mock for subsequent tests
+    sharp.mockImplementation(() => defaultSharp());
+  });
+
+  it('notifies user when face crops are stored', async () => {
+    const suggestions = [
+      { name: 'Alice', bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } }
+    ];
+    
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: '7', photoS3Key: 'test.jpg', suggestions });
+
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(1);
+    
+    // Verify notification was sent
+    expect(notifyUser).toHaveBeenCalledWith('7', { 
+      photoId: 1, 
+      tags: ['Alice'] 
+    });
+  });
+
+  it('handles storage.uploadPhoto failure gracefully', async () => {
+    storage.uploadPhoto.mockRejectedValue(new Error('S3 upload failed'));
+
+    const suggestions = [
+      { name: 'Alice', bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } }
+    ];
+
+    const res = await request(makeApp())
+      .post('/internal/store-people-faces')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({ photoId: 1, userId: 1, photoS3Key: 'test.jpg', suggestions });
+
+    expect(res.status).toBe(200);
+    // The request should still succeed but with 0 stored due to the error
+    // (error is caught per-suggestion in the loop)
+    expect(res.body.stored).toBe(0);
   });
 });

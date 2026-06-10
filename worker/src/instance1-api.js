@@ -94,4 +94,30 @@ async function downloadNextcloudFile(shareUrl, fileName) {
   return Buffer.from(await resp.arrayBuffer());
 }
 
-module.exports = { postIdentificationResult, postIdentifyPeopleResult, postNextcloudImportProgress, insertImportedPhoto, fetchKnownFaces, downloadNextcloudFile };
+// AI-5 Step 3: Store face crops for AI-identified people
+// payload: { photoId, userId, photoS3Key, suggestions }
+async function storePeopleFaces(payload) {
+  const res = await fetch(`${BASE_URL}/internal/store-people-faces`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-worker-secret': SECRET,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Instance-1 API responded ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+module.exports = { 
+  postIdentificationResult, 
+  postIdentifyPeopleResult, 
+  postNextcloudImportProgress, 
+  insertImportedPhoto, 
+  fetchKnownFaces, 
+  downloadNextcloudFile,
+  storePeopleFaces,
+};
