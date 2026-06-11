@@ -95,6 +95,12 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | IQ-3 | Linter                                                      | Infrastructure | Done | package.json |
 | IQ-4 | Code quality metrics                                        | Infrastructure | Backlog | — |
 | IQ-5 | VPS hardening                                               | Infrastructure | Done | — |
+| IQ-6 | Fix misleading audit success message in audit-check.js      | Infrastructure | Backlog | — |
+| IQ-7 | Add skipSuccessfulRequests to authLimiter                   | Hardening | Backlog | — |
+| IQ-8 | Cache worker npm ci in CI                                   | Infrastructure | Backlog | — |
+| IQ-9 | Unit-test audit-check.js advisory parsing logic             | Infrastructure | Backlog | — |
+| IQ-10 | Document or address unmetered /uploads/:filename route     | Hardening | Backlog | — |
+| IQ-11 | Document Referrer-Policy override as deliberate decision   | Hardening | Backlog | — |
 | S3-1 | Photos stored in Object Storage                             | Infrastructure | Done | — |
 | S3-2 | Transparent experience for viewers                          | Infrastructure | Done | — |
 | S3-3 | Photo deletion removes S3 object                            | Infrastructure | Done | — |

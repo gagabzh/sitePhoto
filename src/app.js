@@ -98,9 +98,8 @@ app.use(globalLimiter);
 // Internal worker endpoint — authenticated by WORKER_API_SECRET, not by session
 app.use('/internal', require('./routes/internal'));
 
-// Auth rate limit — applied to login and register before the auth router handles them.
+// Auth rate limit — applied to login before the auth router handles it.
 app.post('/login', authLimiter);
-app.post('/register', authLimiter);
 app.use(require('./routes/auth'));
 app.use(requireAuth);
 app.use(csrfMiddleware);

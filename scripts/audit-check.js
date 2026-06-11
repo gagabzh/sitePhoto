@@ -21,7 +21,14 @@ function loadExceptions() {
         .split('\n')
         .map((line) => line.trim())
         .filter((line) => line && !line.startsWith('#'))
-        .map(Number)
+        .map((line) => {
+          const n = Number(line);
+          if (!Number.isInteger(n) || n <= 0) {
+            console.error(`audit-check: invalid exception entry "${line}" — must be a positive integer advisory ID`);
+            process.exit(1);
+          }
+          return n;
+        })
     );
   } catch {
     // File doesn't exist — no exemptions.

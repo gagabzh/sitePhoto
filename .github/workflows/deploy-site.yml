@@ -23,6 +23,8 @@ on:
       - 'init-db.sql'
       - 'Caddyfile'
       - 'docker-compose.prod.yml'
+      - 'scripts/**'
+      - '.npm-audit-exceptions'
 
 jobs:
   test:

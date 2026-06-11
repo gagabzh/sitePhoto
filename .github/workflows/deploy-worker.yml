@@ -9,6 +9,8 @@ on:
     branches: [main]
     paths:
       - 'worker/**'
+      - 'scripts/**'
+      - '.npm-audit-exceptions'
   workflow_dispatch:
 
 jobs:
@@ -33,15 +35,13 @@ jobs:
         run: npm test
 
       - name: Audit
-        run: npm audit --audit-level=high
-
-      - name: Install worker dependencies
-        run: npm ci
-        working-directory: worker
+        run: npm audit --audit-level=high --json | node scripts/audit-check.js
 
       - name: Audit worker dependencies
-        run: npm audit --audit-level=high
         working-directory: worker
+        run: |
+          npm ci
+          npm audit --audit-level=high --json | node ../scripts/audit-check.js
 
   deploy:
     runs-on: ubuntu-latest
