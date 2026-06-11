@@ -83,3 +83,36 @@ As an editor, I want a single, consistent way to tag people that merges the exis
 > **Migration:** Existing description-based tags should be migrated to include face crops where possible. Photos already tagged with descriptions but no crops should trigger a background job to extract face crops.
 >
 > **Out of scope:** Retraining the base Ollama model. Real-time learning across all users (per-user learning only). Face recognition as a separate service. Video person detection.
+
+---
+
+**AI-6 — People tag autocomplete**
+As an editor, when I tag a person on a photo (manually or confirming an AI suggestion), I see an autocomplete dropdown of existing people tags matching what I've typed — so I can quickly select the correct person without typos and maintain consistent naming.
+
+- The autocomplete is available in all people tagging interfaces:
+  - Manual face tagging (drawing a rectangle and entering a name)
+  - Confirming/rejecting AI-suggested people tags
+  - Editing existing people tags on a photo
+- Autocomplete matches against existing people names in the database (from `people` table or `person_faces` table)
+- Matching is case-insensitive and prioritizes:
+  1. Exact matches first
+  2. Prefix matches (typing "Joh" shows "John", "Johnny", "Joseph")
+  3. Substring matches (typing "oh" shows "John", "Doherty")
+- The autocomplete dropdown shows up to 10 matching people names
+- Selecting a suggestion from the dropdown auto-fills the name field
+- The autocomplete endpoint is `/api/people/autocomplete?query=...` returning JSON array of `{id, name}` objects
+- Minimum 2 characters typed before suggestions appear
+- Keyboard navigation works (arrow keys, Enter to select, Esc to close)
+- Mobile-friendly: dropdown is touch-friendly with adequate tap targets
+
+Edge cases:
+- User types a name that doesn't exist: autocomplete shows "No matching people. [Create new person]" option
+- Multiple people with similar names: all are shown with their full names
+- User has permission to tag but can only see people they've previously tagged: autocomplete filters to people the user has access to
+- Same person exists with different capitalizations (e.g., "john", "John", "JOHN"): deduplicate in results
+
+> **Technical notes:**
+> - Reuse existing autocomplete pattern from TG-2 (tag autocomplete) for consistency
+> - Backend: query `SELECT DISTINCT name FROM person_faces ORDER BY name` with LIKE matching
+> - Frontend: reuse autocomplete JS/CSS components from existing tag autocomplete
+> - Consider caching autocomplete results for common prefixes
