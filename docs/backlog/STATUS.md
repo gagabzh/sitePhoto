@@ -90,8 +90,8 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | AI-3 | Manual person tagging                                       | Local AI | Done | #101 — POST /photos/:id/tag-person, sharp crop → S3 faces/, person_faces table (v15) — src/routes/photos.js |
 | AI-4 | AI learns from manual tags                                  | Local AI | Done | #101 — GET /internal/known-faces/:userId, worker few-shot injection — src/routes/internal.js + worker/src/worker.js |
 | AI-5 | Unified people tagging with continuous learning             | Local AI | Backlog | — |
-| IQ-1 | Application security hardening                              | Infrastructure | Backlog | — |
-| IQ-2 | Dependency CVE monitoring                                   | Infrastructure | Backlog | — |
+| IQ-1 | Apply HTTP security headers and rate-limit auth routes | Infrastructure | Done | #115 |
+| IQ-2 | Fail CI on high-severity dependency vulnerabilities         | Infrastructure | Done | #115 |
 | IQ-3 | Linter                                                      | Infrastructure | Done | package.json |
 | IQ-4 | Code quality metrics                                        | Infrastructure | Backlog | — |
 | IQ-5 | VPS hardening                                               | Infrastructure | Done | — |
