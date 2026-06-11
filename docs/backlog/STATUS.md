@@ -94,6 +94,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | AI-4 | AI learns from manual tags                                  | Local AI | Done | #101 — GET /internal/known-faces/:userId, worker few-shot injection — src/routes/internal.js + worker/src/worker.js |
 | AI-5 | Unified people tagging with continuous learning             | Local AI | Backlog | — |
 | AI-6 | People tag autocomplete                                | Local AI | Backlog | — |
+| AI-7 | Identification queue dashboard                       | Local AI | Backlog | — |
 | IQ-1 | Apply HTTP security headers and rate-limit auth routes | Infrastructure | Done | #115 |
 | IQ-2 | Fail CI on high-severity dependency vulnerabilities         | Infrastructure | Done | #115 |
 | IQ-3 | Linter                                                      | Infrastructure | Done | package.json |
