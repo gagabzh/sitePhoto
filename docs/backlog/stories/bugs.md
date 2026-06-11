@@ -101,3 +101,18 @@ As an editor attempting to import photos from Nextcloud, I expect the import to 
 *Investigation needed:* Check error logs on Instance-1 when import fails. Verify that the Nextcloud WebDAV client (`src/nextcloudWebdav.js`) is available and properly configured on Instance-1. Confirm that Instance-1 has network access to Nextcloud servers and can make outbound HTTPS requests.
 
 *Related:* US-NC4, US-NC5, US-NC6, INF-4
+
+---
+
+**BUG-7 — Banner after Nextcloud import never disappears**
+As an editor who has completed a Nextcloud import, I expect the progress banner to automatically dismiss after a short delay, so it doesn't permanently block my view of the photos page.
+
+*Current behavior:* The banner showing "Import complete — X of Y photos imported" (or similar) remains visible indefinitely on the photos page after a Nextcloud import finishes.
+
+*Expected behavior:* The banner should auto-dismiss 5 seconds after the import completes (matching US-NC5 criterion 1: "The banner persists for 5 seconds after completion, then dismisses itself").
+
+*Technical note:* This is likely a frontend JavaScript issue in `src/public/photos.js` or a missing timeout in the banner dismissal logic. Check the socket.io event handler for `nextcloud-import-progress` (US-NC5) which should set a timeout when `done + failed >= total`. The server-side rendering may also need to verify the condition `done + failed < total` is false to prevent re-rendering the banner on page refresh.
+
+*Investigation needed:* Check the banner dismissal logic in the frontend code. Verify that the timeout is being set correctly when the import completes. Confirm that the condition for auto-dismissal is being met.
+
+*Related:* US-NC5, US-NC4

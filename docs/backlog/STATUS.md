@@ -44,6 +44,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | IMP-2 | Batch upload                                                | Photos | Done | — |
 | IMP-3 | Back buttons at the top of pages                            | Photos | Done | — |
 | IMP-4 | Select all                                                  | Photos | Done | — |
+| IMP-5 | Consolidate tags and people display on photo detail      | Photos | Backlog | — |
 | LB-1 | Lightbox / fullscreen viewer in album                       | Photos | Done | #97 — vanilla JS lightbox, keyboard nav, prev/next — src/routes/albums.js + albumsViews.js |
 | US-A1 | Create an album                                             | Albums | Done | — |
 | US-A2 | Add / remove photos from an album                           | Albums | Done | — |
@@ -67,6 +68,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-GPS2 | View a photo's location                                     | Map & GPS | Done | — |
 | US-GPS3 | Browse photos on a map                                      | Map & GPS | Done | — |
 | US-GPS4 | Filter map by album or tag                                  | Map & GPS | Done | — |
+| US-GPS5 | Auto-add place tags from GPS coordinates              | Map & GPS | Backlog | — |
 | MAP-1 | Search by location and radius                               | Map & GPS | Done | zone search with Haversine filter — src/routes/map.js + mapViews.js |
 | US-TL1 | View photos in a timeline                                   | Timeline | Done | — |
 | US-TL2 | Filter timeline by album or tag                             | Timeline | Done | — |
@@ -133,6 +135,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | BUG-4 | No loading state indicator for tag autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
 | BUG-5 | Duplicate tags can be added via autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
 | BUG-6 | Nextcloud import on Instance-1 doesn't work              | Bugs | Backlog | — |
+| BUG-7 | Banner after Nextcloud import never disappears        | Bugs | Backlog | — |
 | INF-4 | Monitor Instance-1 performance during Nextcloud imports (post US-NC6) | Infrastructure | Backlog | Monitor CPU/network after PR113 merge |
 | Q-4 | Add rate limiting to /photos/nextcloud-import/confirm endpoint | Infrastructure | Backlog | Prevent excessive concurrent imports |
 | IMP-6 | Consider parallel file downloads with concurrency limit for Nextcloud import | Performance | Backlog | Future enhancement for US-NC6 |
