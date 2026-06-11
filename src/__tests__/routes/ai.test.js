@@ -18,8 +18,8 @@ jest.mock('sharp', () => {
   // Create a mock instance that can be chained
   const createMockInstance = () => ({
     metadata: async () => mockMetadata,
-    extract: (options) => createMockInstance(),
-    jpeg: (options) => createMockInstance(),
+    extract: (_options) => createMockInstance(),
+    jpeg: (_options) => createMockInstance(),
     toBuffer: async () => mockCropBuffer,
   });
   
