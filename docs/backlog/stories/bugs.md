@@ -86,3 +86,18 @@ As an editor using tag autocomplete, I expect to avoid accidentally adding the s
 *Related:* BUG-1, TG-2
 
 *Status:* **FIXED in main**
+
+---
+
+**BUG-6 — Nextcloud import on Instance-1 doesn't work**
+As an editor attempting to import photos from Nextcloud, I expect the import to complete successfully regardless of which instance handles the download, so I can add my photos to the library.
+
+*Current behavior:* When attempting to import from Nextcloud, the process fails when Instance-1 tries to download files. The error occurs during the download step, preventing photos from being imported.
+
+*Expected behavior:* Nextcloud import should work on Instance-1, downloading files from Nextcloud and storing them in S3 successfully.
+
+*Technical note:* This may be related to US-NC6 (Faster Nextcloud import by downloading on Instance-1) which is currently in backlog. The current implementation (US-NC4/US-NC5) uses Instance-2 for downloads via BullMQ jobs. If someone manually tried to run the import flow on Instance-1, it may lack the necessary dependencies, WebDAV client configuration, or permissions.
+
+*Investigation needed:* Check error logs on Instance-1 when import fails. Verify that the Nextcloud WebDAV client (`src/nextcloudWebdav.js`) is available and properly configured on Instance-1. Confirm that Instance-1 has network access to Nextcloud servers and can make outbound HTTPS requests.
+
+*Related:* US-NC4, US-NC5, US-NC6, INF-4
