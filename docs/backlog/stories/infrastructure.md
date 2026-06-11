@@ -107,6 +107,23 @@ As a developer, I want a Jest test file (or standalone test runner) covering the
 **[DONE] IQ-5 — VPS hardening** ✓
 As a sysadmin, I apply VPS-level security measures (SSH key-only auth, firewall rules, automatic security updates, fail2ban or equivalent) so the server is not trivially compromised.
 
+**IQ-12 — Require passing workflows before merging PRs**
+As a maintainer, I want GitHub to block PR merges when required CI workflows fail, so that no broken code is deployed to production.
+
+- Branch protection rule on `main` requires the following workflows to pass: `CI`, `deploy-site`, `deploy-worker`, `terraform-validate`.
+- The "Require status checks to pass before merging" option is enabled in GitHub branch protection settings for `main`.
+- The "Require branches to be up to date before merging" option is enabled to prevent stale PR merges.
+- All required workflows must complete successfully (exit code 0) for the merge button to become available.
+- The protection applies to all PRs targeting `main`, including those from administrators ("Include administrators" is enabled).
+- Documentation in `README.md` or `docs/` explains which workflows are required and why.
+
+Edge cases:
+- A workflow that is not in the required list can fail without blocking the merge.
+- If a workflow is skipped (e.g., due to `if: false` condition), it does not block the merge — only explicitly required workflows matter.
+- A maintainer can add or remove workflows from the required list as needed by updating the branch protection rule.
+
+> This story is about GitHub configuration, not code changes. The workflows themselves already exist and run correctly.
+
 **[DONE] S3-1 — Photos stored in Object Storage**
 As an editor uploading a photo, the file is stored in OVH Object Storage (S3-compatible bucket) rather than on the server's local disk — so storage capacity is decoupled from the server, and photos are not lost if the server is replaced.
 

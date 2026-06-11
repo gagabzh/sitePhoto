@@ -101,6 +101,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | IQ-9 | Unit-test audit-check.js advisory parsing logic             | Infrastructure | Backlog | — |
 | IQ-10 | Document or address unmetered /uploads/:filename route     | Hardening | Backlog | — |
 | IQ-11 | Document Referrer-Policy override as deliberate decision   | Hardening | Backlog | — |
+| IQ-12 | Require passing workflows before merging PRs               | Infrastructure | Backlog | — |
 | S3-1 | Photos stored in Object Storage                             | Infrastructure | Done | — |
 | S3-2 | Transparent experience for viewers                          | Infrastructure | Done | — |
 | S3-3 | Photo deletion removes S3 object                            | Infrastructure | Done | — |
