@@ -1,6 +1,6 @@
 const { page, esc } = require('../layout');
 const { selectionBar, selectionScript } = require('../components');
-const { singleUploadFields } = require('../uploadHelpers');
+const { singleUploadFields, nextcloudFolderUrl } = require('../uploadHelpers');
 
 function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, latestAlbum, session, activeImport }) {
   const firstname = esc((session.name || '').split(' ')[0]);
@@ -237,7 +237,17 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
             ${photo.exposure_time ? `<dt>Exposition</dt><dd>${esc(photo.exposure_time)}</dd>` : ''}
             ${photo.focal_length ? `<dt>Focale</dt><dd>${esc(String(photo.focal_length))} mm</dd>` : ''}
           </dl>` : ''}
-          ${photo.nextcloud_url ? `<div style="margin-top:1rem"><a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a></div>` : ''}
+          ${photo.nextcloud_url ? (() => {
+            const folderUrl = nextcloudFolderUrl(photo.nextcloud_url);
+            if (!folderUrl) return '';
+            return `
+              <div style="margin-top:1rem;display:flex;gap:0.75rem;flex-wrap:wrap">
+                <a class="btn btn-nextcloud" href="${esc(folderUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open in Nextcloud (opens in new tab)">
+                  Open in Nextcloud
+                </a>
+                <a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a>
+              </div>`;
+          })() : ''}
 
           <!-- AI-3: People in this photo -->
           <div style="margin-top:1.25rem">

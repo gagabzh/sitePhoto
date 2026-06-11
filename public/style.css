@@ -138,6 +138,17 @@ tr:last-child td { border-bottom: none; }
 .btn-sm.btn-icon { padding: 2px 5px; }
 .btn-sm.btn-icon svg { width: 0.85rem; height: 0.85rem; }
 
+/* US-NC7: Nextcloud button */
+.btn-nextcloud {
+  background: oklch(62% 0.14 220);
+  border-color: oklch(62% 0.14 220);
+  color: var(--paper);
+}
+.btn-nextcloud:hover {
+  opacity: 0.85;
+  transform: rotate(0);
+}
+
 /* ── Forms ── */
 .form-col { display: flex; flex-direction: column; gap: 1rem; max-width: 440px; }
 label {

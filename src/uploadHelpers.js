@@ -41,10 +41,49 @@ function parseCoord(raw, min, max) {
 
 function sanitizeNextcloudUrl(raw) {
   if (!raw) return null;
+  if (typeof raw !== 'string') return null;
+  
   try {
     const u = new URL(raw);
-    return u.protocol === 'https:' ? raw : null;
+    
+    // Step 1: Must be HTTPS
+    if (u.protocol !== 'https:') return null;
+    
+    // Step 2: Must contain valid Nextcloud share token pattern
+    // Pattern: /s/{token} where token is at least 1 non-slash character
+    const shareTokenRegex = /\/s\/[^/]+/;
+    if (!shareTokenRegex.test(u.pathname)) return null;
+    
+    // Step 3: Return the sanitized URL
+    return raw;
   } catch { return null; }
+}
+
+// US-NC7: Transform Nextcloud share URL to folder URL
+// For folder shares: https://cloud.example.com/s/token/ -> https://cloud.example.com/s/token
+// For file shares: https://cloud.example.com/s/token/file.jpg -> https://cloud.example.com/s/token
+// Returns the base share URL (folder view) or null if invalid
+function nextcloudFolderUrl(shareUrl) {
+  if (!shareUrl) return null;
+  
+  // First validate the URL
+  const sanitized = sanitizeNextcloudUrl(shareUrl);
+  if (!sanitized) return null;
+  
+  try {
+    const url = new URL(sanitized);
+    const pathname = url.pathname;
+    
+    // Extract the base path up to and including the share token
+    // Pattern: /s/{token} or /s/{token}/... or /s/{token}/file.ext
+    const match = pathname.match(/(\/s\/[^/]+)/);
+    if (!match) return null;
+    
+    // Return the URL with just the base share path
+    return `${url.protocol}//${url.host}${match[1]}`;
+  } catch {
+    return null;
+  }
 }
 
 async function setTags(photoId, rawTags) {
@@ -127,7 +166,7 @@ async function deletePhotos(ids) {
 }
 
 module.exports = {
-  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl,
+  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, nextcloudFolderUrl,
   setTags, singleUploadFields, batchUploadFields,
   processAndUpload, deletePhotos,
 };
