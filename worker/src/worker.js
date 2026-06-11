@@ -166,19 +166,38 @@ const ncWorker = new Worker('nextcloud-import', async (job) => {
     // Step a: download from Nextcloud via Instance-1 proxy
     const buffer = await downloadNextcloudFile(shareUrl, fileName);
 
-    // Step b: generate S3 key
+    // Step b NEW: extract EXIF metadata
+    const { extractMetadata } = require('./extractMetadata');
+    let exif = {};
+    try {
+      exif = await extractMetadata(buffer);
+    } catch (err) {
+      console.warn(`[worker] EXIF extraction failed for ${fileName}, continuing without:`, err.message);
+    }
+
+    // Step c: generate S3 key
     const ext = EXT_MAP[mimeType] || '.jpg';
     const s3Key = `${uuidv4()}${ext}`;
 
-    // Step c: upload to S3
+    // Step d: upload to S3
     await uploadPhoto(s3Key, buffer, mimeType);
 
-    // Step d+e+f: insert photo row, album membership, tags via Instance-1
+    // Step e: insert photo row, album membership, tags via Instance-1
+    // Use EXIF GPS if available, else fallback to user-provided
+    const resolvedLat = (exif.latitude != null && Number.isFinite(exif.latitude)) ? exif.latitude : (Number.isFinite(Number(latitude)) ? Number(latitude) : null);
+    const resolvedLon = (exif.longitude != null && Number.isFinite(exif.longitude)) ? exif.longitude : (Number.isFinite(Number(longitude)) ? Number(longitude) : null);
+
     const { photoId } = await insertImportedPhoto({
-      userId, s3Key, fileName, mimeType, shareUrl, latitude, longitude, albumId, tags, importId,
+      userId, s3Key, fileName, mimeType, shareUrl,
+      takenAt: exif.takenAt ? exif.takenAt.toISOString().split('T')[0] : null,
+      exposureTime: exif.exposureTime || null,
+      focalLength: exif.focalLength || null,
+      latitude: resolvedLat,
+      longitude: resolvedLon,
+      albumId, tags, importId,
     });
 
-    // Step g: enqueue AI identification
+    // Step f: enqueue AI identification
     await identificationQueue.add('identify-photo', { photoId, userId, photoS3Key: s3Key }, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 },
@@ -191,7 +210,7 @@ const ncWorker = new Worker('nextcloud-import', async (job) => {
     succeeded = false;
   }
 
-  // Steps h+i: atomic DB increment + socket.io notification (via Instance-1)
+  // Steps g+h: atomic DB increment + socket.io notification (via Instance-1)
   await postNextcloudImportProgress({ userId, importId, succeeded });
 }, { connection });
 
