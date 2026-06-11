@@ -263,7 +263,7 @@ describe('POST /internal/nextcloud-photo', () => {
     expect(db.query).toHaveBeenCalledTimes(4);
     expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining('INSERT INTO photos'),
-      [5, 'uuid-abc.jpg', 'uuid-abc.jpg', 'uuid-abc.jpg', 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', 48.8566, 2.3522],
+      [5, 'uuid-abc.jpg', 'uuid-abc.jpg', 'uuid-abc.jpg', 'uuid-abc.jpg', 'image/jpeg', 'https://cloud.example.com/s/token', undefined, undefined, undefined, 48.8566, 2.3522],
     );
   });
 
@@ -285,7 +285,7 @@ describe('POST /internal/nextcloud-photo', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.photoId).toBe(77);
-    // params order: [userId, s3Key (filename), displayName (original_filename), s3Key, displayName (title), mimeType, ncUrl, lat, lon]
+    // params order: [userId, s3Key (filename), displayName (original_filename), s3Key, displayName (title), mimeType, ncUrl, takenAt, exposureTime, focalLength, lat, lon]
     // filename column ($2) must be the UUID s3Key, original_filename column ($3) must be the original filename
     expect(db.query).toHaveBeenNthCalledWith(1,
       expect.stringContaining('INSERT INTO photos'),
@@ -297,8 +297,11 @@ describe('POST /internal/nextcloud-photo', () => {
         '25_m-FPIX-4-0127788I-DIGITAL_HIGHRES-8514_006062-54441729.JPG', // $5 → title (displayName)
         'image/jpeg',                                                   // $6 → mimeType
         null,                                                           // $7 → ncUrl
-        null,                                                           // $8 → lat
-        null,                                                           // $9 → lon
+        undefined,                                                     // $8 → takenAt
+        undefined,                                                     // $9 → exposureTime
+        undefined,                                                     // $10 → focalLength
+        null,                                                           // $11 → lat
+        null,                                                           // $12 → lon
       ],
     );
   });
@@ -366,6 +369,95 @@ describe('POST /internal/nextcloud-photo', () => {
 
     expect(res.status).toBe(200);
     expect(db.query).toHaveBeenCalledTimes(1);
+  });
+
+  // BUG-8: EXIF metadata tests
+  it('stores complete EXIF metadata (takenAt, exposureTime, focalLength, GPS)', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 100 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5,
+        s3Key: 'exif-complete.jpg',
+        mimeType: 'image/jpeg',
+        takenAt: '2024-06-15',
+        exposureTime: '1/250',
+        focalLength: '50.00',
+        latitude: 48.8566,
+        longitude: 2.3522,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(100);
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO photos'),
+      [5, 'exif-complete.jpg', 'exif-complete.jpg', 'exif-complete.jpg', 'exif-complete.jpg', 'image/jpeg', null, '2024-06-15', '1/250', '50.00', 48.8566, 2.3522],
+    );
+  });
+
+  it('stores partial EXIF metadata (only takenAt)', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 101 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5,
+        s3Key: 'exif-partial.jpg',
+        mimeType: 'image/jpeg',
+        takenAt: '2024-06-16',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(101);
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO photos'),
+      [5, 'exif-partial.jpg', 'exif-partial.jpg', 'exif-partial.jpg', 'exif-partial.jpg', 'image/jpeg', null, '2024-06-16', undefined, undefined, null, null],
+    );
+  });
+
+  it('handles no EXIF metadata (all metadata fields NULL)', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 102 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5,
+        s3Key: 'exif-none.jpg',
+        mimeType: 'image/jpeg',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(102);
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO photos'),
+      [5, 'exif-none.jpg', 'exif-none.jpg', 'exif-none.jpg', 'exif-none.jpg', 'image/jpeg', null, undefined, undefined, undefined, null, null],
+    );
+  });
+
+  it('prioritizes EXIF GPS over user-provided coordinates', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 103 }] });
+
+    const res = await request(makeApp())
+      .post('/internal/nextcloud-photo')
+      .set('x-worker-secret', VALID_SECRET)
+      .send({
+        userId: 5,
+        s3Key: 'exif-gps-priority.jpg',
+        mimeType: 'image/jpeg',
+        latitude: 48.8566,
+        longitude: 2.3522,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.photoId).toBe(103);
+    expect(db.query).toHaveBeenNthCalledWith(1,
+      expect.stringContaining('INSERT INTO photos'),
+      [5, 'exif-gps-priority.jpg', 'exif-gps-priority.jpg', 'exif-gps-priority.jpg', 'exif-gps-priority.jpg', 'image/jpeg', null, undefined, undefined, undefined, 48.8566, 2.3522],
+    );
   });
 });
 

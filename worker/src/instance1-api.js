@@ -49,7 +49,7 @@ async function postNextcloudImportProgress(payload) {
   }
 }
 
-// payload: { userId, importId, photoId, s3Key }
+// payload: { userId, s3Key, fileName, mimeType, shareUrl, takenAt, exposureTime, focalLength, latitude, longitude, albumId, tags, importId }
 async function insertImportedPhoto(payload) {
   const res = await fetch(`${BASE_URL}/internal/nextcloud-photo`, {
     method: 'POST',

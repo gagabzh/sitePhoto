@@ -80,24 +80,26 @@ router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req
 }));
 
 // POST /internal/nextcloud-photo — called by worker to insert imported photo row + tags
-// Body: { userId, s3Key, mimeType, shareUrl, latitude, longitude, albumId, tags, importId }
+// Body: { userId, s3Key, fileName, mimeType, shareUrl, takenAt, exposureTime, focalLength, latitude, longitude, albumId, tags, importId }
 // Returns { photoId }
 router.post('/nextcloud-photo', requireWorkerSecret, wrapAsync(async (req, res) => {
-  const { userId, s3Key, fileName, mimeType, shareUrl, latitude, longitude, albumId, tags } = req.body;
+  const { userId, s3Key, fileName, mimeType, shareUrl, takenAt, exposureTime, focalLength, latitude, longitude, albumId, tags } = req.body;
   if (!userId || !s3Key) {
     return res.status(400).json({ error: 'Missing userId or s3Key' });
   }
 
-  const lat = Number.isFinite(Number(latitude))  ? Number(latitude)  : null;
+  // Use EXIF GPS if provided, else fallback to user-provided
+  // Note: latitude/longitude in the payload are already resolved by the worker (EXIF takes priority)
+  const lat = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
   const lon = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
 
   const displayName = fileName || s3Key;
   const ncUrl = shareUrl ? String(shareUrl) : null;
   const { rows: [photo] } = await db.query(
-    `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, NOW())
+    `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, taken_at, exposure_time, focal_length, latitude, longitude, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, NOW())
      RETURNING id`,
-    [userId, s3Key, displayName, s3Key, displayName, mimeType || 'image/jpeg', ncUrl, lat, lon],
+    [userId, s3Key, displayName, s3Key, displayName, mimeType || 'image/jpeg', ncUrl, takenAt, exposureTime, focalLength, lat, lon],
   );
   const photoId = photo.id;
 
