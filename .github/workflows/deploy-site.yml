@@ -79,6 +79,86 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check Instance-1 status
+        id: check-status
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE1_ID: ${{ secrets.INSTANCE1_ID }}
+        run: |
+          URL="https://eu.api.ovh.com/1.0/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE1_ID}"
+          TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+          HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+GET+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+          SIG='$1$'"${HASH}"
+          RESPONSE=$(curl -s -X GET "$URL" \
+            -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+            -H "X-Ovh-Timestamp: ${TS}" \
+            -H "X-Ovh-Signature: ${SIG}" \
+            -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}")
+          STATUS=$(echo "${RESPONSE}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          echo "Instance-1 status: ${STATUS}"
+          echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+
+      - name: Unshelve Instance-1
+        if: steps.check-status.outputs.status != 'ACTIVE'
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APP_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APP_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          OVH_PROJECT_ID: ${{ secrets.OVH_PROJECT_ID }}
+          INSTANCE1_ID: ${{ secrets.INSTANCE1_ID }}
+        run: |
+          ovh_get() {
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
+            local TS
+            TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+            local HASH
+            HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+GET+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+            local SIG='$1$'"${HASH}"
+            curl -s -X GET "$URL" \
+              -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+              -H "X-Ovh-Timestamp: ${TS}" \
+              -H "X-Ovh-Signature: ${SIG}" \
+              -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}"
+          }
+
+          ovh_post() {
+            local API_PATH="$1"
+            local URL="https://eu.api.ovh.com/1.0${API_PATH}"
+            local TS
+            TS=$(curl -s https://eu.api.ovh.com/1.0/auth/time)
+            local HASH
+            HASH=$(printf '%s' "${OVH_APP_SECRET}+${OVH_CONSUMER_KEY}+POST+${URL}++${TS}" | sha1sum | cut -d' ' -f1)
+            local SIG='$1$'"${HASH}"
+            curl -s -X POST "$URL" \
+              -H "X-Ovh-Application: ${OVH_APP_KEY}" \
+              -H "X-Ovh-Timestamp: ${TS}" \
+              -H "X-Ovh-Signature: ${SIG}" \
+              -H "X-Ovh-Consumer: ${OVH_CONSUMER_KEY}" \
+              -H "Content-Type: application/json"
+          }
+
+          INSTANCE_PATH="/cloud/project/${OVH_PROJECT_ID}/instance/${INSTANCE1_ID}"
+
+          echo "Unshelving Instance-1..."
+          ovh_post "${INSTANCE_PATH}/unshelve"
+
+          # Wait for ACTIVE (max 5 min, poll every 10 s)
+          for i in $(seq 1 30); do
+            STATUS=$(ovh_get "${INSTANCE_PATH}" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            echo "Status: ${STATUS} (${i}/30)"
+            [ "$STATUS" = "ACTIVE" ] && break
+            [ "$i" -eq 30 ] && { echo "Timeout waiting for ACTIVE"; exit 1; }
+            sleep 10
+          done
+
+          # OVH marks ACTIVE at hypervisor level — wait for sshd to finish booting
+          echo "Waiting 60 s for sshd to start..."
+          sleep 60
+
       - name: Deploy to Instance 1
         uses: appleboy/ssh-action@v1
         with:
