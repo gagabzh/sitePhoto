@@ -55,6 +55,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | MA-3 | Manage album memberships from the photo edit form           | Albums | Done | #96 — transactional checklist reconciliation — src/repositories/albums.js + routes/photos.js |
 | ALB-1 | Click-to-edit in album, explicit lightbox button            | Albums | Done | #98 — editor thumbnail → edit link, lb-btn lightbox icon — src/routes/albumsViews.js |
 | ALB-2 | Context-aware back button on photo detail and edit pages    | Albums | Done | #98 — backLabel(from) helper, from propagated through cancel/delete — src/routes/photosViews.js |
+| ALB-3 | Choose album cover photo                                   | Albums | Backlog | — |
 | RA-1 | Create a snapshot album from a tag recipe                   | Albums | Done | #99 — POST /albums/from-recipe, transactional bulk insert — src/routes/albums.js |
 | US-AC1 | Grant viewer access to an album                             | Access Control | Done | — |
 | US-AC2 | Revoke viewer access                                        | Access Control | Done | — |

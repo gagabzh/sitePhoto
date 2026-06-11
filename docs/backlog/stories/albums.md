@@ -67,6 +67,50 @@ As an editor, I can add any photo to more than one album, so I can organise phot
 
 ---
 
+**[Backlog] ALB-3 — Choose album cover photo**
+As an editor, I can select any photo in an album to be the cover photo, so I can choose the most representative or visually appealing image to represent the album.
+
+- On the album detail page (`GET /albums/:id`), there is a "Set as cover" action available for each photo in the album.
+- Clicking "Set as cover" on a photo updates the `albums.cover_photo_id` to that photo's ID.
+- The cover photo is displayed prominently at the top of the album detail page and in the album list (per DS-3).
+- Only photos that are currently in the album can be selected as cover.
+- The album owner (or admin) can change the cover photo at any time.
+- Changing the cover photo does not affect the photo's position in the album or any other metadata.
+
+**Acceptance criteria:**
+1. On `GET /albums/:id`, each photo in the album has a "Set as cover" button/icon (visible on hover or in a context menu).
+2. Clicking "Set as cover" sends `POST /albums/:id/cover` with body `{ photoId: <id> }`.
+3. The endpoint updates `albums.cover_photo_id = photoId WHERE id = :id AND user_id = req.session.userId` (or admin).
+4. After setting, the cover photo is immediately visible as the album cover on the detail page.
+5. The album list page (`GET /albums`) shows the updated cover photo for the album.
+6. If the selected photo is removed from the album later (MA-1), the cover falls back to the automatic selection (smallest photo_id).
+7. The cover photo has a visual indicator on the album detail page (e.g., "Cover" badge or border).
+
+**Error states:**
+- Photo does not belong to the album: return HTTP 400 `{ "error": "Photo not in this album" }`.
+- User does not own the album: return HTTP 403.
+- Photo does not exist: return HTTP 404.
+- Database error: return HTTP 500.
+
+**Edge cases:**
+- Album has only one photo: that photo is automatically the cover; "Set as cover" is hidden or disabled.
+- User sets the same photo as cover twice: idempotent, returns HTTP 200.
+- Cover photo is deleted: the album cover falls back to automatic selection (MA-1 behavior).
+- Album is empty: no cover photo is displayed.
+- User sets cover, then another user removes the photo: cover falls back automatically.
+
+> **Technical notes:**
+> - New endpoint: `POST /albums/:id/cover` in `src/routes/albums.js`.
+> - Requires `requireEditor` middleware and ownership check.
+> - Validates that `photoId` exists in `album_photos WHERE album_id = :id`.
+> - Uses `wrapAsync` for error handling.
+> - Validates CSRF token (`X-CSRF-Token` header).
+> - The existing `cover_photo_id` column on `albums` is already used by MA-1 and DS-3.
+
+---
+
+**[Backlog] RA-1 — Create a snapshot album from a tag recipe**
+
 **[Backlog] MA-2 — Photo detail shows album memberships**
 As a logged-in user, on a photo's detail page I can see the list of albums the photo belongs to as clickable links, so I can navigate to any of those albums directly.
 
