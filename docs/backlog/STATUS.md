@@ -64,6 +64,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-V4 | Access denied                                               | Browsing | Done | — |
 | TG-1 | Multi-tag filter                                            | Tags | Done | tag combinator (AND/ANY/NOT logic) — src/routes/tags/combinator.js |
 | TG-2 | Tag autocomplete                                            | Tags | Done | /tags/autocomplete route — src/routes/tags/index.js |
+| TG-3 | Clickable tags on photo detail                             | Tags | Backlog | — |
 | US-GPS1 | Add GPS coordinates to a photo                              | Map & GPS | Done | — |
 | US-GPS2 | View a photo's location                                     | Map & GPS | Done | — |
 | US-GPS3 | Browse photos on a map                                      | Map & GPS | Done | — |
