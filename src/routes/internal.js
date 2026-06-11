@@ -257,9 +257,6 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
       const cropKey = 'faces/' + crypto.randomUUID() + '.jpg';
       await uploadPhoto(cropKey, cropBuffer, 'image/jpeg');
 
-      // Track cropKey for cleanup if needed
-      let dbOperationsFailed = false;
-      
       try {
         // Upsert tag with category 'people'
         const { rows: tagRows } = await db.query(
@@ -287,7 +284,6 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
 
         stored.push({ name, tagId });
       } catch (dbErr) {
-        dbOperationsFailed = true;
         console.error('[internal/store-people-faces] DB error for', name, ':', dbErr.message);
         // Attempt to clean up orphaned S3 file
         try {

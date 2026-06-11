@@ -33,6 +33,10 @@ jobs:
 
       - name: Test
         run: npm test
+        env:
+          NODE_ENV: test
+          SESSION_SECRET: test-secret
+          DATABASE_URL: postgres://test:test@localhost:5432/test
 
       - name: Audit
         run: npm audit --audit-level=high --json | node scripts/audit-check.js
