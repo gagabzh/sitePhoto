@@ -116,3 +116,18 @@ As an editor who has completed a Nextcloud import, I expect the progress banner 
 *Investigation needed:* Check the banner dismissal logic in the frontend code. Verify that the timeout is being set correctly when the import completes. Confirm that the condition for auto-dismissal is being met.
 
 *Related:* US-NC5, US-NC4
+
+---
+
+**BUG-8 — Nextcloud import photos missing EXIF metadata**
+As an editor importing photos from Nextcloud, I expect the imported photos to retain their EXIF metadata (date taken, exposure, focal length), so the metadata is preserved and usable for filtering and display.
+
+*Current behavior:* Photos imported from Nextcloud (via US-NC4) do not have EXIF metadata extracted and stored. The `date_taken`, `exposure_time`, `focal_length`, and other EXIF fields are empty/NULL.
+
+*Expected behavior:* Imported photos should have the same EXIF metadata extraction as photos uploaded directly (IMP-1). The metadata should be stored in the database and visible on the photo detail page.
+
+*Technical note:* The issue is likely in the worker's download and processing logic (`worker/src/worker.js` for US-NC4). The existing EXIF extraction (from IMP-1) uses a library like `exif-parser` or similar to read metadata from the image buffer. The Nextcloud import job may be skipping this step or not passing the file buffer correctly.
+
+*Investigation needed:* Check `worker/src/worker.js` step that downloads the file from Nextcloud. Verify that it passes the buffer to the same EXIF extraction logic used for direct uploads. Confirm that metadata is being stored in the `photos` table columns (`date_taken`, `exposure_time`, `focal_length`, etc.).
+
+*Related:* US-NC4, IMP-1, US-P1

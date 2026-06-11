@@ -89,6 +89,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-NC4 | Import a Nextcloud shared folder                            | Nextcloud | Done | #93 |
 | US-NC5 | Import progress feedback                                    | Nextcloud | Done | #93 |
 | US-NC6 | Faster Nextcloud import by downloading on Instance-1       | Nextcloud | Backlog | — |
+| US-NC7 | Link to Nextcloud folder from imported photos         | Nextcloud | Backlog | — |
 | AI-1 | Duplicate photo detection                                   | Local AI | Done | admin-ai.js |
 | AI-2 | People identification and tagging                           | Local AI | Done | worker.js |
 | AI-3 | Manual person tagging                                       | Local AI | Done | #101 — POST /photos/:id/tag-person, sharp crop → S3 faces/, person_faces table (v15) — src/routes/photos.js |
@@ -139,6 +140,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | BUG-5 | Duplicate tags can be added via autocomplete in Nextcloud import | Bugs | Done | Fixed in main |
 | BUG-6 | Nextcloud import on Instance-1 doesn't work              | Bugs | Backlog | — |
 | BUG-7 | Banner after Nextcloud import never disappears        | Bugs | Backlog | — |
+| BUG-8 | Nextcloud import photos missing EXIF metadata        | Bugs | Backlog | — |
 | INF-4 | Monitor Instance-1 performance during Nextcloud imports (post US-NC6) | Infrastructure | Backlog | Monitor CPU/network after PR113 merge |
 | Q-4 | Add rate limiting to /photos/nextcloud-import/confirm endpoint | Infrastructure | Backlog | Prevent excessive concurrent imports |
 | IMP-6 | Consider parallel file downloads with concurrency limit for Nextcloud import | Performance | Backlog | Future enhancement for US-NC6 |

@@ -438,3 +438,44 @@ As an editor, when I import photos from Nextcloud, I want the download to happen
 > **No new migration needed.** Reuses existing tables and endpoints.
 >
 > **Out of scope:** Changing the BullMQ queue structure. Changing the AI identification worker logic. Adding retry logic for failed downloads.
+
+---
+
+**US-NC7 — Link to Nextcloud folder from imported photos**
+As a viewer looking at a photo that was imported from Nextcloud, I want to be able to open the source Nextcloud folder in a new tab, so I can access the original file or view other files in the same folder.
+
+- On the photo detail page (`GET /photos/:id`), when a photo has a `nextcloud_url` set (from NC-1/NC-4), a "Open in Nextcloud" button/link is displayed.
+- The link extracts the folder path from the `nextcloud_url` and constructs a URL to the Nextcloud web interface showing the folder.
+- Clicking the link opens the Nextcloud folder in a new browser tab (`target="_blank"`).
+- The link is only shown when `nextcloud_url` is set and contains a valid Nextcloud share token.
+- The link text is "Open in Nextcloud" with a Nextcloud logo icon for visual recognition.
+- On mobile, the link has a minimum 44×44 px tap target.
+
+**Acceptance criteria:**
+1. "Open in Nextcloud" link is visible on photo detail pages for imported photos.
+2. The link URL points to the Nextcloud web interface folder view.
+3. Clicking opens the folder in a new tab.
+4. Link is not shown for photos without `nextcloud_url`.
+5. Link is visible to all users who can view the photo (respects existing access controls).
+
+**Edge cases:**
+- Nextcloud share link has expired: link still opens, user sees Nextcloud's expired share page.
+- Nextcloud server is down: link opens but shows connection error (handled by Nextcloud).
+- Photo was manually linked (NC-1) vs imported (NC-4): link works the same for both.
+- `nextcloud_url` contains a file share (not folder): link opens the file directly.
+- `nextcloud_url` is malformed: link is not shown.
+
+**Error states:**
+- Nextcloud URL is invalid format: link is not displayed (no error shown to user).
+
+> **Technical notes:**
+> - The `nextcloud_url` already exists on the `photos` table (NC-1, v12.sql).
+> - URL transformation: if the share is a folder share (`/s/{token}/`), the folder URL is `{shareUrl}/public.php/webdav/` or the web interface folder view.
+> - For a file share, the URL is the share URL itself.
+> - To get the folder path from a file share, extract the directory: if URL is `https://cloud.example.com/s/abc123/file.jpg`, the folder is `https://cloud.example.com/s/abc123` (or the web UI equivalent).
+> - Use the existing `nextcloud_url` column — no schema changes needed.
+> - Link HTML: `<a href="<%= nextcloudFolderUrl(photo.nextcloud_url) %>" target="_blank" rel="noopener noreferrer" class="btn btn-nextcloud">Open in Nextcloud</a>`
+> - Helper function `nextcloudFolderUrl(url)` in `src/utils/nextcloud.js` (or inline in template) transforms the share URL to a folder URL.
+> - Add CSS for the Nextcloud button to match the app's design system.
+
+> **Current state:** The `nextcloud_url` column exists and is populated for imported photos (NC-4) and manually linked photos (NC-1). This story adds the UI to surface this information to users.
