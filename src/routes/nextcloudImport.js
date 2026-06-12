@@ -346,17 +346,25 @@ router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
       // Step 2: Upload to S3
       await uploadPhoto(s3Key, buffer, file.mimeType);
 
-      // Step 3: Insert photo record into DB
+      // Step 3: Insert photo record into DB (without album_id - use junction table)
       const lat = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
       const lon = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
 
       const { rows: [photo] } = await db.query(
-        `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, album_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+        `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
          RETURNING id`,
-        [userId, s3Key, displayName, s3Key, displayName, file.mimeType || 'image/jpeg', buffer.length, ncUrl, lat, lon, albumId],
+        [userId, s3Key, displayName, s3Key, displayName, file.mimeType || 'image/jpeg', buffer.length, ncUrl, lat, lon],
       );
       const photoId = photo.id;
+
+      // Step 3.5: Link photo to album via junction table (if albumId is provided)
+      if (albumId) {
+        await db.query(
+          'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [albumId, photoId],
+        );
+      }
 
       // Step 4: Insert tags for this photo
       if (tags && tags.length) {
