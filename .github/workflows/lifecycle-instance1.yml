@@ -23,7 +23,7 @@ jobs:
     name: Shelve Instance-1
     runs-on: ubuntu-latest
     environment: production
-    if: github.event.schedule == '0 21 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'shelve')
+    if: github.event.schedule == '0 18 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'shelve')
 
     steps:
       - name: Check current status
@@ -90,7 +90,7 @@ jobs:
     name: Unshelve Instance-1
     runs-on: ubuntu-latest
     environment: production
-    if: github.event.schedule == '0 6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
+    if: github.event.schedule == '0 3 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
 
     steps:
       - name: Check current status
