@@ -141,6 +141,8 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | BUG-6 | Nextcloud import on Instance-1 doesn't work                               | Bugs | Done | #119 — removed album_id from photos INSERT, use album_photos junction table |
 | BUG-7 | Banner after Nextcloud import never disappears                           | Bugs | Done | #119 — exposed socket as window._socket in socket-client.js |
 | BUG-8 | Nextcloud import photos missing EXIF metadata                             | Bugs | Done | #117 — added EXIF extraction in worker for Nextcloud imports |
+| BUG-9 | Nextcloud buttons on photo detail page have identical behavior          | Bugs | Done | #124 — differentiated folder vs file URLs, added download attribute |
+| BUG-10 | Manual people tagging button disappears                                   | Bugs | Done | #126 — restored Tag a person button removed during IMP-5 |
 | INF-4 | Monitor Instance-1 performance during Nextcloud imports (post US-NC6)     | Infrastructure | Backlog | Monitor CPU/network after PR113 merge |
 | Q-4 | Add rate limiting to /photos/nextcloud-import/confirm endpoint            | Infrastructure | Backlog | Prevent excessive concurrent imports |
 | IMP-6 | Consider parallel file downloads with concurrency limit for Nextcloud import | Performance | Backlog | Future enhancement for US-NC6 |
