@@ -119,6 +119,61 @@ Edge cases:
 
 ---
 
+**US-AI5 — Review and validate AI identification proposals**
+As an editor or administrator, I need a dedicated page to follow identification tasks and accept or reject AI-generated person identification proposals, so I can ensure accurate face tagging across the platform with proper oversight.
+
+**Acceptance criteria:**
+
+1. **Access Control:**
+   - Only users with `editor` or `admin` role can access the identification review page
+   - Page is accessible via navigation menu for authorized users
+
+2. **Identification Queue:**
+   - Display a list of all photos with AI-generated person identification proposals that have not been validated
+   - Each item shows: photo thumbnail, photo title, date, number of pending identifications, link to review
+
+3. **Review Interface:**
+   - For each pending identification: show photo with bounding box overlay on the detected face
+   - Display the AI-proposed person name
+   - Show confidence score (if available)
+   - Provide "Accept" button to confirm the identification
+   - Provide "Reject" button to discard the proposal
+   - Provide "Edit" option to manually correct the name
+
+4. **Bulk Actions:**
+   - Accept all identifications for a photo at once
+   - Reject all identifications for a photo at once
+   - Filter by person name
+   - Filter by confidence threshold
+
+5. **Validation Flow:**
+   - Accepted identifications are stored in the database (person_faces table)
+   - Rejected proposals are removed from the queue
+   - Accepted identifications trigger continuous learning (AI-4)
+   - Manual corrections update the AI model via few-shot learning
+
+6. **Status Tracking:**
+   - Clear visual indication of pending, accepted, or rejected identifications
+   - Counter badge showing number of pending identifications
+   - Last reviewed date/timestamp
+
+7. **Notifications:**
+   - Editors/admins receive notification when new identification proposals are ready for review
+   - Notification cleared when all pending items are processed
+
+**Technical Notes:**
+- Reuses existing AI identification infrastructure (AI-2, AI-3, AI-4)
+- Integrates with existing person_faces table and face detection system
+- Should support pagination for large numbers of pending identifications
+- Consider performance implications for sites with high volume of photo uploads
+
+**Priority:** High
+**Domain:** Local AI / People Tagging
+**Dependencies:** AI-2, AI-3, AI-4
+**Related:** AI-5 (Unified people tagging), AI-7 (Identification queue dashboard)
+
+---
+
 **AI-7 — Identification queue dashboard**
 As an editor, I want a dedicated page to monitor the status of asynchronous people identification jobs and validate or reject AI suggestions, so I can efficiently manage the identification workflow without waiting on individual photo pages.
 
