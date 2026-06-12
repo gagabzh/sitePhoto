@@ -24,7 +24,7 @@ As a user, back and cancel buttons appear at the top of every form or detail pag
 **[DONE] IMP-4 — Select all** ✓
 As an editor, on the photo list page and on an album detail page, I can click a "Select all" button to check every visible photo at once, so I can perform bulk actions on all of them.
 
-**[DONE] IMP-5 — Consolidate tags and people display on photo detail** ✓
+**IMP-5 — Consolidate tags and people display on photo detail**
 As a viewer looking at a photo detail page, I expect to see tags and people tags displayed in the same visual location, so the metadata is organized consistently and I can quickly understand who and what is in the photo.
 
 - On the photo detail page (`GET /photos/:id`), the tags (from `photo_tags` via TG-2) and people tags (from `person_faces` via AI-2/AI-3) are currently displayed in separate sections of the page.
