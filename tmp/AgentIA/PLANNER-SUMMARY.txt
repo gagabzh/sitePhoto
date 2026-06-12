@@ -1,0 +1,365 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║           📋 PLANNER AGENT - ANALYSE & AMÉLIORATION 📋                 ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+📊 RÉSUMÉ DE VOTRE AGENT ACTUEL
+═══════════════════════════════════════════════════════════════════════════
+
+✅ POINTS FORTS (Très bon travail!)
+
+  • Responsabilités bien définies (plan, sequence, estimate, track)
+  • Task breakdown précis et détaillé (INF-1, FE-1, NC-1, AI-1)
+  • Effort estimation honest (S/M/L/XL)
+  • PR scope rules clairs et utiles
+  • Vue d'ensemble des dépendances
+
+⚠️  DOMAINES À AMÉLIORER (Pour intégration QA + PO)
+
+  1. Pas de validation avant planning
+     → Planner assume que story est complète, mais n'y a pas de gate
+
+  2. Pas de coordination avec QA at planning time
+     → QA teste après dev, découvre risques trop tard
+
+  3. Pas de test strategy définie par task
+     → Developer doit deviner comment tester
+
+  4. Pas de testability score
+     → Pas de mesure si une story est prête à développer
+
+  5. Pas de blocker lifecycle tracking
+     → Blockers listés une fois, pas de suivi après
+
+  6. Pas de escalation process avec PO
+     → Si story est ambigüe, Planner ne sait pas quoi faire
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎯 LES 6 AMÉLIORATIONS CLÉS
+═══════════════════════════════════════════════════════════════════════════
+
+1. ✅ STORY VALIDATION GATE
+
+   Avant: Planner reçoit story, commence planning
+   Après: Planner valide story est QA-ready AVANT planning
+
+   Checklist:
+   □ Acceptance criteria complètes (testables, edge cases, errors)
+   □ QA a signé off testabilité
+   □ Blockers identifiés et escaladés
+
+   Si pas OK → Return à PO: "Needs: [list]"
+   Si OK → Proceed à task breakdown
+
+
+2. ✅ QA COORDINATION AT PLANNING TIME
+
+   Avant: Planner planifie → Dev code → QA teste (tard!)
+   Après: Planner demande QA pendant planning
+
+   Questions à poser au QA Agent:
+   • Quels sont les risques ici?
+   • Quels edge cases sont durs à trigger?
+   • Quel setup d'env vous faut?
+   • Couverture de test minimum viable?
+   • Y a des gotchas à warn le dev?
+
+   QA feedback → incorporated dans task descriptions
+
+
+3. ✅ TEST STRATEGY PER TASK
+
+   Avant: "Test required" (vague)
+   Après: Specific test approach défini par task
+
+   Chaque task inclut:
+   • Happy path test scenario
+   • Edge cases (avec quoi tester)
+   • Error states (quoi est error)
+   • Security/access control (qui peut/ne peut pas)
+   • Performance targets (si relevant)
+   • Test data needed (données spécifiques)
+
+
+4. ✅ TESTABILITY SCORE (1-25 scale)
+
+   Avant: Pas de mesure si story est testable
+   Après: Score explicite par task
+
+   Évaluation:
+   • Criteria clarity: 1-5
+   • Edge case coverage: 1-5
+   • Test data availability: 1-5
+   • Environment setup: 1-5
+   • Dependency clarity: 1-5
+   → Total /25
+
+   Scores:
+   20-25: READY (go develop)
+   15-19: MINOR GAPS (clarify first)
+   10-14: MAJOR GAPS (revisit with QA)
+   < 10: NOT READY (block)
+
+
+5. ✅ BLOCKER LIFECYCLE TRACKING
+
+   Avant: Blockers listed once, pas de suivi
+   Après: Lifecycle OPEN → IN_PROGRESS → RESOLVED → CLOSED
+
+   Format:
+   🔴 BLOCKER: [Code]
+     Description: [What's blocked]
+     Type: [Tech/Product/QA]
+     Severity: [Critical/High/Medium]
+     Status: [OPEN/IN_PROGRESS/RESOLVED]
+     Owner: [Who fixes]
+     Resolve by: [Date]
+     Impact: [Which tasks blocked]
+     Last updated: [Date]
+
+
+6. ✅ QA COORDINATION AT PLANNING TIME
+
+   Planner n'est pas seul pour décider test strategy
+   → QA Agent involved dans planning phase
+   → Feedback incorporé avant dev starts
+   → Dev sait exactement quoi tester
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+📋 EXEMPLE: AVANT vs APRÈS
+═══════════════════════════════════════════════════════════════════════════
+
+❌ AVANT (Task basique):
+
+    Task FE-1.2: GET /api/me/stats endpoint
+    Effort: M
+    What to build: Stats endpoint returning photos, albums, travels, size
+    Acceptance Criteria: Returns stats for authenticated user
+    Test: Test required
+
+    → Developer doit deviner:
+    ✗ Quels edge cases?
+    ✗ Test data où?
+    ✗ Performance acceptable?
+    ✗ Sécurité: viewer peut voir autres users?
+
+    → Dev code, push PR
+    → QA teste, découvre problèmes
+
+
+✅ APRÈS (Task complète avec test strategy):
+
+    Task FE-1.2: GET /api/me/stats endpoint
+    Effort: M
+    Status: 🔲 TODO
+    
+    What to build:
+    - Route GET /api/me/stats
+    - Returns {photos, albums, travels, totalSize}
+    - Files: src/routes/api/me.js, src/db/queries/userStats.js
+    
+    Test Strategy:
+    - Happy path: User gets own stats (verify counts)
+    - Edge case 1: 0 photos → {photos: 0} not error
+    - Edge case 2: 10k photos → < 100ms response
+    - Error: Unauthenticated → 401 Unauthorized
+    - Security: Viewer can't access other user's stats → 403
+    - Performance: < 100ms typical case
+
+    Test Data Needed:
+    - User with photos (existing fixtures)
+    - Empty user (create before test)
+    - 10k photos user (load test data)
+
+    Testability Score: 24/25
+    - Criteria clarity: 5
+    - Edge case coverage: 5
+    - Test data availability: 4
+    - Environment setup: 5
+    - Dependency clarity: 5
+    → READY to develop
+
+    Dependencies:
+    - Must complete before: FE-1.3 (Account page route)
+    - Blocked by: None
+    - Database: No migration needed
+    
+    Notes for Developer:
+    - Use Promise.all for parallel queries
+    - Watch for N+1 query problems
+    - Verify role-based filtering
+
+    → Developer sait exactement quoi faire
+    → QA sait exactement quoi tester
+    → Pas de surprises
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+📦 FICHIERS FOURNIS
+═══════════════════════════════════════════════════════════════════════════
+
+1. planner-improved.md ⭐ VERSION COMPLÈTE AMÉLIORÉE
+   └─ Copiez ce contenu dans votre agent Planner
+   └─ Inclut: Validation, QA Coordination, Test Strategy, Testability
+   └─ Prêt à utiliser immédiatement
+
+2. PLANNER-ANALYSIS.md 📖 ANALYSE DÉTAILLÉE
+   └─ Explique chaque amélioration
+   └─ Avant/après pour chaque point
+   └─ Interaction matrix avec PO/QA/Dev
+
+3. PLANNER-SUMMARY.txt 📋 CE DOCUMENT
+   └─ Vue d'ensemble rapide
+   └─ Résumé des améliorations clés
+
+═══════════════════════════════════════════════════════════════════════════
+
+🚀 COMMENT UTILISER
+═══════════════════════════════════════════════════════════════════════════
+
+OPTION A: Remplacer complètement (Recommandé)
+
+  1. Ouvrir votre agent Planner
+  2. Copier contenu de planner-improved.md
+  3. Remplacer tout le contenu
+  4. Tester avec prochaine story
+  5. Valider avec PO + QA
+
+OPTION B: Intégration progressive
+
+  Week 1: Ajouter Story Validation Gate
+  Week 2: Ajouter QA Coordination Step
+  Week 3: Ajouter Test Strategy par Task
+  Week 4: Ajouter Testability Scores + Blocker Tracking
+
+OPTION C: Comparison (Avant de décider)
+
+  1. Lire PLANNER-ANALYSIS.md
+  2. Comparer original vs improved
+  3. Décider quelles parties adapter
+  4. Implémenter graduellement
+
+═══════════════════════════════════════════════════════════════════════════
+
+📊 IMPACT ATTENDU (Après 2 sprints)
+═══════════════════════════════════════════════════════════════════════════
+
+✅ Moins d'aller-retours PO → Planner
+   → Stories validées avant planning
+
+✅ Moins de surprises QA durant dev
+   → Test strategy prépérée d'avance
+
+✅ Moins de "je sais pas quoi tester" du Developer
+   → Test strategy clair par task
+
+✅ Moins de découvertes tardives de blockers
+   → Lifecycle tracking = visibility
+
+✅ Timeline plus prévisible
+   → Testability scores indiquent readiness
+
+✅ Better communication entre agents
+   → PO → Planner → QA → Dev = clear workflow
+
+═══════════════════════════════════════════════════════════════════════════
+
+💡 WORKFLOW AMÉLIORÉ: PO → PLANNER → QA → DEV
+═══════════════════════════════════════════════════════════════════════════
+
+1. PO écrit story (acceptance criteria + blockers + test needs)
+   
+2. Planner: "Est-ce QA-ready?"
+   ├─ NON → Return to PO avec gaps
+   └─ OUI → Continue
+   
+3. Planner break into tasks (test strategy par task)
+
+4. Planner demande QA: "Quels sont les risques?"
+   ├─ QA feedback: "Edge case X, gotcha Y, setup Z"
+   └─ Planner update tasks
+
+5. Planner assigne tasks à Dev (avec test strategy)
+   
+6. Developer code (sait quoi tester)
+
+7. QA teste (pas de surprises, strategy était prête)
+
+8. Blockers tracked tout au long (OPEN → RESOLVED)
+
+═══════════════════════════════════════════════════════════════════════════
+
+✅ CHECKLIST: AVANT DE FINALISER
+═══════════════════════════════════════════════════════════════════════════
+
+COMPRÉHENSION:
+  [ ] Lu planner-improved.md en entier
+  [ ] Compris 6 améliorations clés
+  [ ] Vu exemples avant/après
+
+ADOPTION:
+  [ ] Choisi OPTION A, B, ou C
+  [ ] Copié / adapté le contenu
+  [ ] Testé avec prochaine story arrivant
+
+VALIDATION:
+  [ ] Story Validation Gate en place?
+  [ ] QA Coordination workflow défini?
+  [ ] Task templates incluent test strategy?
+  [ ] Testability scores assignés?
+
+DÉPLOIEMENT:
+  [ ] Prochaines stories suivent nouveau format
+  [ ] Team comprend test strategy importance
+  [ ] QA Agent involved dans planning
+  [ ] PO knows to return incomplete stories
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎉 RÉSUMÉ FINAL
+═══════════════════════════════════════════════════════════════════════════
+
+Votre agent Planner est excellent. Ces 6 améliorations le rendent:
+  ✅ Compatible avec QA Agent
+  ✅ Compatible avec PO Agent amélioré
+  ✅ Test strategy clear per task
+  ✅ Testability measurable
+  ✅ Blockers tracked throughout
+  ✅ Risk visible early
+
+Résultat: Workflow fluide, timeline prévisible, team coordinée.
+
+Fichier à utiliser: planner-improved.md
+
+Commencez par Option A (remplace complet):
+  Simple, ready to use, benefits immédiat
+
+═══════════════════════════════════════════════════════════════════════════
+
+📞 PROCHAINES ÉTAPES
+═══════════════════════════════════════════════════════════════════════════
+
+1. Lisez planner-improved.md complet
+
+2. Testez avec prochaine story:
+   - Planner valide story avec checklist
+   - Planner demande QA: "Risques?"
+   - Planner assigne task avec test strategy
+   - Developer code + test (sait exactement quoi faire)
+   - QA teste (strategy était ready)
+
+3. Feedback de votre team:
+   - Partagez avec Dev: "Clair? Plus facile?"
+   - Partagez avec QA Agent: "Testable?"
+   - Partagez avec PO: "Stories better?"
+
+4. Ajustez selon feedback
+
+5. Roll à toutes les futures stories
+
+═══════════════════════════════════════════════════════════════════════════

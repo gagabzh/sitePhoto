@@ -1,0 +1,324 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║           💚 DEVELOPER AGENT - ANALYSE & AMÉLIORATION 💚                ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+📊 RÉSUMÉ DE VOTRE AGENT ACTUEL
+═══════════════════════════════════════════════════════════════════════════
+
+✅ POINTS FORTS (Excellent foundation!)
+
+  • Stack bien défini et non-négociable (Node.js, Express, PostgreSQL, etc.)
+  • Code patterns explicites (wrapAsync, parameterized queries, esc())
+  • Testing best practices (jest, mocks, Promise.all ordering)
+  • Security rules very clear (SQL injection, CSRF, roles enforcement)
+  • Design system well documented (CSS vars, typography, components)
+  • Git workflow clair et discipliné
+
+⚠️  DOMAINES À AMÉLIORER (Pour intégration avec QA + PO + Planner)
+
+  1. Pas de validation de task avant coding
+     → Developer assume que task est prête, mais pas de checklist
+
+  2. Pas de test strategy reference
+     → Developer doit inférer ce qu'il faut tester
+     → Pas de lien explicite entre Planner feedback et tests
+
+  3. Pas de Definition of Done
+     → "Done" est implicite, pas de checklist explicite
+
+  4. Pas de clarté sur gotchas/risks from Planner
+     → Developer ne sait pas ce que Planner a identifié comme risque
+
+  5. Pas de process pour blockers découverts pendant dev
+     → Si dev découvre un problème, pas de chemin clair pour l'escalader
+
+  6. Pas de process pour acceptance criteria ambigüe
+     → Si criteria n'est pas clair, pas de process de clarification
+
+  7. Pas de PR submission guidelines
+     → PR description vague (pas de test strategy, pas de context)
+
+  8. Pas de communication avec autres agents
+     → Developer = isolation; pas de feedback loop avec Planner/QA
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎯 LES 6 AMÉLIORATIONS CLÉS
+═══════════════════════════════════════════════════════════════════════════
+
+1. ✅ TASK UNDERSTANDING CHECKLIST
+
+   Avant: Developer reçoit task, commence coding (assume c'est clair)
+   Après: Developer valide clarity AVANT de coder
+
+   Checklist 10 points:
+   □ Acceptance Criteria clear? (testable, not vague)
+   □ Test Strategy defined? (know what to test)
+   □ Test Data provided? (know how to test edge cases)
+   □ Dependencies clear? (know what blocks this)
+   □ Blockers identified? (know risks)
+   □ Gotchas documented? (know pitfalls)
+   □ Files to touch? (know scope)
+   □ Performance targets? (if relevant)
+   □ Security implications? (know access control)
+   □ Design references? (for UI tasks)
+
+   Si pas OK → Ask Planner avant coding
+
+
+2. ✅ DEFINITION OF DONE (DoD)
+
+   Avant: "Done" = implicite, subjective
+   Après: Explicit 10-item checklist
+
+   Must pass:
+   • Code quality (patterns, security, no hardcodes)
+   • Testing (coverage > 80%, all scenarios)
+   • Database (migrations, idempotent)
+   • Frontend (HTML, CSS, responsive)
+   • Documentation (commits, comments, README)
+   • PR submission (includes context for QA)
+
+   Si pas tous OK → Fix before submitting PR
+
+
+3. ✅ TEST STRATEGY REFERENCE
+
+   Avant: "Test required" (vague)
+   Après: Reference Test Strategy from Planner
+
+   Each task includes explicit scenarios:
+   • Happy path: [what to test]
+   • Edge case 1: [specific scenario + expected behavior]
+   • Edge case 2: [specific scenario + expected behavior]
+   • Error state: [scenario + expected behavior]
+   • Security: [access control to test]
+   • Performance: [if relevant: max time]
+
+   Developer writes test for each scenario
+
+
+4. ✅ GOTCHAS & RISKS AWARENESS
+
+   Avant: Developer ne sait pas ce que Planner a identifié
+   Après: Read "Notes for Developer" section in task
+
+   Examples:
+   "- Use Promise.all for parallel queries (performance)"
+   "- Watch for N+1 query problems"
+   "- Verify role-based filtering with tests"
+   "- Security: Double-check viewer access control"
+
+   → Developer writes specific tests to address each gotcha
+
+
+5. ✅ UNCLEAR CRITERIA ESCALATION
+
+   Avant: Developer code anyway (et perd du temps)
+   Après: Ask Planner/PO for clarification first
+
+   Process:
+   1. Identify what's unclear (be specific)
+   2. Ask Planner: "Criteria needs clarification on: [question]"
+   3. Wait for answer
+   4. Then code
+
+   Example unclear: "Returns stats for authenticated user"
+   → What fields? Roles? Edge cases? Performance?
+
+
+6. ✅ PR SUBMISSION WITH CONTEXT
+
+   Avant: Basic PR description (maybe)
+   Après: Include test strategy + coverage + blockers
+
+   PR description includes:
+   ✅ Task code (FE-1.2)
+   ✅ Acceptance criteria met (checklist)
+   ✅ Test strategy summary (what was tested)
+   ✅ Test scenarios (all of them)
+   ✅ Coverage percentage
+   ✅ Blockers encountered (or "None")
+   ✅ Screenshots (for UI)
+
+   Helps QA understand context
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+📋 EXEMPLE: BEFORE vs AFTER
+═══════════════════════════════════════════════════════════════════════════
+
+❌ BEFORE (Developer isolated, no context):
+
+    Receive: Task FE-1.2
+    "GET /api/me/stats endpoint"
+
+    Developer thinks:
+    ✗ What data to return?
+    ✗ Which roles can access?
+    ✗ What edge cases?
+    ✗ What's the performance target?
+    ✗ How to test this?
+
+    → Developer guesses and code
+    → PR submitted (basic description)
+    → QA confused, finds gaps
+    → Rework needed
+
+
+✅ AFTER (Developer has full context):
+
+    Receive: Task FE-1.2 WITH:
+    - Acceptance Criteria (testable, specific)
+    - Test Strategy (from QA feedback):
+      • Happy path: correct counts
+      • Edge case 1: 0 photos → return 0
+      • Edge case 2: 10k photos < 100ms
+      • Error: unauthenticated → 401
+      • Security: viewer can't access other user → 403
+    - Test Data Needed (fixtures specified)
+    - Dependencies (none)
+    - Gotchas:
+      "Use Promise.all for parallel queries (performance)
+       Watch for N+1 queries
+       Verify role-based filtering"
+    - Testability Score: 24/25 (READY)
+
+    Developer:
+    1. Check 10-item clarity checklist ✅ (all OK)
+    2. Code with test strategy in mind
+    3. Write tests for all scenarios
+    4. Check Definition of Done ✅ (all items)
+    5. PR description includes:
+       - Acceptance criteria met
+       - Test scenarios tested (5 scenarios)
+       - Coverage (88%)
+       - Gotchas addressed (Promise.all, N+1 check, role verification)
+
+    → QA knows exactly what was tested
+    → No surprises, quick approval
+    → Ready to merge
+
+
+═══════════════════════════════════════════════════════════════════════════
+
+💪 BENEFITS OF IMPROVED DEVELOPER AGENT
+═══════════════════════════════════════════════════════════════════════════
+
+✅ CLARITY
+   - Don't code without clear criteria
+   - Ask for clarification upfront (faster than rework)
+   - Know exactly what to test
+
+✅ SPEED
+   - Test strategy defined → tests written fast
+   - DoD checklist → no rework cycles
+   - PR context → QA approves quick
+
+✅ QUALITY
+   - Follow test strategy (not guessing)
+   - DoD ensures all aspects covered
+   - Gotchas addressed (fewer bugs)
+
+✅ COMMUNICATION
+   - Clear escalation (Dev → Planner for unclear)
+   - PR tells the story (test strategy, coverage, blockers)
+   - Blockers communicated to Planner
+
+═══════════════════════════════════════════════════════════════════════════
+
+📦 FICHIERS FOURNIS
+═══════════════════════════════════════════════════════════════════════════
+
+1. website-dev-improved.md ⭐ VERSION COMPLÈTE AMÉLIORÉE
+   └─ Replace your current developer agent
+   └─ 650+ lines, complete reference
+   └─ Ready to use immediately
+
+2. DEVELOPER-ANALYSIS.md 📖 ANALYSE DÉTAILLÉE
+   └─ Explains each improvement
+   └─ Before/after for each point
+   └─ Communication channels
+
+3. DEVELOPER-SUMMARY.txt 📋 CE DOCUMENT
+   └─ Quick overview
+   └─ 3 implementation options
+
+═══════════════════════════════════════════════════════════════════════════
+
+🚀 COMMENT UTILISER
+═══════════════════════════════════════════════════════════════════════════
+
+OPTION A: Remplacer complètement (Recommandé)
+
+  1. Ouvrir votre agent Developer
+  2. Copier contenu de website-dev-improved.md
+  3. Remplacer tout le contenu
+  4. Tester avec prochaine task
+  5. Valider avec team
+
+OPTION B: Ajouter just essentials (Minimal)
+
+  1. Ajouter "Task Understanding Checklist" section
+  2. Ajouter "Definition of Done" section
+  3. Ajouter "PR Submission Checklist" section
+  4. Keep everything else the same
+
+OPTION C: Intégration progressive
+
+  Week 1: Add Task Understanding Checklist
+  Week 2: Add Definition of Done
+  Week 3: Add Test Strategy Reference
+  Week 4: Add PR submission guidelines
+
+═══════════════════════════════════════════════════════════════════════════
+
+✅ CHECKLIST: AVANT DE FINALISER
+═══════════════════════════════════════════════════════════════════════════
+
+COMPRÉHENSION:
+  [ ] Lu website-dev-improved.md en entier
+  [ ] Compris 6 améliorations clés
+  [ ] Vu exemple avant/après
+
+ADOPTION:
+  [ ] Choisi OPTION A, B, ou C
+  [ ] Copié / adapté le contenu
+  [ ] Testé avec prochaine task
+
+VALIDATION:
+  [ ] Task Understanding Checklist en place?
+  [ ] Definition of Done en place?
+  [ ] Test Strategy section compris?
+  [ ] PR submission guidelines clair?
+
+DÉPLOIEMENT:
+  [ ] Prochaines tasks suivent nouveau format
+  [ ] Developer valide clarity avant coding
+  [ ] Developer check DoD avant PR
+  [ ] PR descriptions plus complètes
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎉 RÉSUMÉ FINAL
+═══════════════════════════════════════════════════════════════════════════
+
+Votre agent Developer est excellent. Ces 6 améliorations le rendent:
+  ✅ Compatible avec QA Agent
+  ✅ Compatible avec Planner Agent amélioré
+  ✅ Compatible avec PO Agent amélioré
+  ✅ Test strategy explicit per task
+  ✅ Definition of Done clear
+  ✅ Communication explicit
+
+Résultat: Developers confident, QA happy, no surprises.
+
+Fichier à utiliser: website-dev-improved.md
+
+Commencez par Option A (remplace complet):
+  Simple, ready to use, benefits immédiat
+
+═══════════════════════════════════════════════════════════════════════════

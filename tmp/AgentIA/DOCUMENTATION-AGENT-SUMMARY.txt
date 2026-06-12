@@ -1,0 +1,275 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║           📚 DOCUMENTATION AGENT - CURATOR & AUTO-GENERATOR 📚           ║
+║                                                                           ║
+║     Keeps docs in sync with code - NOT a duplicate of Tech Lead           ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+📋 WHAT IT DOES
+═══════════════════════════════════════════════════════════════════════════
+
+Documentation Agent focuses on DOCUMENTATION MANAGEMENT:
+  ✓ Auto-generates API documentation (from code)
+  ✓ Detects documentation drift (code changed, docs didn't)
+  ✓ Maintains knowledge base (ADRs, runbooks, troubleshooting)
+  ✓ Generates release notes & changelogs
+  ✓ Creates user guides & migration guides
+  ✓ Maintains architecture diagrams
+  ✓ Creates deprecation notices & breaking changes log
+
+⚠️  WHAT IT DOES NOT DO (Tech Lead already covers):
+  ❌ Validate code comment format
+  ❌ Review commit message quality
+  ❌ Check README structure
+  ❌ Validate architecture decisions
+  ❌ Enforce documentation existence (just flags gaps)
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎯 KEY RESPONSIBILITIES
+═══════════════════════════════════════════════════════════════════════════
+
+1. API DOCUMENTATION (Auto-Generated)
+   From: JSDoc comments, OpenAPI specs in code
+   To: /docs/api/ markdown files
+   What: endpoints, schemas, examples, error codes, rate limits
+
+2. DETECT DOCUMENTATION DRIFT
+   Flag when: Code changed but docs didn't
+   Example: Route parameter changed, examples still show old format
+
+3. KNOWLEDGE BASE MAINTENANCE
+   Keep updated: ADRs, runbooks, troubleshooting, FAQ, incident logs
+   Detect: Obsolete info, outdated procedures
+
+4. RELEASE NOTES & CHANGELOG
+   Auto-generate from: Git commits, feature descriptions
+   Include: Features, fixes, breaking changes, migration guides
+   Audience: Users, developers, operators
+
+5. USER GUIDES (How-To)
+   Create: Step-by-step guides, screenshots, workflows
+   Not: Just technical documentation, but USAGE guides
+
+6. MIGRATION GUIDES
+   Document: What changed, timeline, steps, testing, rollback
+
+7. ARCHITECTURE DIAGRAMS
+   Generate: From code, Mermaid/PlantUML
+   Keep in sync: Update when design changes
+
+═══════════════════════════════════════════════════════════════════════════
+
+⚠️  KEY DIFFERENCE FROM TECH LEAD
+═══════════════════════════════════════════════════════════════════════════
+
+Tech Lead:
+  • Checks code comments exist + are clear
+  • Validates commit messages are good
+  • Ensures README is updated
+  • Reviews architecture documentation quality
+  → "Does documentation exist and is it good?"
+
+Documentation Agent:
+  • Auto-generates docs from code
+  • Detects when docs are out of sync
+  • Maintains knowledge base (decision logs, runbooks)
+  • Creates user guides, release notes, migration guides
+  → "Is documentation complete, current, and useful?"
+
+Think of it this way:
+  • Tech Lead: "Quality control for documentation"
+  • Documentation: "Creation, maintenance, and sync of documentation"
+
+═══════════════════════════════════════════════════════════════════════════
+
+📊 DOCUMENTATION TYPES MANAGED
+═══════════════════════════════════════════════════════════════════════════
+
+1. API DOCUMENTATION
+   ✓ All endpoints listed
+   ✓ Request/response schemas
+   ✓ Example curl requests
+   ✓ Error codes documented
+   ✓ Rate limits noted
+   Auto-generated from JSDoc
+
+2. ARCHITECTURE DOCUMENTATION
+   ✓ System design diagrams
+   ✓ Architecture Decision Records (ADRs)
+   ✓ Component relationships
+   ✓ Data flows
+   ✓ Performance considerations
+
+3. KNOWLEDGE BASE
+   ✓ Runbooks (step-by-step operations)
+   ✓ Troubleshooting guides
+   ✓ FAQ
+   ✓ Incident post-mortems
+   ✓ Performance tuning
+   ✓ Security hardening
+
+4. RELEASE NOTES
+   ✓ Features added
+   ✓ Bugs fixed
+   ✓ BREAKING CHANGES (emphasized!)
+   ✓ Dependencies updated
+   ✓ Performance improvements
+   Auto-generated from commits
+
+5. USER GUIDES
+   ✓ Feature overview
+   ✓ Prerequisites
+   ✓ Step-by-step walkthrough
+   ✓ Screenshots/diagrams
+   ✓ Troubleshooting
+   ✓ Common workflows
+
+6. MIGRATION GUIDES
+   ✓ What changed
+   ✓ Timeline
+   ✓ Migration steps
+   ✓ Testing checklist
+   ✓ Rollback procedure
+   ✓ FAQ
+
+═══════════════════════════════════════════════════════════════════════════
+
+🔍 DETECTING DOCUMENTATION DRIFT
+═══════════════════════════════════════════════════════════════════════════
+
+What to FLAG:
+  ❌ New endpoint added, but not in API docs
+  ❌ Route parameter changed, examples still show old format
+  ❌ Response schema changed, docs show old fields
+  ❌ Error code removed but still documented
+  ❌ Database schema changed, but migration guide missing
+  ❌ Architecture modified, but diagram not updated
+  ❌ Feature removed 3 months ago, but still in examples
+
+═══════════════════════════════════════════════════════════════════════════
+
+💡 AUTO-GENERATION STRATEGY
+═══════════════════════════════════════════════════════════════════════════
+
+Where possible, GENERATE docs automatically:
+
+API Docs:
+  From: JSDoc comments in code
+  Tool: OpenAPI/Swagger generation
+  Output: /docs/api/*.md files
+  
+Release Notes:
+  From: Conventional commits (feat:, fix:, BREAKING CHANGE:)
+  Tool: Changelog generator
+  Output: CHANGELOG.md + release notes
+  
+Architecture Diagrams:
+  From: Mermaid/PlantUML in markdown
+  Tool: Diagram renderer
+  Output: Visual diagrams in docs
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎯 FLAG DECISIONS
+═══════════════════════════════════════════════════════════════════════════
+
+GOOD (No action needed):
+  ✓ API docs complete + current
+  ✓ User guides exist
+  ✓ Release notes generated
+  ✓ No documentation drift detected
+
+FLAG (Should be fixed):
+  🚩 API docs missing (blocks users)
+  🚩 Breaking changes not documented
+  🚩 Runbook outdated (ops can't operate)
+  🚩 Documentation drift found
+
+SUGGEST (Nice to have):
+  💡 Architecture diagram could be clearer
+  💡 User guide could have more examples
+  💡 FAQ could cover one more scenario
+  💡 Runbook performance tuning section
+
+═══════════════════════════════════════════════════════════════════════════
+
+🔄 WORKFLOW INTEGRATION
+═══════════════════════════════════════════════════════════════════════════
+
+Timing: In parallel with QA/Tech Lead (NOT blocking merge)
+
+Input: Code changes, documentation updates (if any)
+Detect: What's new, what changed, what docs are missing
+Output: Documentation complete & in sync check
+
+Not a blocker:
+  Can merge without perfect docs
+  But Documentation Agent flags gaps for team to address
+
+═══════════════════════════════════════════════════════════════════════════
+
+📋 DOCUMENTATION CHECKLIST
+═══════════════════════════════════════════════════════════════════════════
+
+Every merged PR should have:
+  □ API docs updated (if endpoint changed)
+  □ User guide updated (if user-facing)
+  □ Architecture docs updated (if design changed)
+  □ Release notes entry (for changelog)
+
+Every release should include:
+  □ Changelog generated (from commits)
+  □ Release notes (user-friendly summary)
+  □ Migration guides (if breaking changes)
+  □ Deprecation notices (if features removed)
+
+Every quarter maintain:
+  □ Architecture diagrams (still accurate?)
+  □ Knowledge base (obsolete entries archived?)
+  □ FAQ (updated with support questions?)
+  □ Runbooks (procedures still correct?)
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎉 DOCUMENTATION AUTOMATION BENEFITS
+═══════════════════════════════════════════════════════════════════════════
+
+✓ Less manual work: Auto-generate where possible
+✓ Always current: Detect drift automatically
+✓ Complete: Flag missing documentation
+✓ Useful: Different docs for different audiences
+✓ Discoverable: Organized, indexed, searchable
+✓ Institutional memory: ADRs, runbooks preserved
+
+═══════════════════════════════════════════════════════════════════════════
+
+🚀 DEPLOYMENT
+═══════════════════════════════════════════════════════════════════════════
+
+Activate for:
+  ✓ Every merged PR (detect drift, flag gaps)
+  ✓ Every release (generate release notes, migration guides)
+  ✓ Quarterly review (maintain knowledge base)
+
+It is NOT a blocker:
+  • Can merge without perfect docs
+  • Suggestions are for team to address
+  • Flagged gaps tracked in issue list
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎯 SUMMARY
+═══════════════════════════════════════════════════════════════════════════
+
+Documentation Agent:
+  ✓ Auto-generates documentation
+  ✓ Detects when docs go stale
+  ✓ Maintains knowledge base
+  ✓ Creates user-friendly guides
+  ✓ Complements Tech Lead (doesn't duplicate)
+
+Result: Complete, current, useful documentation that scales with code.
+
+═══════════════════════════════════════════════════════════════════════════
