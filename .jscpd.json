@@ -1,7 +1,0 @@
-{
-  "threshold": 8,
-  "minLines": 8,
-  "minTokens": 70,
-  "ignore": ["src/__tests__/**"],
-  "reporters": ["console"]
-}
