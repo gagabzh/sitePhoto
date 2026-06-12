@@ -131,3 +131,39 @@ As an editor importing photos from Nextcloud, I expect the imported photos to re
 *Investigation needed:* Check `worker/src/worker.js` step that downloads the file from Nextcloud. Verify that it passes the buffer to the same EXIF extraction logic used for direct uploads. Confirm that metadata is being stored in the `photos` table columns (`date_taken`, `exposure_time`, `focal_length`, etc.).
 
 *Related:* US-NC4, IMP-1, US-P1
+
+---
+
+**BUG-9 — Nextcloud buttons on photo detail page have identical behavior**
+As a viewer or editor, I expect the "Open in Nextcloud" and "Download original" buttons on the photo detail page to perform different actions, so I can either browse the Nextcloud folder or download the original file.
+
+*Current behavior:* Both buttons link to the Nextcloud folder URL and open in a new tab, performing the same action.
+
+*Expected behavior:* 
+- "Open in Nextcloud" should open the Nextcloud folder in a new tab (showing the folder contents)
+- "Download original" should trigger the download of the original image file from Nextcloud
+
+*Technical note:* The "Download original" button should link to the direct file URL. If `nextcloud_url` is a folder share (e.g., `https://cloud.example/s/abc`), it needs to append the filename (e.g., `https://cloud.example/s/abc/filename.jpg`). If it's already a file share, use it directly. The button should have the `download` attribute and not use `target="_blank"`.
+
+*Related:* US-NC2
+
+*Status:* **FIXED in PR #124**
+
+---
+
+**BUG-10 — Manual people tagging button disappears**
+As an editor, I expect to see the "Tag a person" button on the photo detail page so I can manually draw bounding boxes around faces and tag people in photos.
+
+*Current behavior:* The "Tag a person" button (id="tag-person-btn") was accidentally removed during IMP-5 implementation, preventing editors from accessing the manual face tagging interface.
+
+*Expected behavior:* The "Tag a person" button should be visible to editors (but not viewers) on the photo detail page, alongside the "Identify people" button. Both buttons serve different purposes:
+- "Tag a person": Manual bbox drawing for precise face tagging
+- "Identify people": AI-powered automatic identification
+
+*Technical note:* The button should be rendered in the photo detail view template when the user has edit permissions. The JavaScript for bbox drawing and face tagging (AI-3) already exists and just needs the button to trigger it.
+
+*Root cause:* IMP-5 consolidated tags display removed the "People in this photo" section which contained the "Tag a person" button.
+
+*Related:* AI-3, IMP-5
+
+*Status:* **FIXED in PR #126** — restored Tag a person button
