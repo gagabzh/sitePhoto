@@ -49,7 +49,6 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-A1 | Create an album                                             | Albums | Done | — |
 | US-A2 | Add / remove photos from an album                           | Albums | Done | — |
 | US-A3 | Edit / delete an album                                      | Albums | Done | — |
-| IMP-5 | One album per photo                                         | Albums | Done | — |
 | MA-1 | A photo can belong to multiple albums                       | Albums | Done | #96 — album_photos join table, add/remove routes — src/repositories/albums.js + routes/photos.js |
 | MA-2 | Photo detail shows album memberships                        | Albums | Done | #96 — album membership list on photo detail — src/repositories/albums.js + routes/photos.js |
 | MA-3 | Manage album memberships from the photo edit form           | Albums | Done | #96 — transactional checklist reconciliation — src/repositories/albums.js + routes/photos.js |

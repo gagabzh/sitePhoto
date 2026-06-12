@@ -9,9 +9,6 @@ As an editor, I can add or remove photos from my own albums. As an admin, I can 
 **[DONE] US-A3 — Edit / delete an album**
 As an editor, I can edit the title and description of my own albums, or delete them. As an admin, I can edit or delete any album.
 
-**[DONE] IMP-5 — One album per photo** ✓
-As an editor, each photo belongs to at most one album. If I add a photo that is already in another album, it is moved to the new one. Photos not added to any album remain as standalone photos, visible in the photo list.
-
 ---
 
 **[Backlog] MA-1 — A photo can belong to multiple albums**
