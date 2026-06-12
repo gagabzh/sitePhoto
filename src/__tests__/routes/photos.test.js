@@ -820,6 +820,10 @@ describe('US-NC2: GET /photos/:id — download original button', () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain('Download original');
     expect(res.text).toContain('https://cloud.example/s/abc');
+    // Download original button should link to the file with filename appended
+    expect(res.text).toContain('https://cloud.example/s/abc/test-uuid.jpg');
+    // Should have download attribute
+    expect(res.text).toContain('download>Download original');
   });
 
   it('hides Download original button when nextcloud_url is not set', async () => {

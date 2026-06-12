@@ -86,6 +86,39 @@ function nextcloudFolderUrl(shareUrl) {
   }
 }
 
+// US-NC8: Transform Nextcloud share URL to direct file download URL
+// If the shareUrl already points to a file, returns it as-is
+// If it's a folder share, appends the filename to create a direct file URL
+// Returns the file URL or null if invalid
+function nextcloudFileUrl(shareUrl, filename) {
+  if (!shareUrl || !filename) return null;
+  
+  // First validate the URL
+  const sanitized = sanitizeNextcloudUrl(shareUrl);
+  if (!sanitized) return null;
+  
+  try {
+    const url = new URL(sanitized);
+    const pathname = url.pathname;
+    
+    // Check if the URL already ends with a filename
+    // Pattern: ends with /filename.ext
+    const hasFilename = /\/[^/]+\.[^./]+$/.test(pathname);
+    
+    if (hasFilename) {
+      // Already a file URL, return as-is
+      return sanitized;
+    }
+    
+    // It's a folder share, append the filename
+    // Ensure there's a trailing slash before the filename
+    const basePath = pathname.endsWith('/') ? pathname : pathname + '/';
+    return `${url.protocol}//${url.host}${basePath}${filename}`;
+  } catch {
+    return null;
+  }
+}
+
 async function setTags(photoId, rawTags) {
   await db.query('DELETE FROM photo_tags WHERE photo_id = $1', [photoId]);
   const names = String(rawTags).split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
@@ -166,7 +199,7 @@ async function deletePhotos(ids) {
 }
 
 module.exports = {
-  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, nextcloudFolderUrl,
+  UPLOAD_DIR, upload, parseCoord, sanitizeNextcloudUrl, nextcloudFolderUrl, nextcloudFileUrl,
   setTags, singleUploadFields, batchUploadFields,
   processAndUpload, deletePhotos,
 };

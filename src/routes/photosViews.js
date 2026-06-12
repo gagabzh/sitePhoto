@@ -1,6 +1,6 @@
 const { page, esc } = require('../layout');
 const { selectionBar, selectionScript } = require('../components');
-const { singleUploadFields, nextcloudFolderUrl } = require('../uploadHelpers');
+const { singleUploadFields, nextcloudFolderUrl, nextcloudFileUrl } = require('../uploadHelpers');
 
 function renderPhotoListPage({ rows, uploaders, topTags, total, nextCursor, latestAlbum, session, activeImport }) {
   const firstname = esc((session.name || '').split(' ')[0]);
@@ -272,13 +272,14 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
           </dl>` : ''}
           ${photo.nextcloud_url ? (() => {
             const folderUrl = nextcloudFolderUrl(photo.nextcloud_url);
+            const fileUrl = nextcloudFileUrl(photo.nextcloud_url, photo.filename);
             if (!folderUrl) return '';
             return `
               <div style="margin-top:1rem;display:flex;gap:0.75rem;flex-wrap:wrap">
                 <a class="btn btn-nextcloud" href="${esc(folderUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open in Nextcloud (opens in new tab)">
                   Open in Nextcloud
                 </a>
-                <a class="btn" href="${esc(photo.nextcloud_url)}" target="_blank" rel="noopener noreferrer">Download original</a>
+                ${fileUrl ? `<a class="btn" href="${esc(fileUrl)}" download>Download original</a>` : ''}
               </div>`;
           })() : ''}
 
