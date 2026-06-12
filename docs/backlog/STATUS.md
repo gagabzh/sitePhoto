@@ -44,7 +44,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | IMP-2 | Batch upload                                                | Photos | Done | — |
 | IMP-3 | Back buttons at the top of pages                            | Photos | Done | — |
 | IMP-4 | Select all                                                  | Photos | Done | — |
-| IMP-5 | Consolidate tags and people display on photo detail      | Photos | Backlog | — |
+| IMP-5 | Consolidate tags and people display on photo detail      | Photos | Done | — |
 | LB-1 | Lightbox / fullscreen viewer in album                       | Photos | Done | #97 — vanilla JS lightbox, keyboard nav, prev/next — src/routes/albums.js + albumsViews.js |
 | US-A1 | Create an album                                             | Albums | Done | — |
 | US-A2 | Add / remove photos from an album                           | Albums | Done | — |
