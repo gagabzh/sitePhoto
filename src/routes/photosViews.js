@@ -286,12 +286,6 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
           <div id="ai-people" style="margin-top:1.25rem">
             <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem">Identify people</button>
             <div id="ai-people-chips" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem"></div>
-          </div>` : ''}
-
-          ${canEdit ? `
-          <div id="ai-people" style="margin-top:1.25rem">
-            <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem">Identify people</button>
-            <div id="ai-people-chips" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem"></div>
           </div>
           <script>
             (function(){
