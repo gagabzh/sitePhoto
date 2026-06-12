@@ -27,7 +27,7 @@ BEGIN
     SET album_id = (
       SELECT ap.album_id FROM album_photos ap
       WHERE ap.photo_id = p.id
-      ORDER BY ap.added_at ASC
+      ORDER BY ap.album_id ASC
       LIMIT 1
     )
     WHERE p.album_id IS NULL;
