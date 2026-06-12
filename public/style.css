@@ -382,6 +382,19 @@ form.inline { display: inline; }
   font-family: 'Kalam', cursive; font-size: 0.78rem;
   border: 1.5px solid var(--ink); border-radius: 999px;
   padding: 1px 10px; color: var(--ink); background: var(--paper);
+  text-decoration: none;
+}
+.tag:hover {
+  background: var(--ink); color: var(--paper);
+}
+/* IMP-5: People tags - visually distinct from regular tags */
+.tag-person {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.tag-person:hover {
+  background: var(--accent);
+  color: var(--paper);
 }
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
 .tag-cloud a {
