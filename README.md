@@ -1,122 +1,275 @@
-# sitephoto
+# SitePhoto
 
-A self-hosted photo gallery built with Express.js and PostgreSQL. It supports albums, tags, GPS map, timeline, access-controlled sharing, and async AI features (duplicate detection, people identification). Photos are stored in S3-compatible object storage. The app runs on two OVH Public Cloud instances connected over a private vRack: one always-on instance for the web app, one shelved-when-idle instance for the AI worker.
+A self-hosted photo gallery built with Express.js and PostgreSQL. SitePhoto supports albums, tags, GPS mapping, timeline viewing, access-controlled sharing, and async AI features (duplicate detection, people identification). Photos are stored in S3-compatible object storage.
+
+The application runs on OVH Public Cloud with a cost-optimized two-instance architecture: one always-on instance for the web app and databases, and one on-demand instance for AI processing that automatically shelves when idle.
 
 ---
 
 ## Features
 
-**Account** — profile editing, avatar upload/removal, session management (list and revoke), account self-deletion with typed confirmation, role-aware identity card (admin / editor / viewer)
+### Core Features
+- **Account Management**: Profile editing, avatar upload/removal, session management, account self-deletion
+- **User Management (admin)**: Create, edit, delete users; reset passwords
+- **Photos**: Single and batch upload, tagging, edit, delete, EXIF date extraction, bulk operations
+- **Albums**: Create, edit, delete; add/remove photos; grant/revoke per-album viewer access
+- **Browsing**: Browse albums, filter by tag, access-denied handling for protected content
 
-**User management (admin)** — create, edit, delete users; reset passwords
+### Advanced Features
+- **Map & GPS**: Add coordinates to photos, view locations, browse and filter photos on an interactive map
+- **Timeline**: Chronological view with album/tag/date-range filters
+- **Travel Pages**: Create travel records with GPX routes, link albums and photos, view routes on interactive maps or in journal view, share with viewers
+- **Nextcloud Integration**: Link photos to Nextcloud originals, download from Nextcloud shares, import entire shared folders with real-time progress
 
-**Photos** — single and batch upload, tagging, edit, delete, EXIF date extraction, select-all for bulk operations
-
-**Albums** — create, edit, delete albums; add/remove photos; grant/revoke per-album viewer access
-
-**Browsing** — browse albums, filter by tag, access-denied handling for protected content
-
-**Map & GPS** — add coordinates to photos, view location, browse and filter photos on a map
-
-**Timeline** — chronological view with album/tag/date-range filters
-
-**Nextcloud integration** — link photos to Nextcloud originals, download originals from a Nextcloud share, import an entire shared Nextcloud folder with real-time progress feedback
-
-**Travel pages** — create travel records with GPX routes, link albums and photos, view routes and waypoints on an interactive map or in a journal view, share travels with viewers
-
-**Manual face tagging** — draw bounding boxes on the photo detail page to name people; tagged face crops feed back into AI identification as few-shot examples, improving future recognition accuracy
-
-**Infrastructure** — S3-compatible object storage, async BullMQ queue (upload returns immediately), real-time WebSocket notifications (socket.io), on-demand worker lifecycle (unshelve on job / shelve after idle), PostgreSQL session persistence, nightly instance scheduling via GitHub Actions
+### AI Features
+- **Duplicate Detection**: Perceptual hash (dHash) scan to find near-identical images
+- **People Identification**: Local vision model (Ollama with LLaVA) for face recognition
+- **Manual Face Tagging**: Draw bounding boxes to tag people; tagged crops improve future AI recognition via few-shot learning
 
 ---
 
 ## Architecture
 
-### Production Architecture
+### Production Infrastructure (V4)
 
-SitePhoto runs on **two OVH Public Cloud instances** on a private vRack network, designed for cost efficiency and scalability:
+SitePhoto runs on **two OVH Public Cloud instances** connected via a private vRack network (10.0.0.0/24):
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         OVH Public Cloud                              │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌──────────────────────┐       vRack Private Network              │
-│  │    Instance-1         │         10.0.0.0/24                       │
-│  │    (b3-4)             │                                           │
-│  │  ┌─────────────────┐ │  ┌─────────────────┐                      │
-│  │  │  Express.js     │ │  │  Instance-2     │                      │
-│  │  │  (Node.js)      │ │  │  (c3-8)         │                      │
-│  │  └────────┬────────┘ │  │  ┌─────────────┐ │                      │
-│  │           │          │  │  │  BullMQ      │ │                      │
-│  │  ┌────────▼────────┐ │  │  │  Worker     │ │                      │
-│  │  │  Caddy          │◄┼──┼──▶│  (Node.js)   │ │                      │
-│  │  │  (HTTPS/HTTP)   │ │  │  └─────────────┘ │                      │
-│  │  └─────────────────┘ │  │  ┌─────────────┐ │                      │
-│  │                     │  │  │  Ollama      │ │                      │
-│  │  ┌─────────────────┐ │  │  │  (llava)    │ │                      │
-│  │  │  PostgreSQL    │ │  │  └─────────────┘ │                      │
-│  │  │  (Photos, DB)  │ │  │                 │ │                      │
-│  │  └─────────────────┘ │  │                 │ │                      │
-│  │                     │  │  ┌─────────────┐ │                      │
-│  │  ┌─────────────────┐ │  │  │  Redis       │ │                      │
-│  │  │  MinIO          │ │  │  │  (Queue)    │ │                      │
-│  │  │  (Local Dev)    │ │  │  └─────────────┘ │                      │
-│  │  └─────────────────┘ │  │                 │ │                      │
-│  └──────────────────────┘  └─────────────────┘                      │
-│                            │                                        │
-│                     OVH Object Storage (S3)                          │
-│                     ┌──────────────────────┐                         │
-│                     │   Photos Bucket      │                         │
-│                     │   (Private)          │                         │
-│                     └──────────────────────┘                         │
-└─────────────────────────────────────────────────────────────────────┘
-```
+**Instance-1 (Always On — b2-7, 2 vCPU / 7 GB RAM)**
+- Express.js web application (Node.js)
+- PostgreSQL database
+- Redis queue server
+- Caddy reverse proxy with automatic HTTPS (Let's Encrypt)
+- Internal API on port 3001 (vRack-only, for worker callbacks)
 
-#### Instance-1 (Always On — b3-4)
-- **Role**: Web application server
-- **Services**: Express.js app, PostgreSQL, Redis, Caddy (HTTPS reverse proxy)
-- **Storage**: Local Docker volumes + OVH Object Storage
-- **Cost**: ~€XX/month (2 vCPU, 4 GB RAM)
-- **Uptime**: 24/7
+**Instance-2 (On-Demand — c3-8, 4 vCPU / 8 GB RAM)**
+- BullMQ worker (Node.js) for job processing
+- Ollama with LLaVA vision model for AI identification
+- Automatically shelved when idle to save costs (~€10/month)
 
-#### Instance-2 (On-Demand — c3-8)
-- **Role**: AI processing worker
-- **Services**: BullMQ worker, Ollama (llava model)
-- **Lifecycle**: Shelved when idle, auto-unshelved on job arrival
-- **Cost**: ~€YY/month when active, ~€0.01/GB/month when shelved
-- **Cost Savings**: ~€10/month via nightly shelve/unshelve schedule
+**Storage**
+- OVH Object Storage (S3-compatible) in GRA region for photo storage
+- Both instances access photos directly from S3 — no file transit over vRack
 
-#### Network Design
-- **Public**: Internet → Caddy (HTTPS) → Express app
-- **Private (vRack)**: Instance-1 ↔ Instance-2 (10.0.0.0/24)
-  - Redis: Instance-1:6379 ←→ Instance-2 (queue communication)
-  - Worker callbacks: Instance-2 → Instance-1 internal API
-- **Storage**: Both instances → OVH Object Storage (public endpoints, private access via keys)
+**Network Design**
+- Public traffic: Browser → Caddy (HTTPS:80/443) → Express app (:3000)
+- Private vRack: Instance-1 ↔ Instance-2
+  - Redis: Instance-1:6379 (bound to vRack IP only)
+  - Internal API: Instance-1:3001 (worker callbacks)
+  - Worker SSH: Via Instance-1 as jump host
 
-#### Data Flow
+See [docs/architecture/architecture.md](docs/architecture/architecture.md) for detailed diagrams and design notes.
+
+---
+
+## Data Flow
+
 ```
 User Upload → Express → S3 → Redis Queue → Worker → Ollama → Internal API → Socket.io → Browser
-                 ↓
-            PostgreSQL
-              (metadata)
+                          ↓
+                     PostgreSQL (metadata)
 ```
 
 1. User uploads photo via Express app
 2. Photo stored in S3, metadata in PostgreSQL
 3. Job queued in Redis (BullMQ)
 4. Worker (Instance-2) polls queue, downloads from S3
-5. Ollama processes image (llava model)
-6. Results POSTed to `/internal/identification-result` on Instance-1
+5. Ollama processes image (LLaVA model)
+6. Results POSTed to internal API on Instance-1
 7. Socket.io notifies client browser in real-time
 
-#### Cost Optimization Features
-- **Instance-2 Auto-Shelving**: Worker instance is shelved (stopped, disk preserved) when idle and automatically unshelved when jobs arrive
-- **Nightly Schedule**: Instance-1 is shelved nightly (23:00-06:00 CET) via GitHub Actions
-- **S3 Storage**: Cheaper than block storage, scales independently
-- **Docker Compose**: Lightweight container orchestration
+---
 
-See [docs/architecture/architecture.md](docs/architecture/architecture.md) for detailed diagrams and design notes.
+## Quick Start
+
+### Local Development (Docker)
+
+```bash
+# Clone and setup
+cp .env.example .env
+
+# Start full stack (app, DB, Redis, MinIO S3, Caddy)
+docker compose up -d --build
+
+# Access the app at http://localhost
+# MinIO console at http://localhost:9001
+```
+
+### Without Docker
+
+```bash
+# Install dependencies
+npm install
+
+# Start app (requires PostgreSQL running)
+npm run dev     # nodemon, port 3000
+
+# Run tests
+npm test        # Jest test suite
+npm run lint    # ESLint
+```
+
+A PostgreSQL instance must be running and `DATABASE_URL` must be set in `.env`.
+
+---
+
+## Production Deployment
+
+### Prerequisites
+- OVH Public Cloud project with vRack network
+- Domain name pointing to your server
+- Docker and Docker Compose v2
+
+### Infrastructure Setup
+
+The infrastructure is managed via Terraform in the [infra/](infra/) directory. See [infra/README.md](infra/README.md) for complete deployment instructions.
+
+### Steps
+
+1. **Deploy Infrastructure**: Use Terraform to create instances, network, and storage
+2. **Configure Instance-1**: Set up environment variables and start the app stack
+3. **Configure Instance-2**: Set up worker environment and start the worker
+4. **Configure GitHub Actions**: Set up secrets for automated deployments
+5. **Point DNS**: Configure your domain to Instance-1's public IP
+
+See [infra/README.md](infra/README.md) for detailed step-by-step instructions.
+
+### Automated Deployments
+
+GitHub Actions automatically deploys:
+- **Main app** (Instance-1): On push to `main` branch via `deploy-site.yml`
+- **Worker** (Instance-2): On push to `main` branch via `deploy-worker.yml` (auto-unshelves instance)
+- **Lifecycle management**: Nightly shelve/unshelve of instances via `lifecycle-instance1.yml`
+
+---
+
+## Configuration
+
+### Environment Variables
+
+Create `.env` from `.env.example` and configure:
+
+| Variable | Description |
+|---|---|
+| `DOMAIN` | Domain name (e.g., `photos.example.com`). Use `localhost` for local dev. |
+| `DB_PASSWORD` | PostgreSQL password — use a strong random value |
+| `DATABASE_URL` | Full PostgreSQL connection string |
+| `SESSION_SECRET` | Secret used to sign sessions — use a strong random value |
+| `SEED_NAME` | Display name for the first admin account |
+| `SEED_EMAIL` | Email for the first admin account |
+| `SEED_PASS` | Password for the first admin account |
+| `OLLAMA_HOST` | Host where Ollama is reachable (default: `host-gateway` for Docker) |
+| `OLLAMA_PORT` | Ollama port (default: `11434`) |
+| `OLLAMA_MODEL` | Vision model name (e.g. `llava` or `moondream`) |
+| `REDIS_BIND_IP` | vRack private IP of Instance-1 — Redis binds to loopback + this IP |
+| `REDIS_HOST` | Redis host used by the worker (Instance-2); app uses Docker service name |
+| `REDIS_PORT` | Redis port (default: `6379`) |
+| `REDIS_PASSWORD` | Redis password |
+| `WORKER_API_SECRET` | Shared secret between Instance-1 and the worker — generate with `openssl rand -hex 32` |
+| `INTERNAL_API_PORT` | Port for the internal API that the worker posts results to (Instance-1 only) |
+| `S3_ENDPOINT` | S3-compatible endpoint URL (e.g. `https://s3.gra.cloud.ovh.net`) |
+| `S3_REGION` | S3 region (e.g. `gra`) |
+| `S3_BUCKET` | S3 bucket name |
+| `S3_ACCESS_KEY` | S3 access key |
+| `S3_SECRET_KEY` | S3 secret key |
+| `OVH_APP_KEY` | OVH API application key (for Instance-2 lifecycle management) |
+| `OVH_APP_SECRET` | OVH API application secret |
+| `OVH_CONSUMER_KEY` | OVH API consumer key |
+| `OVH_PROJECT_ID` | OVH Public Cloud project ID |
+| `INSTANCE2_ID` | UUID of Instance-2 (AI worker) |
+| `INSTANCE2_IDLE_MINUTES` | Minutes of inactivity before Instance-2 is shelved (default: `10`) |
+| `INSTANCE1_ID` | UUID of Instance-1 (used by the nightly shelve/unshelve GitHub Action) |
+
+---
+
+## Development Workflow
+
+### Running Tests
+```bash
+npm test              # Run all tests once
+npm run test:watch   # Watch mode
+npm run test:coverage # With coverage report
+```
+
+### Linting
+```bash
+npm run lint          # Check code style
+```
+
+### Database
+```bash
+# Manual migration
+docker compose exec db psql -U sitephoto -d sitephoto
+
+# Backup
+docker compose exec db pg_dump -U sitephoto sitephoto > backup_$(date +%Y%m%d).sql
+```
+
+Photos are stored in S3 — back up via your object storage provider or use rclone.
+
+---
+
+## Cost Optimization
+
+- **Instance-2 Auto-Shelving**: Worker instance shelves automatically when idle (configurable via `INSTANCE2_IDLE_MINUTES`)
+- **Nightly Schedule**: Instance-1 shelves nightly (23:00-06:00 CET) via GitHub Actions
+- **S3 Storage**: OVH Object Storage for cost-effective photo storage
+- **Docker**: Lightweight container orchestration
+
+---
+
+## Project Structure
+
+```
+sitephoto/
+├── src/                  # Application source code
+│   ├── routes/           # Express routes
+│   ├── models/           # Database models
+│   ├── services/         # Business logic
+│   ├── worker.js         # BullMQ worker entry point
+│   └── server.js         # Express app entry point
+├── worker/               # Worker-specific files
+│   ├── Dockerfile        # Worker container
+│   └── docker-compose.yml
+├── infra/                # Terraform infrastructure
+│   └── README.md         # Infrastructure deployment guide
+├── docs/                 # Documentation
+│   ├── architecture/     # Architecture diagrams
+│   └── backlog/          # User stories and backlog
+├── docker-compose.yml    # Local development
+├── docker-compose.prod.yml # Production (Instance-1)
+└── README.md             # This file
+```
+
+---
+
+## Documentation
+
+- **Feature Backlog**: [docs/backlog/STATUS.md](docs/backlog/STATUS.md)
+- **Architecture**: [docs/architecture/architecture.md](docs/architecture/architecture.md)
+- **User Stories**: [docs/user-stories.md](docs/user-stories.md)
+- **Infrastructure**: [infra/README.md](infra/README.md)
+
+---
+
+## Technologies
+
+- **Runtime**: Node.js 18+
+- **Framework**: Express.js
+- **Database**: PostgreSQL 15
+- **Queue**: Redis + BullMQ
+- **Storage**: OVH Object Storage (S3-compatible)
+- **AI**: Ollama with LLaVA model
+- **Reverse Proxy**: Caddy (automatic HTTPS)
+- **Containerization**: Docker + Docker Compose
+- **Infrastructure**: Terraform (OVH Public Cloud)
+- **CI/CD**: GitHub Actions
+- **Real-time**: Socket.io
+
+---
+
+## License
+
+Private project - All rights reserved
 
 ---
 

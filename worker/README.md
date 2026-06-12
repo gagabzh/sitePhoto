@@ -45,13 +45,13 @@ The worker runs on **Instance-2** (c3-8 OVH instance) as a separate service from
 
 ### Environment Variables
 
-Create a `.env` file in the worker directory:
+Create a `.env.worker` file in the project root (or copy `worker/.env.example` to `.env.worker`):
 
 ```bash
-# Redis connection (via vRack private network)
+# Redis connection (via vRack private network from Instance-1)
 REDIS_HOST=10.0.0.X  # Instance-1's private IP
 REDIS_PORT=6379
-REDIS_PASS=your_redis_password
+REDIS_PASSWORD=your_redis_password
 
 # S3 configuration
 S3_ENDPOINT=https://s3.gra.cloud.ovh.net
@@ -61,30 +61,35 @@ S3_SECRET_KEY=your_secret_key
 S3_BUCKET=your-bucket-name
 
 # Internal API
-INSTANCE1_API_URL=https://your-app-domain.com
-WORKER_SECRET=shared_secret_with_app
+INSTANCE1_API_URL=http://10.0.0.x:3001  # Instance-1 vRack IP
+WORKER_API_SECRET=shared_secret_with_app
 
-# Ollama
-OLLAMA_HOST=http://localhost:11434
+# Ollama (runs on Instance-2 host)
+OLLAMA_HOST=127.0.0.1
+OLLAMA_PORT=11434
+OLLAMA_MODEL=llava
 ```
 
-See `.env.example` for the full list.
+See `worker/.env.example` for the full list of environment variables.
 
 ### Local Development with MinIO
 
-For local testing, the main `docker-compose.yml` starts MinIO and Redis alongside the worker:
+For local testing, use the main `docker-compose.yml` at the project root, which includes the worker service alongside all other services:
 
 ```bash
 # From project root
-cd worker
-docker compose up -d
+docker compose up -d --build
 ```
 
-This uses the `docker-compose.yml` in the worker directory which includes:
+The main compose file includes:
 - Worker app (Node.js)
-- Ollama (if GPU available)
-- MinIO (S3-compatible local storage)
+- Express.js main app
+- PostgreSQL
 - Redis
+- MinIO (S3-compatible local storage)
+- Caddy reverse proxy
+
+For standalone worker testing, you can use the production `worker/docker-compose.yml` with local configuration.
 
 ### Production Deployment
 
@@ -114,12 +119,14 @@ The worker will:
 
 ### Docker
 
+For production deployment on Instance-2:
+
 ```bash
-# Build and run
-docker compose up -d --build
+# From project root
+docker compose -f worker/docker-compose.yml up -d --build
 
 # View logs
-docker compose logs -f worker
+docker compose -f worker/docker-compose.yml logs -f worker
 ```
 
 ## Configuration

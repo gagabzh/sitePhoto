@@ -142,7 +142,7 @@ If the name is `"Ubuntu 24.04 LTS"` instead of `"Ubuntu 24.04"`, update `ubuntu_
 
 ## Step 6 — Terraform init / plan / apply
 
-> **Prerequisite**: PR #44 (V4 app code — S3, BullMQ, socket.io) must be merged into `main` before running `terraform apply`. Cloud-init clones the `main` branch on first boot — if #44 is not merged, the instances will clone an app without S3/queue support and `docker compose up` will fail.
+> **Note**: Cloud-init clones the `main` branch on first boot. Ensure all required V4 features (S3, BullMQ, socket.io) are in the main branch before applying.
 
 ```bash
 cd infra/
