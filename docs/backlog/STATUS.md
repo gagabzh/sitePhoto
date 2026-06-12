@@ -89,6 +89,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-NC5 | Import progress feedback                                                  | Nextcloud | Done | #93 |
 | US-NC6 | Faster Nextcloud import by downloading on Instance-1                      | Nextcloud | Backlog | — |
 | US-NC7 | Link to Nextcloud folder from imported photos                             | Nextcloud | Backlog | — |
+| US-NC8 | Differentiate Open in Nextcloud and Download original buttons            | Nextcloud | Done | #124 — added nextcloudFileUrl() helper, download attribute on Download button |
 | AI-1 | Duplicate photo detection                                                 | Local AI | Done | admin-ai.js |
 | AI-2 | People identification and tagging                                         | Local AI | Done | worker.js |
 | AI-3 | Manual person tagging                                                     | Local AI | Done | #101 — POST /photos/:id/tag-person, sharp crop → S3 faces/, person_faces table (v15) — src/routes/photos.js |
