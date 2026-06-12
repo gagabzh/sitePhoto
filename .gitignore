@@ -18,5 +18,10 @@ infra/terraform.tfstate.backup
 
 # Claude Code — local agent config and worktrees
 .claude/
+
+# Vibe CLI — local agent config (except rules which are shared)
+.vibe/
+!.vibe/rules/
+
 memory/
 coverage/
