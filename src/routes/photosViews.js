@@ -285,7 +285,8 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
 
           ${canEdit ? `
           <div id="ai-people" style="margin-top:1.25rem">
-            <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem">Identify people</button>
+            <button id="tag-person-btn" style="margin-top:0.5rem;font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px">&#x270E; Tag a person</button>
+            <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem;margin-left:0.5rem">Identify people</button>
             <div id="ai-people-chips" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem"></div>
           </div>
           <script>

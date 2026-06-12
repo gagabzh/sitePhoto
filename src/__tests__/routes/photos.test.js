@@ -298,6 +298,90 @@ describe('GET /photos/:id — view photo', () => {
   });
 });
 
+// ── BUG-9: Nextcloud buttons have different behavior ──────────────────────
+
+describe('BUG-9: Nextcloud buttons differentiation', () => {
+  it('Open in Nextcloud button links to folder URL with target=_blank', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, nextcloud_url: 'https://cloud.example/s/abc', filename: 'photo.jpg' }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('href="https://cloud.example/s/abc"');
+    expect(res.text).toContain('target="_blank"');
+    expect(res.text).toContain('Open in Nextcloud');
+  });
+
+  it('Download original button has download attribute and links to file URL', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, nextcloud_url: 'https://cloud.example/s/abc', filename: 'photo.jpg' }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('href="https://cloud.example/s/abc/photo.jpg"');
+    expect(res.text).toContain('download>Download original');
+  });
+
+  it('buttons have different URLs when nextcloud_url is a folder share', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, nextcloud_url: 'https://cloud.example/s/abc', filename: 'photo.jpg' }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    // Both buttons should be present
+    expect(res.text).toContain('Open in Nextcloud');
+    expect(res.text).toContain('Download original');
+    // With different URLs
+    expect(res.text).toContain('https://cloud.example/s/abc"'); // folder
+    expect(res.text).toContain('https://cloud.example/s/abc/photo.jpg"'); // file
+  });
+});
+
+// ── BUG-10: Manual people tagging button ──────────────────────────────────
+
+describe('BUG-10: Manual people tagging button', () => {
+  it('shows Tag a person button to photo owner', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('id="tag-person-btn"');
+    expect(res.text).toContain('Tag a person');
+  });
+
+  it('shows Tag a person button to admin', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(ADMIN_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('id="tag-person-btn"');
+  });
+
+  it('hides Tag a person button from non-owner editor', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 99 }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('id="tag-person-btn"');
+  });
+
+  it('hides Tag a person button from viewer', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(VIEWER_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('id="tag-person-btn"');
+  });
+
+  it('shows both Tag a person and Identify people buttons to editor', async () => {
+    db.query.mockResolvedValue({ rows: [{ ...FAKE_PHOTO, user_id: 10 }] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('id="tag-person-btn"');
+    expect(res.text).toContain('id="ai-people-btn"');
+    expect(res.text).toContain('Tag a person');
+    expect(res.text).toContain('Identify people');
+  });
+});
+
 // ── IMP-5: Consolidate tags and people display ──────────────────────────────
 
 describe('IMP-5: GET /photos/:id — consolidated tags display', () => {
