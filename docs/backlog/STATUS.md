@@ -54,7 +54,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | MA-3 | Manage album memberships from the photo edit form                         | Albums | Done | #96 — transactional checklist reconciliation — src/repositories/albums.js + routes/photos.js |
 | ALB-1 | Click-to-edit in album, explicit lightbox button                          | Albums | Done | #98 — editor thumbnail → edit link, lb-btn lightbox icon — src/routes/albumsViews.js |
 | ALB-2 | Context-aware back button on photo detail and edit pages                  | Albums | Done | #98 — backLabel(from) helper, from propagated through cancel/delete — src/routes/photosViews.js |
-| ALB-3 | Choose album cover photo                                                  | Albums | Backlog | — |
+| ALB-3 | Choose album cover photo                                                  | Albums | Done | cover_photo_id column, POST /albums/:id/cover endpoint, UI with ★ button and gold badge — src/routes/albums.js + albumsViews.js + public/style.css |
 | RA-1 | Create a snapshot album from a tag recipe                                 | Albums | Done | #99 — POST /albums/from-recipe, transactional bulk insert — src/routes/albums.js |
 | US-AC1 | Grant viewer access to an album                                           | Access Control | Done | — |
 | US-AC2 | Revoke viewer access                                                      | Access Control | Done | — |
@@ -64,7 +64,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-V4 | Access denied                                                             | Browsing | Done | — |
 | TG-1 | Multi-tag filter                                                          | Tags | Done | tag combinator (AND/ANY/NOT logic) — src/routes/tags/combinator.js |
 | TG-2 | Tag autocomplete                                                          | Tags | Done | /tags/autocomplete route — src/routes/tags/index.js |
-| TG-3 | Clickable tags on photo detail                                            | Tags | Backlog | — |
+| TG-3 | Clickable tags on photo detail                                            | Tags | Done | Tags are already clickable links to /tags/{tagname} — src/routes/photosViews.js |
 | US-GPS1 | Add GPS coordinates to a photo                                            | Map & GPS | Done | — |
 | US-GPS2 | View a photo's location                                                   | Map & GPS | Done | — |
 | US-GPS3 | Browse photos on a map                                                    | Map & GPS | Done | — |
@@ -87,8 +87,8 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | US-NC3 | Manage Nextcloud link                                                     | Nextcloud | Done | v1.sql + edit form |
 | US-NC4 | Import a Nextcloud shared folder                                          | Nextcloud | Done | #93 |
 | US-NC5 | Import progress feedback                                                  | Nextcloud | Done | #93 |
-| US-NC6 | Faster Nextcloud import by downloading on Instance-1                      | Nextcloud | Backlog | — |
-| US-NC7 | Link to Nextcloud folder from imported photos                             | Nextcloud | Backlog | — |
+| US-NC6 | Faster Nextcloud import by downloading on Instance-1                      | Nextcloud | Done | Sequential download+upload on Instance-1, enqueue AI jobs for Instance-2 — src/routes/nextcloudImport.js |
+| US-NC7 | Link to Nextcloud folder from imported photos                             | Nextcloud | Done | "Open in Nextcloud" button with folder URL transformation — src/routes/photosViews.js + uploadHelpers.js |
 | US-NC8 | Differentiate Open in Nextcloud and Download original buttons            | Nextcloud | Done | #124 — added nextcloudFileUrl() helper, download attribute on Download button |
 | US-AI5 | Review and validate AI identification proposals                            | Local AI | Backlog | — |
 | AI-1 | Duplicate photo detection                                                 | Local AI | Done | admin-ai.js |

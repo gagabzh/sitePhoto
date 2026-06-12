@@ -19,7 +19,7 @@ const {
   fetchAlbumPhotos, checkViewerAccess, bulkRemovePhotosFromAlbum,
   fetchViewerAccessLists, addViewerAccess, removeViewerAccess,
   updateAlbum, deleteAlbum, fetchPhotosNotInAlbum, linkPhotoToAlbum,
-  removePhotoFromAlbum, insertNewAlbumPhoto,
+  removePhotoFromAlbum, insertNewAlbumPhoto, setAlbumCover,
 } = require('../repositories/albums');
 const { insertPhoto } = require('../repositories/photos');
 
@@ -314,6 +314,28 @@ router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
 
   await deleteAlbum(req.params.id);
   res.redirect('/albums');
+}));
+
+// ── ALB-3: Choose album cover photo ────────────────────────────────────────────
+
+router.post('/:id/cover', requireEditor, wrapAsync(async (req, res) => {
+  const albumId = parseInt(req.params.id, 10);
+  const photoId = parseInt(req.body.photoId, 10);
+
+  if (!Number.isFinite(albumId) || !Number.isFinite(photoId)) {
+    return res.status(400).json({ error: 'Invalid album or photo ID' });
+  }
+
+  const album = await getAlbumOwner(albumId);
+  if (!album) return res.status(404).json({ error: 'Album not found' });
+  if (!canModify(req.session, album)) return res.status(403).json({ error: 'Access denied' });
+
+  const success = await setAlbumCover(albumId, photoId, req.session.userId);
+  if (!success) {
+    return res.status(400).json({ error: 'Photo not in this album' });
+  }
+
+  res.json({ success: true });
 }));
 
 // ── US-A2: Add photos to album (moves photo from its current album) ──────────

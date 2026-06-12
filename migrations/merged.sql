@@ -233,3 +233,8 @@ CREATE TABLE IF NOT EXISTS person_faces (
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS person_faces_user_name_idx ON person_faces(user_id, person_name);
+
+-- ============================================
+-- ALB-3: Choose album cover photo
+-- ============================================
+ALTER TABLE albums ADD COLUMN IF NOT EXISTS cover_photo_id INTEGER REFERENCES photos(id) ON DELETE SET NULL;

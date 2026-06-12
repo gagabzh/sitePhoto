@@ -5,6 +5,57 @@ const { singleUploadFields, batchUploadFields } = require('../uploadHelpers');
 
 const TRASH = `<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
 
+function coverScript(albumId) {
+  return `<script>
+(function(){
+  var albumId = ${albumId};
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  
+  function handleCoverClick(photoId) {
+    fetch('/albums/' + albumId + '/cover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ photoId: photoId })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.success) {
+        // Update UI: hide all cover buttons, show cover badge on selected photo
+        var coverBtns = document.querySelectorAll('.ad-cover-btn');
+        coverBtns.forEach(function(btn) {
+          btn.style.display = 'block';
+        });
+        // Hide the button for the newly selected cover
+        var selectedBtn = document.querySelector('.ad-cover-btn[data-photo-id="' + photoId + '"]');
+        if (selectedBtn) selectedBtn.style.display = 'none';
+        
+        // Remove existing cover badges and add to new one
+        var badges = document.querySelectorAll('.ad-cover-badge');
+        badges.forEach(function(el) {
+          el.classList.remove('ad-cover-badge');
+        });
+        var photoCell = document.querySelector('.ad-cell[data-photo-id="' + photoId + '"], .photo-card[data-photo-id="' + photoId + '"]');
+        if (photoCell) photoCell.classList.add('ad-cover-badge');
+      } else {
+        alert(d.error || 'Could not set as cover');
+      }
+    })
+    .catch(function() {
+      alert('Network error');
+    });
+  }
+  
+  // Bind click handlers to all cover buttons
+  document.querySelectorAll('.ad-cover-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var photoId = parseInt(this.dataset.photoId, 10);
+      if (photoId) handleCoverClick(photoId);
+    });
+  });
+})();
+</script>`;
+}
+
 function renderAlbumListPage({ rows, isViewer, session }) {
   const totalPhotos = rows.reduce((s, a) => s + (a.photo_count || 0), 0);
 
@@ -112,7 +163,9 @@ function renderNewFromFolderPage({ session }) {
 }
 
 function renderAlbumDetailPage({ album, photos, canEdit, from, session }) {
-  const cover = photos[0];
+  // Find the cover photo: either the one with cover_photo_id set, or the first photo
+  const coverPhotoId = album.cover_photo_id;
+  const cover = photos.find(p => p.id === coverPhotoId) || photos[0];
   const coverHtml = cover
     ? `<img src="/uploads/${esc(cover.filename)}" alt="${esc(cover.title)}">`
     : `<div class="ad-cover-empty">no photos yet</div>`;
@@ -129,27 +182,33 @@ function renderAlbumDetailPage({ album, photos, canEdit, from, session }) {
   const mosaic = photos.slice(0, 9);
   const rest = photos.slice(9);
 
-  const mosaicCells = mosaic.map((p, idx) => `
-    <div class="ad-cell${canEdit ? ' sel-tile' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
+  const mosaicCells = mosaic.map((p, idx) => {
+    const isCover = coverPhotoId === p.id;
+    return `
+    <div class="ad-cell${canEdit ? ' sel-tile' : ''}${isCover ? ' ad-cover-badge' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
       <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-index="${idx}"`}>
         <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
       </a>
       ${canEdit ? `<button class="ad-lb-btn" data-lb-index="${idx}" title="View fullscreen" type="button">⛶</button>
+      <button class="ad-cover-btn" data-photo-id="${p.id}" title="Set as album cover" type="button"${isCover ? ' style="display:none"' : ''}>★</button>
       <button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
       <div class="press-ring"></div>
       <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const restGrid = rest.length > 0
     ? `<div class="photo-grid" style="margin-top:1rem">${rest.map((p, i) => {
         const idx = 9 + i;
+        const isCover = coverPhotoId === p.id;
         return `
-        <div class="photo-card${canEdit ? ' sel-tile' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
+        <div class="photo-card${canEdit ? ' sel-tile' : ''}${isCover ? ' ad-cover-badge' : ''}"${canEdit ? ` data-photo-id="${p.id}" data-href="/photos/${p.id}/edit?from=/albums/${album.id}"` : ''}>
           <div class="photo-thumb">
             <a href="${canEdit ? `/photos/${p.id}/edit?from=/albums/${album.id}` : `/photos/${p.id}`}"${canEdit ? '' : ` data-lb-index="${idx}"`}>
               <img src="/uploads/${esc(p.filename)}" alt="${esc(p.title)}">
             </a>
             ${canEdit ? `<button class="ad-lb-btn" data-lb-index="${idx}" title="View fullscreen" type="button">⛶</button>
+            <button class="ad-cover-btn" data-photo-id="${p.id}" title="Set as album cover" type="button"${isCover ? ' style="display:none"' : ''}>★</button>
             <button class="hovercheck" type="button" aria-label="Select this photo" tabindex="-1">+</button>
             <div class="press-ring"></div>
             <span class="sel-cbox" role="checkbox" aria-checked="false" aria-label="${esc(p.title)}"></span>` : ''}
@@ -172,7 +231,8 @@ function renderAlbumDetailPage({ album, photos, canEdit, from, session }) {
       </form>
       ${canEdit ? selectionScript() : ''}
       ${lbOverlay()}
-      ${lbScript()}`;
+      ${lbScript()}
+      ${canEdit ? coverScript(album.id) : ''}`;
 
   return page(album.title, `
     <div class="ad-head">
