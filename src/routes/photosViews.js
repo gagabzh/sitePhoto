@@ -175,15 +175,48 @@ function backLabel(from) {
 }
 
 function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces, session }) {
-  const facesHtml = (personFaces && personFaces.length)
-    ? personFaces.map(f => `
-      <span class="tag" style="display:inline-flex;align-items:center;gap:0.35rem">
-        ${esc(f.person_name)}
-        ${canEdit ? `<button class="remove-face-btn" data-face-id="${f.id}"
-          style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:0.9rem;line-height:1;padding:0"
-          aria-label="Remove face tag">&#x2717;</button>` : ''}
-      </span>`).join('')
-    : `<span style="color:var(--ink-faint);font-size:0.85rem">No faces tagged yet.</span>`;
+  // IMP-5: Consolidate tags and people tags
+  // Build a set of person names from personFaces for identifying people tags
+  const personNameSet = new Set((personFaces || []).map(f => f.person_name));
+  
+  // Create a map of face IDs by person name for the remove button
+  const faceIdByName = new Map();
+  (personFaces || []).forEach(f => {
+    if (!faceIdByName.has(f.person_name)) {
+      faceIdByName.set(f.person_name, []);
+    }
+    faceIdByName.get(f.person_name).push(f.id);
+  });
+  
+  // Separate tags into regular and people tags
+  const regularTags = (photo.tags || []).filter(t => !personNameSet.has(t));
+  const peopleTagNames = (photo.tags || []).filter(t => personNameSet.has(t));
+  
+  // Render people tags with remove buttons (for editor)
+  const peopleTagsHtml = peopleTagNames.length > 0
+    ? peopleTagNames.map(name => {
+        const faceIds = faceIdByName.get(name) || [];
+        const removeBtns = canEdit && faceIds.length > 0
+          ? faceIds.map(faceId => `
+            <button class="remove-face-btn" data-face-id="${faceId}"
+              style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:0.9rem;line-height:1;padding:0;margin-left:0.25rem"
+              aria-label="Remove face tag">&#x2717;</button>`).join('')
+          : '';
+        return `<a class="tag tag-person" href="/tags/${encodeURIComponent(name)}" aria-label="Person: ${esc(name)}">${esc(name)}${removeBtns}</a>`;
+      }).join('')
+    : '';
+  
+  // Render regular tags (clickable)
+  const regularTagsHtml = regularTags.length > 0
+    ? regularTags.map(t => `<a class="tag" href="/tags/${encodeURIComponent(t)}">${esc(t)}</a>`).join('')
+    : '';
+  
+  // Combined tags display
+  const allTagsHtml = regularTagsHtml + peopleTagsHtml;
+  const hasTags = regularTags.length > 0 || peopleTagNames.length > 0;
+  const tagsSectionHtml = hasTags
+    ? `<div class="tags" style="margin-top:0.75rem">${allTagsHtml}</div>`
+    : `<p style="color:var(--ink-faint);font-size:0.85rem;margin-top:0.75rem">No tags</p>`;
 
   return page(photo.title, `
     <div style="max-width:820px;margin:0 auto">
@@ -209,7 +242,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
           <h1 style="margin-bottom:0.25rem">${esc(photo.title)}</h1>
           <p style="color:#888;margin-top:0;font-size:0.9rem">by ${esc(photo.uploader)}</p>
           ${photo.description ? `<p>${esc(photo.description)}</p>` : ''}
-          ${photo.tags.length ? `<div class="tags">${photo.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+          ${tagsSectionHtml}
           ${(() => {
             const albums = photoAlbums || [];
             if (!albums.length) {
@@ -249,14 +282,11 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
               </div>`;
           })() : ''}
 
-          <!-- AI-3: People in this photo -->
-          <div style="margin-top:1.25rem">
-            <h3 style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:2px;margin-bottom:0.5rem">People in this photo</h3>
-            <div id="person-faces-list" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem">
-              ${facesHtml}
-            </div>
-            ${canEdit ? `<button id="tag-person-btn" style="margin-top:0.5rem;font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:2px">&#x270E; Tag a person</button>` : ''}
-          </div>
+          ${canEdit ? `
+          <div id="ai-people" style="margin-top:1.25rem">
+            <button id="ai-people-btn" class="btn btn-secondary" style="font-size:0.85rem">Identify people</button>
+            <div id="ai-people-chips" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem"></div>
+          </div>` : ''}
 
           ${canEdit ? `
           <div id="ai-people" style="margin-top:1.25rem">
@@ -362,7 +392,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
   var img = document.getElementById('photo-img');
   var overlay = document.getElementById('bbox-overlay');
   var tagBtn = document.getElementById('tag-person-btn');
-  var faceList = document.getElementById('person-faces-list');
+  var tagsContainer = document.querySelector('.tags');
   var drawing = false, startX = 0, startY = 0, rect = null, nameForm = null;
 
   function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -374,13 +404,19 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
       var faceId = btn.dataset.faceId;
       fetch('/photos/' + PHOTO_ID + '/tag-person/' + faceId, { method: 'DELETE', headers: { 'X-CSRF-Token': csrf } })
         .then(function(r){
-          if (r.ok || r.status === 204) { btn.closest('span').remove(); }
+          if (r.ok || r.status === 204) { btn.closest('a').remove(); }
           else { alert('Could not remove face tag.'); }
         })
         .catch(function(){ alert('Network error removing face tag.'); });
     });
   }
-  Array.from(faceList.querySelectorAll('.remove-face-btn')).forEach(bindRemoveBtn);
+  // Bind remove buttons for server-rendered tags and dynamically added ones
+  function bindAllRemoveBtns() {
+    if (!tagsContainer) return;
+    Array.from(tagsContainer.querySelectorAll('.remove-face-btn')).forEach(bindRemoveBtn);
+  }
+  // Initial bind for server-rendered remove buttons
+  bindAllRemoveBtns();
 
   if (!tagBtn) return;
 
@@ -509,17 +545,21 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
         .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
         .then(function(res){
           if (!res.ok) { document.getElementById('face-msg').textContent = res.data.error || 'Error saving.'; return; }
-          var chip = document.createElement('span');
-          chip.className = 'tag';
-          chip.style.cssText = 'display:inline-flex;align-items:center;gap:0.35rem';
-          chip.innerHTML = escHtml(nameVal)
+          var link = document.createElement('a');
+          link.className = 'tag tag-person';
+          link.href = '/tags/' + encodeURIComponent(nameVal);
+          link.setAttribute('aria-label', 'Person: ' + escHtml(nameVal));
+          link.style.cssText = 'display:inline-flex;align-items:center;gap:0.35rem';
+          link.innerHTML = escHtml(nameVal)
             + '<button class="remove-face-btn" data-face-id="' + res.data.id + '"'
-            + ' style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:0.9rem;line-height:1;padding:0" aria-label="Remove face tag">&#x2717;</button>';
-          bindRemoveBtn(chip.querySelector('.remove-face-btn'));
-          // Remove the "no faces" placeholder if present
-          var placeholder = faceList.querySelector('span[style*="ink-faint"]');
-          if (placeholder && !placeholder.classList.contains('tag')) placeholder.remove();
-          faceList.appendChild(chip);
+            + ' style="background:none;border:none;cursor:pointer;color:var(--ink-faint);font-size:0.9rem;line-height:1;padding:0;margin-left:0.25rem" aria-label="Remove face tag">&#x2717;</button>';
+          bindRemoveBtn(link.querySelector('.remove-face-btn'));
+          // Remove the "No tags" placeholder if present
+          if (tagsContainer) {
+            var placeholder = tagsContainer.querySelector('p[style*="ink-faint"]');
+            if (placeholder) placeholder.remove();
+            tagsContainer.appendChild(link);
+          }
           resetMode();
         })
         .catch(function(){ document.getElementById('face-msg').textContent = 'Network error.'; });

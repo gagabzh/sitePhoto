@@ -298,6 +298,105 @@ describe('GET /photos/:id — view photo', () => {
   });
 });
 
+// ── IMP-5: Consolidate tags and people display ──────────────────────────────
+
+describe('IMP-5: GET /photos/:id — consolidated tags display', () => {
+  it('displays regular tags as clickable links', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    // Regular tags should be clickable links
+    expect(res.text).toContain('href="/tags/paris"');
+    expect(res.text).toContain('href="/tags/sunset"');
+  });
+
+  it('displays people tags with tag-person class when personFaces exist', async () => {
+    const photoWithPeopleTag = { ...FAKE_PHOTO, tags: ['paris', 'Alice'] };
+    db.query.mockResolvedValue({ rows: [photoWithPeopleTag] });
+    fetchPersonFacesForPhoto.mockResolvedValue([{ id: 1, person_name: 'Alice', bbox: {} }]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    // Alice should have tag-person class
+    expect(res.text).toContain('class="tag tag-person"');
+    expect(res.text).toContain('href="/tags/Alice"');
+    // Regular tags should still be present
+    expect(res.text).toContain('href="/tags/paris"');
+    expect(res.text).not.toContain('href="/tags/sunset"'); // sunset is not in tags array
+  });
+
+  it('shows "No tags" when photo has no tags and no people', async () => {
+    const photoNoTags = { ...FAKE_PHOTO, tags: [] };
+    db.query.mockResolvedValue({ rows: [photoNoTags] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('No tags');
+  });
+
+  it('shows only regular tags when no personFaces exist', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    fetchPersonFacesForPhoto.mockResolvedValue([]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('href="/tags/paris"');
+    expect(res.text).toContain('href="/tags/sunset"');
+    // No tags should have the tag-person class
+    expect(res.text).not.toContain('class="tag tag-person"');
+  });
+
+  it('shows only people tags when no regular tags exist', async () => {
+    const photoOnlyPeople = { ...FAKE_PHOTO, tags: ['Alice', 'Bob'] };
+    db.query.mockResolvedValue({ rows: [photoOnlyPeople] });
+    fetchPersonFacesForPhoto.mockResolvedValue([
+      { id: 1, person_name: 'Alice', bbox: {} },
+      { id: 2, person_name: 'Bob', bbox: {} }
+    ]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('class="tag tag-person"');
+    expect(res.text).toContain('href="/tags/Alice"');
+    expect(res.text).toContain('href="/tags/Bob"');
+  });
+
+  it('does not show separate "People in this photo" section', async () => {
+    db.query.mockResolvedValue({ rows: [FAKE_PHOTO] });
+    fetchPersonFacesForPhoto.mockResolvedValue([{ id: 1, person_name: 'Alice', bbox: {} }]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    // The old separate section should not be present
+    expect(res.text).not.toContain('People in this photo');
+  });
+
+  it('includes aria-label for accessibility on people tags', async () => {
+    const photoWithPeople = { ...FAKE_PHOTO, tags: ['Alice'] };
+    db.query.mockResolvedValue({ rows: [photoWithPeople] });
+    fetchPersonFacesForPhoto.mockResolvedValue([{ id: 1, person_name: 'Alice', bbox: {} }]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('aria-label="Person: Alice"');
+  });
+
+  it('shows remove button for people tags when editor is owner', async () => {
+    const photoWithPeople = { ...FAKE_PHOTO, tags: ['Alice'], user_id: 10 };
+    db.query.mockResolvedValue({ rows: [photoWithPeople] });
+    fetchPersonFacesForPhoto.mockResolvedValue([{ id: 1, person_name: 'Alice', bbox: {} }]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('remove-face-btn');
+    expect(res.text).toContain('data-face-id="1"');
+  });
+
+  it('does not show remove button for people tags when not owner', async () => {
+    const photoWithPeople = { ...FAKE_PHOTO, tags: ['Alice'], user_id: 99 };
+    db.query.mockResolvedValue({ rows: [photoWithPeople] });
+    fetchPersonFacesForPhoto.mockResolvedValue([{ id: 1, person_name: 'Alice', bbox: {} }]);
+    const res = await request(makeApp(EDITOR_SESSION)).get('/photos/1');
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('remove-face-btn');
+  });
+});
+
 // ── US-P3: Edit ──────────────────────────────────────────────────────────────
 
 describe('US-P3: GET /photos/:id/edit — edit form', () => {
