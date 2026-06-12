@@ -1,6 +1,6 @@
 jest.mock('../db');
 const db = require('../db');
-const { setTags, sanitizeNextcloudUrl, nextcloudFolderUrl } = require('../uploadHelpers');
+const { setTags, sanitizeNextcloudUrl, nextcloudFolderUrl, nextcloudFileUrl } = require('../uploadHelpers');
 
 beforeEach(() => jest.resetAllMocks());
 
@@ -121,5 +121,41 @@ describe('nextcloudFolderUrl', () => {
   it('returns folder share URL unchanged', () => {
     const folderUrl = nextcloudFolderUrl('https://cloud.example.com/s/abc123');
     expect(folderUrl).toBe('https://cloud.example.com/s/abc123');
+  });
+});
+
+describe('nextcloudFileUrl', () => {
+  it('returns null when shareUrl is null', () => {
+    expect(nextcloudFileUrl(null, 'file.jpg')).toBeNull();
+  });
+
+  it('returns null when filename is null', () => {
+    expect(nextcloudFileUrl('https://cloud.example.com/s/abc123', null)).toBeNull();
+  });
+
+  it('returns null for invalid URLs', () => {
+    expect(nextcloudFileUrl('not-a-url', 'file.jpg')).toBeNull();
+    expect(nextcloudFileUrl('http://cloud.example.com/s/abc', 'file.jpg')).toBeNull();
+  });
+
+  it('returns file share URL unchanged when it already points to a file', () => {
+    const fileUrl = nextcloudFileUrl('https://cloud.example.com/s/abc123/file.jpg', 'other.jpg');
+    expect(fileUrl).toBe('https://cloud.example.com/s/abc123/file.jpg');
+  });
+
+  it('appends filename to folder share URL', () => {
+    const fileUrl = nextcloudFileUrl('https://cloud.example.com/s/abc123', 'photo.jpg');
+    expect(fileUrl).toBe('https://cloud.example.com/s/abc123/photo.jpg');
+  });
+
+  it('appends filename to folder share URL with trailing slash', () => {
+    const fileUrl = nextcloudFileUrl('https://cloud.example.com/s/abc123/', 'photo.jpg');
+    expect(fileUrl).toBe('https://cloud.example.com/s/abc123/photo.jpg');
+  });
+
+  it('handles various file extensions', () => {
+    expect(nextcloudFileUrl('https://cloud.example.com/s/abc123', 'photo.png')).toBe('https://cloud.example.com/s/abc123/photo.png');
+    expect(nextcloudFileUrl('https://cloud.example.com/s/abc123', 'photo.jpeg')).toBe('https://cloud.example.com/s/abc123/photo.jpeg');
+    expect(nextcloudFileUrl('https://cloud.example.com/s/abc123', 'video.mp4')).toBe('https://cloud.example.com/s/abc123/video.mp4');
   });
 });
