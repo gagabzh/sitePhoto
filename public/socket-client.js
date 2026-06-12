@@ -2,6 +2,7 @@
   if (typeof io === 'undefined') return;
 
   var socket = io({ transports: ['websocket'] });
+  window._socket = socket;
 
   socket.on('identification-complete', function (data) {
     var photoId = data.photoId;

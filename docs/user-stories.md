@@ -168,9 +168,6 @@ As an editor, I can add or remove photos from an album, so I can manage album co
 **US-A3 — Edit / delete an album**
 As an editor, I can edit or delete an album, so I can maintain my album organization.
 
-**IMP-5 — One album per photo**
-As an editor, I can ensure each photo can belong to only one album at a time, so the data model is simple and predictable.
-
 **MA-1 — A photo can belong to multiple albums**
 As an editor, I can add a photo to multiple albums, so I can organize the same photo in different collections without duplication.
 

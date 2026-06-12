@@ -392,18 +392,20 @@ describe('POST /photos/nextcloud-import/confirm — US-NC6 single file', () => {
     // 1. SELECT albums — not found
     // 2. INSERT album RETURNING id
     // 3. INSERT nextcloud_imports RETURNING id
+    // 4. INSERT photo RETURNING id
+    // 5. INSERT album_photos junction (NEW: albumId is passed)
+    // 6. UPDATE nextcloud_imports
     db.query
       .mockResolvedValueOnce({ rows: [] })           // SELECT albums
       .mockResolvedValueOnce({ rows: [{ id: 55 }] }) // INSERT album
-      .mockResolvedValueOnce({ rows: [{ id: 12 }] }); // INSERT nextcloud_imports
+      .mockResolvedValueOnce({ rows: [{ id: 12 }] }) // INSERT nextcloud_imports
+      .mockResolvedValueOnce({ rows: [{ id: 200 }] }) // INSERT photo
+      .mockResolvedValueOnce({ rows: [] })           // INSERT album_photos junction
+      .mockResolvedValueOnce({ rows: [{ done: 1, total: 1, failed: 0 }] }); // UPDATE nextcloud_imports
     // downloadFileAsBuffer returns a buffer
     downloadFileAsBuffer.mockResolvedValue(Buffer.from('fake-image-data'));
     // uploadPhoto resolves successfully
     uploadPhoto.mockResolvedValue();
-    // INSERT photo
-    db.query.mockResolvedValueOnce({ rows: [{ id: 200 }] }); // INSERT photo
-    // UPDATE nextcloud_imports
-    db.query.mockResolvedValueOnce({ rows: [{ done: 1, total: 1, failed: 0 }] });
 
     const res = await request(makeApp(EDITOR_SESSION))
       .post('/photos/nextcloud-import/confirm')
