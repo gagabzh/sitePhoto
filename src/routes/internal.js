@@ -75,6 +75,38 @@ router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req
     );
     
     notifyUser(userId, { photoId, suggestions: enrichedSuggestions }, 'identify-people-complete');
+    
+    // US-AI5: Also store in ai_identification_proposals table for manual identification
+    // This ensures old workers that call identify-people-result will also create reviewable proposals
+    const photoInt = parseInt(photoId, 10);
+    const userInt = parseInt(userId, 10);
+    if (Number.isInteger(photoInt) && Number.isInteger(userInt)) {
+      console.log(`[internal/identify-people-result] Creating US-AI5 proposals for ${enrichedSuggestions.filter(s => s.bbox).length} suggestions`);
+      try {
+        for (const s of enrichedSuggestions) {
+          if (s.bbox) {
+            await db.query(
+              `INSERT INTO ai_identification_proposals 
+               (photo_id, user_id, person_name, bbox, confidence, status)
+               VALUES ($1, $2, $3, $4, NULL, 'pending')
+               ON CONFLICT DO NOTHING`,
+              [photoInt, userInt, s.name.toLowerCase(), JSON.stringify(s.bbox)]
+            );
+          }
+        }
+        // Notify user that proposals are ready for review
+        const validSuggestions = enrichedSuggestions.filter(s => s.bbox);
+        if (validSuggestions.length > 0) {
+          notifyUser(userInt, {
+            photoId: photoInt,
+            count: validSuggestions.length,
+            suggestions: validSuggestions.map(s => ({ name: s.name, bbox: s.bbox }))
+          }, 'identification-proposals-ready');
+        }
+      } catch (err) {
+        console.warn('[internal/identify-people-result] Failed to store US-AI5 proposals:', err.message);
+      }
+    }
   }
   res.json({ ok: true });
 }));
@@ -187,6 +219,7 @@ router.get('/known-faces/:userId', requireWorkerSecret, wrapAsync(async (req, re
 // Called by worker to store face crops for AI-identified people.
 // Body: { photoId, userId, photoS3Key, suggestions }
 // For each suggestion with a valid bbox, extracts the face crop and stores in person_faces.
+// US-AI5: Also stores proposals for backward compatibility with old workers
 router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { photoId, userId, photoS3Key, suggestions } = req.body;
   if (!photoId || !userId || !photoS3Key) {
@@ -299,6 +332,31 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
     } catch (err) {
       console.error('[internal/store-people-faces] Failed to store face for', name, ':', err.message);
       // Error already logged, cleanup attempted if applicable
+    }
+  }
+
+  // US-AI5: Also store in ai_identification_proposals table for backward compatibility
+  // This ensures old workers that call store-people-faces will also create reviewable proposals
+  if (stored.length > 0) {
+    console.log(`[internal/store-people-faces] Creating ${stored.length} US-AI5 proposals for backward compatibility`);
+    try {
+      for (const s of stored) {
+        await db.query(
+          `INSERT INTO ai_identification_proposals 
+           (photo_id, user_id, person_name, bbox, confidence, status)
+           VALUES ($1, $2, $3, $4, NULL, 'pending')
+           ON CONFLICT DO NOTHING`,
+          [photoInt, userInt, s.name.toLowerCase(), JSON.stringify(s.bbox)]
+        );
+      }
+      // Notify user that proposals are ready for review
+      notifyUser(userInt, {
+        photoId: photoInt,
+        count: stored.length,
+        tags: stored.map(s => s.name)
+      }, 'identification-proposals-ready');
+    } catch (err) {
+      console.warn('[internal/store-people-faces] Failed to store US-AI5 proposals:', err.message);
     }
   }
 
