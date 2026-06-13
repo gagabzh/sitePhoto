@@ -176,11 +176,9 @@ COMMENT ON TRIGGER trg_ai_identification_proposal_status_change ON ai_identifica
   'Automatically updates photos.ai_identification_status based on proposal status changes';
 
 -- Migration metadata
-INSERT INTO schema_migrations (version, description, applied_at) 
-VALUES ('v16', 'US-AI5: AI Identification Queue - adds ai_identification_proposals table and related infrastructure', NOW())
-ON CONFLICT (version) DO UPDATE 
-  SET description = EXCLUDED.description, 
-      applied_at = EXCLUDED.applied_at;
+INSERT INTO schema_migrations (version, applied_at) 
+VALUES ('v16', NOW())
+ON CONFLICT (version) DO NOTHING;
 
 COMMIT;
 
