@@ -318,6 +318,7 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
 // Suggestions format: [{ name, bbox, confidence? }]
 router.post('/store-identification-proposals', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { photoId, userId, suggestions } = req.body;
+  console.log(`[internal/store-identification-proposals] Called with photoId=${photoId}, userId=${userId}, suggestions=${suggestions ? suggestions.length : 0}`);
   if (!photoId || !userId) {
     return res.status(400).json({ error: 'Missing photoId or userId' });
   }

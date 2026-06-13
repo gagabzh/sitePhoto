@@ -127,11 +127,13 @@ const worker = new Worker('identification', async (job) => {
   // US-AI5: Store proposals for human review instead of auto-accepting
   // This is the new behavior for US-AI5 - all AI identifications go to the review queue
   try {
+    console.log(`[worker] Storing ${suggestions.filter(s => s.bbox).length} identification proposals for photo ${photoId}`);
     await storeIdentificationProposals({
       photoId,
       userId,
       suggestions: suggestions.filter(s => s.bbox) // Only send suggestions with bboxes
     });
+    console.log(`[worker] Successfully stored identification proposals for photo ${photoId}`);
   } catch (err) {
     console.warn('[worker] Failed to store identification proposals:', err.message);
     // Continue - identification should still work
