@@ -112,6 +112,24 @@ async function storePeopleFaces(payload) {
   return res.json();
 }
 
+// US-AI5: Store identification proposals for human review
+// payload: { photoId, userId, suggestions }
+async function storeIdentificationProposals(payload) {
+  const res = await fetch(`${BASE_URL}/internal/store-identification-proposals`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-worker-secret': SECRET,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Instance-1 API responded ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 module.exports = { 
   postIdentificationResult, 
   postIdentifyPeopleResult, 
@@ -120,4 +138,5 @@ module.exports = {
   fetchKnownFaces, 
   downloadNextcloudFile,
   storePeopleFaces,
+  storeIdentificationProposals,
 };

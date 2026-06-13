@@ -12,6 +12,7 @@ const {
   fetchKnownFaces,
   downloadNextcloudFile,
   storePeopleFaces,
+  storeIdentificationProposals,
 } = require('./instance1-api');
 const { EXT_MAP } = require('./nextcloudWebdav');
 
@@ -123,28 +124,21 @@ const worker = new Worker('identification', async (job) => {
     suggestions = [];
   }
 
-  // AI-5 Step 3: Store face crops for auto-identified people only
-  // For manual identification, wait for user confirmation via /api/ai/confirm-tag
-  // For auto-identification (photo upload), store face crops immediately for continuous learning
-  if (!isManual) {
-    try {
-      await storePeopleFaces({
-        photoId,
-        userId,
-        photoS3Key,
-        suggestions: suggestions.filter(s => s.bbox) // Only send suggestions with bboxes
-      });
-    } catch (err) {
-      console.warn('[worker] Failed to store people faces:', err.message);
-      // Continue - identification should still work
-    }
+  // US-AI5: Store proposals for human review instead of auto-accepting
+  // This is the new behavior for US-AI5 - all AI identifications go to the review queue
+  try {
+    await storeIdentificationProposals({
+      photoId,
+      userId,
+      suggestions: suggestions.filter(s => s.bbox) // Only send suggestions with bboxes
+    });
+  } catch (err) {
+    console.warn('[worker] Failed to store identification proposals:', err.message);
+    // Continue - identification should still work
   }
 
   if (isManual) {
     await postIdentifyPeopleResult({ photoId, userId, suggestions });
-  } else {
-    // For auto-identification (photo upload), notification is handled by storePeopleFaces
-    // No need to call postIdentificationResult (which would duplicate tag application)
   }
   console.log(`[worker] job ${job.id} done`);
 }, { connection });

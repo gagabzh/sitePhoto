@@ -311,6 +311,60 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
   res.json({ stored: stored.length, tags: stored.map(s => s.name) });
 }));
 
+// ── POST /internal/store-identification-proposals ─────────────────────────
+// Called by worker after processing an identify-photo job for US-AI5.
+// Stores proposals in ai_identification_proposals table instead of auto-accepting.
+// Body: { photoId, userId, suggestions }
+// Suggestions format: [{ name, bbox, confidence? }]
+router.post('/store-identification-proposals', requireWorkerSecret, wrapAsync(async (req, res) => {
+  const { photoId, userId, suggestions } = req.body;
+  if (!photoId || !userId) {
+    return res.status(400).json({ error: 'Missing photoId or userId' });
+  }
+
+  const photoInt = parseInt(photoId, 10);
+  const userInt = parseInt(userId, 10);
+  if (!Number.isInteger(photoInt) || !Number.isInteger(userInt)) {
+    return res.status(400).json({ error: 'Invalid photoId or userId' });
+  }
+
+  const validSuggestions = (suggestions || []).filter(s =>
+    s && s.name && s.bbox &&
+    s.bbox.x != null && s.bbox.y != null && s.bbox.width != null && s.bbox.height != null
+  );
+
+  if (!validSuggestions.length) {
+    return res.json({ stored: 0 });
+  }
+
+  // Store each suggestion as a pending proposal
+  let storedCount = 0;
+  for (const suggestion of validSuggestions) {
+    try {
+      await db.query(
+        `INSERT INTO ai_identification_proposals 
+         (photo_id, user_id, person_name, bbox, confidence, status)
+         VALUES ($1, $2, $3, $4, $5, 'pending')`,
+        [photoInt, userInt, suggestion.name.toLowerCase(), JSON.stringify(suggestion.bbox), suggestion.confidence || null]
+      );
+      storedCount++;
+    } catch (err) {
+      console.error('[internal/store-identification-proposals] Failed to store proposal:', err.message);
+    }
+  }
+
+  // Notify user that proposals are ready for review
+  if (storedCount > 0) {
+    notifyUser(userInt, {
+      photoId: photoInt,
+      count: storedCount,
+      suggestions: validSuggestions.map(s => ({ name: s.name, bbox: s.bbox }))
+    }, 'identification-proposals-ready');
+  }
+
+  res.json({ stored: storedCount });
+}));
+
 // GET /internal/nextcloud-file — proxy download from Nextcloud for worker
 // Query params: shareUrl, fileName
 // Returns: file buffer

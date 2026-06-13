@@ -22,6 +22,7 @@ function page(title, body, session, socket = false) {
         <a href="/timeline">Timeline</a>
         ${session.role !== 'viewer' ? '<a href="/travels">Travels</a>' : ''}
         <a href="/map">Map</a>
+        ${(session.role === 'editor' || session.role === 'admin') ? '<a href="/ai/identification-queue" id="ai-queue-link"><span id="ai-queue-badge" style="background: var(--accent); color: white; border-radius: 10px; padding: 0.1rem 0.4rem; font-size: 0.75rem; margin-right: 0.25rem;">0</span>AI Review</a>' : ''}
         <div class="nav-avatar-wrap">
           ${session.avatarS3Key
   ? `<img src="/account/avatar" class="nav-avatar nav-avatar-img" role="button" aria-label="Account menu" alt="">`
@@ -225,6 +226,7 @@ function page(title, body, session, socket = false) {
   })();</script>
 <script>(function(){var t=document.querySelector('meta[name="csrf-token"]');if(!t||!t.content)return;var c=t.content;document.querySelectorAll('form[method="POST"],form[method="post"]').forEach(function(f){if(!f.querySelector('[name="_csrf"]')){var i=document.createElement('input');i.type='hidden';i.name='_csrf';i.value=c;f.appendChild(i);}});var o=window.fetch;window.fetch=function(u,p){if(p&&p.method&&!/^(GET|HEAD)$/i.test(p.method)){p=Object.assign({},p);p.headers=Object.assign({'X-CSRF-Token':c},p.headers||{});}return o.call(this,u,p);};}());</script>
   ${session && socket ? '<script src="/socket.io/socket.io.js"></script><script src="/socket-client.js"></script>' : ''}
+  ${session ? `<script>window._session = ${JSON.stringify({ name: session.name, role: session.role, csrf: session.csrf, userId: session.userId })};</script>` : ''}
 </body>
 </html>`;
 }

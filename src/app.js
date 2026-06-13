@@ -115,6 +115,20 @@ app.use('/api', require('./routes/api'));
 app.use('/admin/ai', requireAdmin, require('./routes/admin-ai'));
 app.use('/admin/users', requireAdmin, require('./routes/admin'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/ai', require('./routes/aiIdentification'));
+
+// AI Identification Review pages (HTML views)
+const { renderIdentificationQueue, renderIdentificationReview } = require('./routes/aiIdentificationViews');
+app.get('/ai/identification-queue', requireAuth, requireEditor, (req, res) => {
+  res.send(renderIdentificationQueue(req.session));
+});
+app.get('/ai/identification-review/:photoId', requireAuth, requireEditor, (req, res) => {
+  const photoId = parseInt(req.params.photoId, 10);
+  if (!Number.isInteger(photoId)) {
+    return res.status(400).send('Invalid photoId');
+  }
+  res.send(renderIdentificationReview(req.session, photoId));
+});
 
 app.use(errorHandler);
 

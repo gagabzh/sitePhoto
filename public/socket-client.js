@@ -17,6 +17,43 @@
     showToast('👤 Photo #' + photoId + ' identified — ' + label);
   });
 
+  // US-AI5: New identification proposals ready for review
+  socket.on('identification-proposals-ready', function (data) {
+    var photoId = data.photoId || 0;
+    var count = data.count || 0;
+    var label = count + ' new identification' + (count > 1 ? 's' : '') + ' ready for review';
+    showToast('🤖 Photo #' + photoId + ' — ' + label);
+    
+    // Update badge counter if present
+    var badge = document.getElementById('ai-queue-badge');
+    if (badge) {
+      fetch('/api/ai/identification/count')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var total = (data.pending || 0) + (data.accepted || 0) + (data.rejected || 0);
+          badge.textContent = total;
+        });
+    }
+  });
+
+  // US-AI5: Individual proposal updated (accepted/rejected)
+  socket.on('identification-proposal-updated', function (data) {
+    var photoId = data.photoId || 0;
+    var status = data.status || '';
+    var personName = data.personName || '';
+    var label = 'Proposal for ' + personName + ' was ' + (status === 'accepted' ? 'accepted' : status === 'rejected' ? 'rejected' : status);
+    showToast('✓ ' + label);
+  });
+
+  // US-AI5: Bulk proposal updates
+  socket.on('identification-proposals-updated', function (data) {
+    var photoId = data.photoId || 0;
+    var status = data.status || '';
+    var count = data.count || 0;
+    var label = count + ' proposals ' + (status === 'accepted-all' ? 'accepted' : 'rejected');
+    showToast('✓ ' + label);
+  });
+
   function showToast(msg) {
     var t = document.createElement('div');
     t.className = 'sp-toast';
