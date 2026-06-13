@@ -5,7 +5,7 @@ const path = require('path');
 const sessionMiddleware = require('./session');
 const { UPLOAD_DIR } = require('./uploadHelpers');
 const { streamPhoto } = require('./storage');
-const { nonceMiddleware, requireAuth, requireAdmin, csrfMiddleware, errorHandler } = require('./middleware');
+const { nonceMiddleware, requireAuth, requireAdmin, requireEditor, csrfMiddleware, errorHandler } = require('./middleware');
 
 if (!process.env.SESSION_SECRET) {
   console.warn('WARNING: SESSION_SECRET env var is not set — using insecure default. Set it before deploying.');
