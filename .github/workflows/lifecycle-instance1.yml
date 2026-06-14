@@ -3,7 +3,7 @@ name: Lifecycle — Instance 1 (shelve / unshelve)
 on:
   schedule:
     - cron: '0 18 * * *'   # shelve — 21:00 UTC = 23:00 CEST (summer) / 22:00 CET (winter) FR time
-    - cron: '0 3 * * *'    # unshelve — 06:00 UTC = 08:00 CEST (summer) / 07:00 CET (winter) FR time
+    - cron: '25 1 * * *'    # unshelve — 01:25 UTC = 03:25 CEST (summer) / 02:25 CET (winter) FR time
   workflow_dispatch:
     inputs:
       action:
@@ -90,7 +90,7 @@ jobs:
     name: Unshelve Instance-1
     runs-on: ubuntu-latest
     environment: production
-    if: github.event.schedule == '0 3 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
+    if: github.event.schedule == '25 1 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'unshelve')
 
     steps:
       - name: Check current status

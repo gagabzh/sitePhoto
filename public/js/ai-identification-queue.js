@@ -49,7 +49,8 @@
       const response = await fetch(`/api/ai/identification-queue?${params.toString()}`, {
         headers: {
           'Accept': 'application/json'
-        }
+        },
+        credentials: 'include'  // Send cookies with the request
       });
 
       if (!response.ok) {
@@ -79,7 +80,8 @@
       const response = await fetch(`/api/ai/identification/count?${params.toString()}`, {
         headers: {
           'Accept': 'application/json'
-        }
+        },
+        credentials: 'include'
       });
 
       if (!response.ok) {

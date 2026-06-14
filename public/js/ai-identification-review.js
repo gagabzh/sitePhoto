@@ -43,14 +43,14 @@
   async function loadData() {
     try {
       // Fetch photo data
-      const photoResponse = await fetch(`/api/photos/${photoId}`);
+      const photoResponse = await fetch(`/api/photos/${photoId}`, { credentials: 'include' });
       if (!photoResponse.ok) {
         throw new Error(`Failed to load photo: ${photoResponse.status}`);
       }
       const photo = await photoResponse.json();
 
       // Fetch proposals
-      const proposalsResponse = await fetch(`/api/ai/identification-queue/${photoId}`);
+      const proposalsResponse = await fetch(`/api/ai/identification-queue/${photoId}`, { credentials: 'include' });
       if (!proposalsResponse.ok) {
         // No proposals yet, that's okay
         proposals = [];
@@ -269,7 +269,8 @@
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken
         },
-        body: JSON.stringify({ editedName: editedName || undefined })
+        body: JSON.stringify({ editedName: editedName || undefined }),
+        credentials: 'include'
       });
 
       if (!response.ok) {
@@ -317,7 +318,8 @@
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-Token': csrfToken
-        }
+        },
+        credentials: 'include'
       });
 
       if (!response.ok) {
