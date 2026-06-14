@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple AI Review Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        #log { margin-top: 20px; padding: 10px; background: #f0f0f0; white-space: pre-wrap; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Simple AI Review Test</h1>
+    
+    <h2>Step 1: Check if you're authenticated</h2>
+    <button onclick="checkAuth()">Check Authentication</button>
+    <div id="authLog"></div>
+    
+    <h2>Step 2: Trigger Identification</h2>
+    <button onclick="triggerIdentification()">Trigger Identification for Photo 272</button>
+    <div id="identifyLog"></div>
+    
+    <h2>Step 3: Check Queue API</h2>
+    <button onclick="checkQueue()">Check /api/ai/identification-queue</button>
+    <div id="queueLog"></div>
+    
+    <h2>Step 4: Check Proposals Count</h2>
+    <button onclick="checkCount()">Check /api/ai/identification/count</button>
+    <div id="countLog"></div>
+
+    <script>
+        function log(elementId, message, isError = false) {
+            const div = document.getElementById(elementId);
+            const span = document.createElement('span');
+            span.textContent = message + '\n';
+            span.className = isError ? 'error' : 'success';
+            div.appendChild(span);
+        }
+
+        async function checkAuth() {
+            log('authLog', 'Checking authentication...');
+            try {
+                const response = await fetch('/api/me', { credentials: 'include' });
+                const data = await response.json();
+                if (response.ok) {
+                    log('authLog', '✅ Authenticated as user: ' + (data.id || data.userId || 'unknown'));
+                    log('authLog', '   Role: ' + (data.role || 'unknown'));
+                } else {
+                    log('authLog', '❌ Not authenticated: ' + data.error, true);
+                }
+            } catch (err) {
+                log('authLog', '❌ Error: ' + err.message, true);
+            }
+        }
+
+        async function triggerIdentification() {
+            log('identifyLog', 'Triggering identification for photo 272...');
+            try {
+                const response = await fetch('/api/ai/identify-people', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ photoId: 272 }),
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    log('identifyLog', '✅ Response: ' + JSON.stringify(data));
+                    log('identifyLog', '   Job enqueued! Check worker logs for processing.');
+                } else {
+                    log('identifyLog', '❌ Error: HTTP ' + response.status + ': ' + JSON.stringify(data), true);
+                }
+            } catch (err) {
+                log('identifyLog', '❌ Exception: ' + err.message, true);
+            }
+        }
+
+        async function checkQueue() {
+            log('queueLog', 'Checking /api/ai/identification-queue...');
+            try {
+                const response = await fetch('/api/ai/identification-queue?page=1&limit=10', {
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    log('queueLog', '✅ Response: ' + JSON.stringify(data, null, 2).substring(0, 200));
+                    if (data.proposals && data.proposals.length > 0) {
+                        log('queueLog', '   Found ' + data.proposals.length + ' proposals!');
+                    } else {
+                        log('queueLog', '   No proposals found (or filtered out)');
+                    }
+                } else {
+                    log('queueLog', '❌ Error: HTTP ' + response.status, true);
+                }
+            } catch (err) {
+                log('queueLog', '❌ Exception: ' + err.message, true);
+            }
+        }
+
+        async function checkCount() {
+            log('countLog', 'Checking /api/ai/identification/count...');
+            try {
+                const response = await fetch('/api/ai/identification/count', {
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    log('countLog', '✅ Counts: ' + JSON.stringify(data));
+                } else {
+                    log('countLog', '❌ Error: HTTP ' + response.status, true);
+                }
+            } catch (err) {
+                log('countLog', '❌ Exception: ' + err.message, true);
+            }
+        }
+    </script>
+</body>
+</html>
