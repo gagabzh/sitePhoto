@@ -339,7 +339,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
                 chips.innerHTML = '';
                 pendingIdentifyPhotoId = PHOTO_ID;
                 
-                fetch('/api/ai/identify-people', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID})})
+                fetch('/api/ai/identify-people', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({photoId:PHOTO_ID}), credentials:'include'})
                   .then(function(r){ return r.json(); })
                   .then(function(d){
                     if (d.queued) {
