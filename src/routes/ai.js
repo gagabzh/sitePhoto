@@ -31,6 +31,58 @@ router.post('/identify-people', requireEditor, wrapAsync(async (req, res) => {
   res.json({ queued: true });
 }));
 
+// ── POST /api/ai/identify-people-direct ──────────────────────────────────────
+// US-AI5: Direct identification that creates proposals immediately (no worker)
+// This is a fallback for when the worker is using old code
+// Accepts { photoId, suggestions: [{ name, bbox, confidence? }] }
+router.post('/identify-people-direct', requireEditor, wrapAsync(async (req, res) => {
+  const photoId = parseInt(req.body.photoId, 10);
+  const userId = req.session.userId;
+  const { suggestions } = req.body;
+  
+  if (!Number.isInteger(photoId)) return res.status(400).json({ error: 'invalid photoId' });
+  if (!userId) return res.status(401).json({ error: 'not authenticated' });
+  if (!suggestions || !Array.isArray(suggestions)) return res.status(400).json({ error: 'suggestions required' });
+
+  // Validate and store proposals directly
+  const validSuggestions = suggestions.filter(s =>
+    s && s.name && s.bbox &&
+    s.bbox.x != null && s.bbox.y != null && s.bbox.width != null && s.bbox.height != null
+  );
+
+  if (!validSuggestions.length) {
+    return res.status(400).json({ error: 'no valid suggestions with bboxes' });
+  }
+
+  // Store in ai_identification_proposals
+  let storedCount = 0;
+  for (const s of validSuggestions) {
+    try {
+      await db.query(
+        `INSERT INTO ai_identification_proposals 
+         (photo_id, user_id, person_name, bbox, confidence, status)
+         VALUES ($1, $2, $3, $4, $5, 'pending')`,
+        [photoId, userId, s.name.toLowerCase(), JSON.stringify(s.bbox), s.confidence || null]
+      );
+      storedCount++;
+    } catch (err) {
+      console.error('[ai/identify-people-direct] Failed to store proposal:', err.message);
+    }
+  }
+
+  // Notify user
+  if (storedCount > 0) {
+    const { notifyUser } = require('../notifications');
+    notifyUser(userId, {
+      photoId,
+      count: storedCount,
+      suggestions: validSuggestions.map(s => ({ name: s.name, bbox: s.bbox }))
+    }, 'identification-proposals-ready');
+  }
+
+  res.json({ stored: storedCount, queued: false });
+}));
+
 // ── POST /api/ai/confirm-tag ──────────────────────────────────────────────────
 // Adds a confirmed AI suggestion tag to a photo.
 // Accepts { photoId, tagId, personName, bbox? }.
