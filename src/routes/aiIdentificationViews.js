@@ -3,9 +3,10 @@ const { page, esc } = require('../layout');
 /**
  * Render the AI identification queue page
  * @param {object} session - User session
+ * @param {boolean} socket - Whether to include socket.io
  * @returns {string} - HTML page
  */
-function renderIdentificationQueue(session) {
+function renderIdentificationQueue(session, socket = false) {
   const isEditor = session.role === 'editor' || session.role === 'admin';
 
   return page('AI Identification Review', `
@@ -206,16 +207,18 @@ function renderIdentificationQueue(session) {
       <span id="page-info">Page 1</span>
       <button id="next-page" disabled>Next</button>
     </div>
-  `, session, true);
+    <script src="/js/ai-identification-queue.js"></script>
+  `, session, socket);
 }
 
 /**
  * Render the AI identification review page for a specific photo
  * @param {object} session - User session
  * @param {number} photoId - The photo ID being reviewed
+ * @param {boolean} socket - Whether to include socket.io
  * @returns {string} - HTML page
  */
-function renderIdentificationReview(session, photoId) {
+function renderIdentificationReview(session, photoId, socket = false) {
   return page('Review AI Identifications', `
     <style>
       .ai-review-container {
@@ -420,7 +423,8 @@ function renderIdentificationReview(session, photoId) {
         </a>
       </div>
     </div>
-  `, session, true);
+    <script src="/js/ai-identification-review.js"></script>
+  `, session, socket);
 }
 
 module.exports = {

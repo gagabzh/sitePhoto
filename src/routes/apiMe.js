@@ -1,6 +1,13 @@
 const router = require('express').Router();
 const db = require('../db');
-const { wrapAsync } = require('../middleware');
+const { wrapAsync, requireAuth } = require('../middleware');
+
+// ── GET /api/me ────────────────────────────────────────────────────────────────
+// Returns basic user information for the current session.
+router.get('/', requireAuth, wrapAsync(async (req, res) => {
+  const { userId, name, role } = req.session;
+  res.json({ id: userId, name, role, csrf: req.session.csrf });
+}));
 
 // ── GET /api/me/stats ─────────────────────────────────────────────────────────
 // Returns upload count, album count, and recipe count for the current user.

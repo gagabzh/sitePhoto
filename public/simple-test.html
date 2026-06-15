@@ -30,6 +30,8 @@
     <div id="countLog"></div>
 
     <script>
+        let csrfToken = '';
+        
         function log(elementId, message, isError = false) {
             const div = document.getElementById(elementId);
             const span = document.createElement('span');
@@ -38,14 +40,42 @@
             div.appendChild(span);
         }
 
+        async function getCsrfToken() {
+            if (csrfToken) return csrfToken;
+            try {
+                const response = await fetch('/api/me', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    csrfToken = data.csrf || '';
+                }
+            } catch (err) {
+                console.error('Failed to get CSRF token:', err.message);
+            }
+            return csrfToken;
+        }
+
+        async function fetchWithCsrf(url, options = {}) {
+            const token = await getCsrfToken();
+            const newOptions = { ...options, credentials: 'include' };
+            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes((options.method || 'GET').toUpperCase())) {
+                newOptions.headers = {
+                    ...newOptions.headers,
+                    'X-CSRF-Token': token,
+                    'Content-Type': 'application/json'
+                };
+            }
+            return fetch(url, newOptions);
+        }
+
         async function checkAuth() {
             log('authLog', 'Checking authentication...');
             try {
-                const response = await fetch('/api/me', { credentials: 'include' });
+                const response = await fetchWithCsrf('/api/me');
                 const data = await response.json();
                 if (response.ok) {
                     log('authLog', '✅ Authenticated as user: ' + (data.id || data.userId || 'unknown'));
                     log('authLog', '   Role: ' + (data.role || 'unknown'));
+                    log('authLog', '   CSRF Token: ' + (data.csrf ? '✓ Present' : '✗ Missing'));
                 } else {
                     log('authLog', '❌ Not authenticated: ' + data.error, true);
                 }
@@ -57,11 +87,9 @@
         async function triggerIdentification() {
             log('identifyLog', 'Triggering identification for photo 272...');
             try {
-                const response = await fetch('/api/ai/identify-people', {
+                const response = await fetchWithCsrf('/api/ai/identify-people', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ photoId: 272 }),
-                    credentials: 'include'
+                    body: JSON.stringify({ photoId: 272 })
                 });
                 const data = await response.json();
                 if (response.ok) {
@@ -78,9 +106,7 @@
         async function checkQueue() {
             log('queueLog', 'Checking /api/ai/identification-queue...');
             try {
-                const response = await fetch('/api/ai/identification-queue?page=1&limit=10', {
-                    credentials: 'include'
-                });
+                const response = await fetchWithCsrf('/api/ai/identification-queue?page=1&limit=10');
                 if (response.ok) {
                     const data = await response.json();
                     log('queueLog', '✅ Response: ' + JSON.stringify(data, null, 2).substring(0, 200));
@@ -100,9 +126,7 @@
         async function checkCount() {
             log('countLog', 'Checking /api/ai/identification/count...');
             try {
-                const response = await fetch('/api/ai/identification/count', {
-                    credentials: 'include'
-                });
+                const response = await fetchWithCsrf('/api/ai/identification/count');
                 if (response.ok) {
                     const data = await response.json();
                     log('countLog', '✅ Counts: ' + JSON.stringify(data));

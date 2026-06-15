@@ -120,14 +120,14 @@ app.use('/api/ai', require('./routes/aiIdentification'));
 // AI Identification Review pages (HTML views)
 const { renderIdentificationQueue, renderIdentificationReview } = require('./routes/aiIdentificationViews');
 app.get('/ai/identification-queue', requireAuth, requireEditor, (req, res) => {
-  res.send(renderIdentificationQueue(req.session));
+  res.send(renderIdentificationQueue(req.session, true));
 });
 app.get('/ai/identification-review/:photoId', requireAuth, requireEditor, (req, res) => {
   const photoId = parseInt(req.params.photoId, 10);
   if (!Number.isInteger(photoId)) {
     return res.status(400).send('Invalid photoId');
   }
-  res.send(renderIdentificationReview(req.session, photoId));
+  res.send(renderIdentificationReview(req.session, photoId, true));
 });
 
 app.use(errorHandler);

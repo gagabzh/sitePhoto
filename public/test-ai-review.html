@@ -96,6 +96,35 @@
   </div>
 
   <script>
+    let csrfToken = '';
+    
+    async function getCsrfToken() {
+      if (csrfToken) return csrfToken;
+      try {
+        const response = await fetch('/api/me', { credentials: 'include' });
+        if (response.ok) {
+          const data = await response.json();
+          csrfToken = data.csrf || '';
+        }
+      } catch (err) {
+        console.error('Failed to get CSRF token:', err.message);
+      }
+      return csrfToken;
+    }
+
+    async function fetchWithCsrf(url, options = {}) {
+      const token = await getCsrfToken();
+      const newOptions = { ...options, credentials: 'include' };
+      if (['POST', 'PUT', 'PATCH', 'DELETE'].includes((options.method || 'GET').toUpperCase())) {
+        newOptions.headers = {
+          ...newOptions.headers,
+          'X-CSRF-Token': token,
+          'Content-Type': 'application/json'
+        };
+      }
+      return fetch(url, newOptions);
+    }
+
     function log(message, isError = false) {
       const div = document.getElementById('results');
       const span = document.createElement('span');
@@ -121,11 +150,8 @@
       log('Creating test proposal for photo ' + photoId + ', user ' + userId + '...');
       
       try {
-        const response = await fetch('/api/ai/identify-people-direct', {
+        const response = await fetchWithCsrf('/api/ai/identify-people-direct', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             photoId: parseInt(photoId, 10),
             userId: parseInt(userId, 10),
@@ -141,8 +167,7 @@
                 confidence: 0.85
               }
             ]
-          }),
-          credentials: 'include'
+          })
         });
 
         const data = await response.json();
@@ -162,9 +187,7 @@
       logCheck('Checking for existing proposals...', false, 'checkResults');
       
       try {
-        const response = await fetch('/api/ai/identification-queue?page=1&limit=20', {
-          credentials: 'include'
-        });
+        const response = await fetchWithCsrf('/api/ai/identification-queue?page=1&limit=20');
 
         if (response.ok) {
           const data = await response.json();
