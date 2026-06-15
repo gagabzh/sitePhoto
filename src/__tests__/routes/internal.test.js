@@ -784,10 +784,12 @@ describe('POST /internal/store-people-faces', () => {
     // 1. INSERT INTO tags RETURNING id (Alice with category='people')
     // 2. INSERT INTO photo_tags
     // 3. INSERT INTO person_faces
+    // 4. INSERT INTO ai_identification_proposals (US-AI5 backward compatibility)
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // tag upsert
       .mockResolvedValueOnce({ rows: [] })            // photo_tags insert
-      .mockResolvedValueOnce({ rows: [] });            // person_faces insert
+      .mockResolvedValueOnce({ rows: [] })            // person_faces insert
+      .mockResolvedValueOnce({ rows: [] });            // ai_identification_proposals insert
 
     const res = await request(makeApp())
       .post('/internal/store-people-faces')
@@ -889,8 +891,13 @@ describe('POST /internal/store-people-faces', () => {
       { name: 'Alice', bbox: { x: 0.25, y: 0.3, width: 0.2, height: 0.25 } }
     ];
     
+    // 1. INSERT INTO tags RETURNING id
+    // 2. INSERT INTO photo_tags
+    // 3. INSERT INTO person_faces
+    // 4. INSERT INTO ai_identification_proposals (US-AI5 backward compatibility)
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
@@ -907,6 +914,13 @@ describe('POST /internal/store-people-faces', () => {
       photoId: 1, 
       tags: ['Alice'] 
     });
+    
+    // Verify US-AI5 proposals notification was also sent
+    expect(notifyUser).toHaveBeenCalledWith(7, {
+      photoId: 1,
+      count: 1,
+      tags: ['Alice']
+    }, 'identification-proposals-ready');
   });
 
   it('handles storage.uploadPhoto failure gracefully', async () => {
