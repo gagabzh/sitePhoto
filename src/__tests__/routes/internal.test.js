@@ -166,9 +166,13 @@ describe('POST /internal/identify-people-result', () => {
     
     // 1. INSERT Alice tag RETURNING id
     // 2. INSERT Bob tag RETURNING id
+    // 3. INSERT ai_identification_proposals for Alice (US-AI5 backward compatibility)
+    // 4. INSERT ai_identification_proposals for Bob (US-AI5 backward compatibility)
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // Alice tag
-      .mockResolvedValueOnce({ rows: [{ id: 11 }] });  // Bob tag
+      .mockResolvedValueOnce({ rows: [{ id: 11 }] })  // Bob tag
+      .mockResolvedValueOnce({ rows: [] })            // Alice proposal
+      .mockResolvedValueOnce({ rows: [] });            // Bob proposal
 
     const res = await request(makeApp())
       .post('/internal/identify-people-result')
@@ -197,6 +201,16 @@ describe('POST /internal/identify-people-result', () => {
         { tagId: 11, name: 'Bob', hasReference: false, bbox: suggestions[1].bbox },
       ]
     }, 'identify-people-complete');
+    
+    // Verify US-AI5 proposals notification was also sent
+    expect(notifyUser).toHaveBeenCalledWith(7, {
+      photoId: 42,
+      count: 2,
+      suggestions: [
+        { name: 'Alice', bbox: suggestions[0].bbox },
+        { name: 'Bob', bbox: suggestions[1].bbox }
+      ]
+    }, 'identification-proposals-ready');
   });
 
   it('notifies with empty array when suggestions is empty', async () => {
