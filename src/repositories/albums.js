@@ -95,21 +95,6 @@ async function fetchAlbumPhotos(albumId) {
   return rows;
 }
 
-async function fetchAlbumWithPhotos(albumId) {
-  const { rows: albumRows } = await db.query(
-    'SELECT a.*, u.name AS creator FROM albums a JOIN users u ON u.id = a.user_id WHERE a.id = $1',
-    [albumId]
-  );
-  if (!albumRows.length) return null;
-  
-  const { rows: photoRows } = await db.query(
-    'SELECT p.id, p.filename, p.title, p.user_id FROM photos p JOIN album_photos ap ON ap.photo_id = p.id WHERE ap.album_id = $1 ORDER BY p.created_at ASC',
-    [albumId]
-  );
-  
-  return { album: albumRows[0], photos: photoRows };
-}
-
 async function checkViewerAccess(albumId, viewerId) {
   const { rows } = await db.query(
     'SELECT 1 FROM album_access WHERE album_id = $1 AND viewer_id = $2',

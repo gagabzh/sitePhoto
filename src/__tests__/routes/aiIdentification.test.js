@@ -56,10 +56,8 @@ async function cleanupTestData() {
 }
 
 describe('AI Identification Routes', () => {
-  let testData = null;
-
   beforeAll(async () => {
-    testData = await setupTestData();
+    await setupTestData();
   });
 
   afterAll(async () => {
@@ -68,7 +66,7 @@ describe('AI Identification Routes', () => {
 
   describe('GET /api/ai/identification-queue', () => {
     it('should return 403 for non-authenticated users', async () => {
-      const res = await request(app)
+      await request(app)
         .get('/api/ai/identification-queue')
         .expect(403);
     });

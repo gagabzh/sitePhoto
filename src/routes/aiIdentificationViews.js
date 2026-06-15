@@ -1,4 +1,4 @@
-const { page, esc } = require('../layout');
+const { page } = require('../layout');
 
 /**
  * Render the AI identification queue page
@@ -7,7 +7,6 @@ const { page, esc } = require('../layout');
  * @returns {string} - HTML page
  */
 function renderIdentificationQueue(session, socket = false) {
-  const isEditor = session.role === 'editor' || session.role === 'admin';
 
   return page('AI Identification Review', `
     <style>
