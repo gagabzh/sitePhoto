@@ -818,10 +818,15 @@ describe('POST /internal/store-people-faces', () => {
     ];
     
     // Only Alice should be processed
+    // 1. Alice tag upsert
+    // 2. Alice photo_tags insert
+    // 3. Alice person_faces insert
+    // 4. Alice ai_identification_proposals insert (US-AI5 backward compatibility)
     db.query
       .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // Alice tag upsert
       .mockResolvedValueOnce({ rows: [] })            // Alice photo_tags insert
-      .mockResolvedValueOnce({ rows: [] });            // Alice person_faces insert
+      .mockResolvedValueOnce({ rows: [] })            // Alice person_faces insert
+      .mockResolvedValueOnce({ rows: [] });            // Alice ai_identification_proposals insert
 
     const res = await request(makeApp())
       .post('/internal/store-people-faces')
@@ -832,8 +837,9 @@ describe('POST /internal/store-people-faces', () => {
     expect(res.body.stored).toBe(1);
     expect(res.body.tags).toEqual(['Alice']);
     
-    // Only 3 queries for Alice (Bob and Charlie skipped due to invalid bbox)
-    expect(db.query).toHaveBeenCalledTimes(3);
+    // 4 queries for Alice (Bob and Charlie skipped due to invalid bbox)
+    // Includes US-AI5 proposal creation for backward compatibility
+    expect(db.query).toHaveBeenCalledTimes(4);
   });
 
   it('skips suggestions with bounding box too small', async () => {
