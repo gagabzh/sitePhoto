@@ -30,10 +30,10 @@ const app = require('../../app');
 describe('AI Identification Routes', () => {
 
   describe('GET /api/ai/identification-queue', () => {
-    it('should return 403 for non-authenticated users', async () => {
+    it('should redirect to login for non-authenticated users', async () => {
       await request(app)
         .get('/api/ai/identification-queue')
-        .expect(403);
+        .expect(302);
     });
 
     it('should return 403 for users without editor role', async () => {
