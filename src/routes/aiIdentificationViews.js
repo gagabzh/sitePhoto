@@ -206,6 +206,7 @@ function renderIdentificationQueue(session, socket = false) {
       <span id="page-info">Page 1</span>
       <button id="next-page" disabled>Next</button>
     </div>
+    <script src="/js/people-autocomplete.js"></script>
     <script src="/js/ai-identification-queue.js"></script>
   `, session, socket);
 }
@@ -412,7 +413,7 @@ function renderIdentificationReview(session, photoId, socket = false) {
         
         <div class="ai-review-controls" id="edit-controls" style="display: none;">
           <label for="edit-name">Edit Person Name</label>
-          <input type="text" id="edit-name" placeholder="Enter corrected name...">
+          <input type="text" id="edit-name" placeholder="Enter corrected name..." data-people-autocomplete="true">
           <button class="btn btn-primary" id="save-edit" style="margin-top: 0.5rem; width: 100%;">Save Edit</button>
           <button class="btn btn-secondary" id="cancel-edit" style="margin-top: 0.5rem; width: 100%;">Cancel</button>
         </div>
@@ -422,6 +423,7 @@ function renderIdentificationReview(session, photoId, socket = false) {
         </a>
       </div>
     </div>
+    <script src="/js/people-autocomplete.js"></script>
     <script src="/js/ai-identification-review.js"></script>
   `, session, socket);
 }
