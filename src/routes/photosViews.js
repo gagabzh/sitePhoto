@@ -478,7 +478,7 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
     nameForm.style.left = rx + 'px';
     nameForm.style.top  = (ry + rh + 6) + 'px';
     nameForm.innerHTML =
-      '<input id="face-name-input" type="text" placeholder="Person name" style="font-family:var(--hand-tight);font-size:0.9rem;border:1.5px solid var(--ink);padding:0.25rem 0.5rem;margin-right:0.4rem" autofocus>'
+      '<input id="face-name-input" type="text" placeholder="Person name" style="font-family:var(--hand-tight);font-size:0.9rem;border:1.5px solid var(--ink);padding:0.25rem 0.5rem;margin-right:0.4rem" autofocus data-people-autocomplete="true">'
       + '<button id="face-save-btn" style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;margin-right:0.3rem">Save</button>'
       + '<button id="face-cancel-btn" style="font-family:var(--mono);font-size:0.75rem;text-transform:uppercase;letter-spacing:1px">Cancel</button>'
       + '<div id="face-msg" style="font-size:0.8rem;margin-top:0.25rem;color:var(--accent)"></div>';
@@ -562,7 +562,8 @@ function renderPhotoDetailPage({ photo, canEdit, from, photoAlbums, personFaces,
     });
   });
 })();
-</script>` : ''}
+</script>
+<script src="/js/people-autocomplete.js"></script>` : ''}
   `, session, true);
 }
 

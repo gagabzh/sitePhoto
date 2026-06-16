@@ -415,6 +415,25 @@ router.get('/users/search', wrapAsync(async (req, res) => {
   res.json(rows);
 }));
 
+// ── AI-6: People tag autocomplete ──────────────────────────────────────────────
+
+router.get('/people/autocomplete', wrapAsync(async (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (!q || q.length < 2) return res.json([]);
+  
+  // Query distinct person names from person_faces table
+  // Match on prefix, case-insensitive
+  const { rows } = await db.query(
+    `SELECT DISTINCT person_name AS name FROM person_faces 
+     WHERE LOWER(person_name) ILIKE $1 
+     ORDER BY person_name LIMIT 10`,
+    [q + '%']
+  );
+  
+  // Return array of {id, name} objects (id is the name itself for now)
+  res.json(rows.map(r => ({ id: r.name, name: r.name })));
+}));
+
 // ── POST /api/recipes/:id/share — generate share token ───────────────────────
 
 router.post('/recipes/:id/share', wrapAsync(async (req, res) => {
