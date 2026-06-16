@@ -101,15 +101,15 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | IQ-1 | Apply HTTP security headers and rate-limit auth routes                    | Infrastructure | Done    | #115 |
 | IQ-2 | Fail CI on high-severity dependency vulnerabilities                       | Infrastructure | Done    | #115 |
 | IQ-3 | Linter                                                                    | Infrastructure | Done    | package.json |
-| IQ-4 | Code quality metrics                                                      | Infrastructure | Backlog | — |
+| IQ-4 | Code quality metrics                                                      | Infrastructure | Done    | package.json coverageThreshold 90/75/65/90 + scripts test pattern |
 | IQ-5 | VPS hardening                                                             | Infrastructure | Done    | — |
-| IQ-6 | Fix misleading audit success message in audit-check.js                    | Infrastructure | Backlog | — |
-| IQ-7 | Add skipSuccessfulRequests to authLimiter                                 | Hardening | Backlog | — |
-| IQ-8 | Cache worker npm ci in CI                                                 | Infrastructure | Backlog | — |
-| IQ-9 | Unit-test audit-check.js advisory parsing logic                           | Infrastructure | Backlog | — |
-| IQ-10 | Document or address unmetered /uploads/:filename route                    | Hardening | Backlog | — |
-| IQ-11 | Document Referrer-Policy override as deliberate decision                  | Hardening | Backlog | — |
-| IQ-12 | Require passing workflows before merging PRs                              | Infrastructure | Backlog | — |
+| IQ-6 | Fix misleading audit success message in audit-check.js                    | Infrastructure | Done    | scripts/audit-check.js distinguishes zero findings vs all exempted |
+| IQ-7 | Add skipSuccessfulRequests to authLimiter                                 | Hardening | Done    | src/app.js line 26 |
+| IQ-8 | Cache worker npm ci in CI                                                 | Infrastructure | Done    | deploy-site.yml + deploy-worker.yml cache-dependency-path |
+| IQ-9 | Unit-test audit-check.js advisory parsing logic                           | Infrastructure | Done    | scripts/audit-check.test.js comprehensive tests (340 lines) |
+| IQ-10 | Document or address unmetered /uploads/:filename route                    | Hardening | Done    | src/app.js lines 71-72 comment explains intentional design |
+| IQ-11 | Document Referrer-Policy override as deliberate decision                  | Hardening | Done    | src/app.js lines 56-58 comment explains choice |
+| IQ-12 | Require passing workflows before merging PRs                              | Infrastructure | Done    | README.md branch protection documentation added |
 | S3-1 | Photos stored in Object Storage                                           | Infrastructure | Done    | — |
 | S3-2 | Transparent experience for viewers                                        | Infrastructure | Done    | — |
 | S3-3 | Photo deletion removes S3 object                                          | Infrastructure | Done    | — |

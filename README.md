@@ -183,6 +183,15 @@ Create `.env` from `.env.example` and configure:
 
 ## Development Workflow
 
+### Pull Requests and Branch Protection
+
+The `main` branch is protected and requires the following GitHub Actions workflows to pass before merging:
+- `deploy-site` (tests and lints the main application)
+- `deploy-worker` (tests and lints the worker)
+- `terraform-validate` (validates infrastructure Terraform configuration)
+
+These workflows must complete successfully (exit code 0) for the merge button to become available. The "Require status checks to pass before merging" and "Require branches to be up to date before merging" options are enabled in GitHub branch protection settings. This protection applies to all PRs targeting `main`, including those from administrators.
+
 ### Running Tests
 ```bash
 npm test              # Run all tests once
