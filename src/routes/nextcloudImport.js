@@ -391,7 +391,6 @@ router.post('/confirm', requireEditor, confirmLimiter, wrapAsync(async (req, res
   
   // INF-4: Track per-file processing times
   const fileProcessingTimes = [];
-  let totalFilesProcessed = 0;
   let totalFilesFailed = 0;
   
   // Lat/lon values to use for all photos (from user input)
@@ -400,7 +399,7 @@ router.post('/confirm', requireEditor, confirmLimiter, wrapAsync(async (req, res
   const cleanTags = tags.map(t => String(t).trim().toLowerCase()).filter(Boolean);
 
   // Process all files with controlled concurrency
-  const processPromises = files.map((file, fileIndex) =>
+  const processPromises = files.map((file) =>
     fileQueue.add(async () => {
       const fileStartTime = Date.now();
       const ext = EXT_MAP[file.mimeType] || '.jpg';
@@ -457,7 +456,6 @@ router.post('/confirm', requireEditor, confirmLimiter, wrapAsync(async (req, res
         // INF-4: Track successful file processing time
         const fileTime = Date.now() - fileStartTime;
         fileProcessingTimes.push({ file: file.name, time: fileTime, success: true });
-        totalFilesProcessed++;
         
         return { success: true, file: file.name };
 
