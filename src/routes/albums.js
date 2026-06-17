@@ -3,6 +3,7 @@ const path = require('path');
 const db = require('../db');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { filterAlbumPhotoIds } = require('../permissions');
+const errors = require('../utils/errors');
 const { extractMetadata } = require('../extractMetadata');
 const {
   upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
@@ -198,11 +199,11 @@ router.get('/:id', wrapAsync(async (req, res) => {
     fetchAlbumPhotos(req.params.id),
   ]);
 
-  if (!album) return res.status(404).send('Album not found');
+  if (!album) return errors.notFound(res, 'Album', false);
 
   if (req.session.role === 'viewer') {
     const hasAccess = await checkViewerAccess(req.params.id, req.session.userId);
-    if (!hasAccess) return res.status(403).send('Access denied');
+    if (!hasAccess) return errors.accessDenied(res, false);
   }
 
   const canEdit = canModify(req.session, album);
@@ -213,8 +214,8 @@ router.get('/:id', wrapAsync(async (req, res) => {
 
 router.post('/:id/photos/bulk-remove', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   const raw = req.body.photo_ids;
   if (!raw) return res.redirect(`/albums/${req.params.id}`);
@@ -230,8 +231,8 @@ router.post('/:id/photos/bulk-remove', requireEditor, wrapAsync(async (req, res)
 
 router.post('/:id/photos/bulk-delete', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   const raw = req.body.photo_ids;
   if (!raw) return res.redirect(`/albums/${req.params.id}`);
@@ -250,8 +251,8 @@ router.post('/:id/photos/bulk-delete', requireEditor, wrapAsync(async (req, res)
 
 router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbum(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   res.send(renderAlbumEditPage({ album, session: req.session }));
 }));
@@ -260,8 +261,8 @@ router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
 
 router.get('/:id/access', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbum(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   const { withAccess, withoutAccess } = await fetchViewerAccessLists(req.params.id);
 
@@ -275,10 +276,10 @@ router.get('/:id/access', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id/access/add', requireEditor, wrapAsync(async (req, res) => {
   const viewerId = parseInt(req.body.viewer_id, 10);
-  if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');
+  if (!Number.isInteger(viewerId)) return errors.badRequest(res, 'Invalid id');
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   await addViewerAccess(req.params.id, viewerId);
   res.redirect(`/albums/${req.params.id}/access`);
@@ -286,10 +287,10 @@ router.post('/:id/access/add', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id/access/remove', requireEditor, wrapAsync(async (req, res) => {
   const viewerId = parseInt(req.body.viewer_id, 10);
-  if (!Number.isInteger(viewerId)) return res.status(400).send('Invalid id');
+  if (!Number.isInteger(viewerId)) return errors.badRequest(res, 'Invalid id');
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   await removeViewerAccess(req.params.id, viewerId);
   res.redirect(`/albums/${req.params.id}/access`);
@@ -297,8 +298,8 @@ router.post('/:id/access/remove', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   const { title, description } = req.body;
   await updateAlbum(req.params.id, title, description || null);
@@ -309,8 +310,8 @@ router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   await deleteAlbum(req.params.id);
   res.redirect('/albums');
@@ -323,16 +324,16 @@ router.post('/:id/cover', requireEditor, wrapAsync(async (req, res) => {
   const photoId = parseInt(req.body.photoId, 10);
 
   if (!Number.isFinite(albumId) || !Number.isFinite(photoId)) {
-    return res.status(400).json({ error: 'Invalid album or photo ID' });
+    return errors.badRequest(res, 'Invalid album or photo ID');
   }
 
   const album = await getAlbumOwner(albumId);
-  if (!album) return res.status(404).json({ error: 'Album not found' });
-  if (!canModify(req.session, album)) return res.status(403).json({ error: 'Access denied' });
+  if (!album) return errors.notFound(res, 'Album');
+  if (!canModify(req.session, album)) return errors.accessDenied(res);
 
   const success = await setAlbumCover(albumId, photoId, req.session.userId);
   if (!success) {
-    return res.status(400).json({ error: 'Photo not in this album' });
+    return errors.badRequest(res, 'Photo not in this album');
   }
 
   res.json({ success: true });
@@ -342,8 +343,8 @@ router.post('/:id/cover', requireEditor, wrapAsync(async (req, res) => {
 
 router.get('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbum(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   const photos = await fetchPhotosNotInAlbum(req.params.id);
 
@@ -352,10 +353,10 @@ router.get('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
   const photoId = parseInt(req.body.photo_id, 10);
-  if (!Number.isInteger(photoId)) return res.status(400).send('Invalid id');
+  if (!Number.isInteger(photoId)) return errors.badRequest(res, 'Invalid id', false);
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   await linkPhotoToAlbum(req.params.id, photoId);
   res.redirect(`/albums/${req.params.id}/photos/add`);
@@ -365,10 +366,10 @@ router.post('/:id/photos/add', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id/photos/remove', requireEditor, wrapAsync(async (req, res) => {
   const photoId = parseInt(req.body.photo_id, 10);
-  if (!Number.isInteger(photoId)) return res.status(400).send('Invalid id');
+  if (!Number.isInteger(photoId)) return errors.badRequest(res, 'Invalid id', false);
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   await removePhotoFromAlbum(req.params.id, photoId);
   res.redirect(`/albums/${req.params.id}`);
@@ -378,8 +379,8 @@ router.post('/:id/photos/remove', requireEditor, wrapAsync(async (req, res) => {
 
 router.get('/:id/photos/upload', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbum(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   const errors = {
     type: 'Only JPEG, PNG, GIF and WebP images are accepted.',
@@ -391,8 +392,8 @@ router.get('/:id/photos/upload', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   upload.single('photo')(req, res, async (err) => {
     const albumId = req.params.id;
@@ -431,16 +432,16 @@ router.post('/:id/photos/upload', requireEditor, async (req, res, next) => {
 
 router.get('/:id/photos/batch', requireEditor, wrapAsync(async (req, res) => {
   const album = await getAlbum(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   res.send(renderBatchUploadPage({ album, session: req.session }));
 }));
 
 router.post('/:id/photos/batch', requireEditor, async (req, res, next) => {
   const album = await getAlbumOwner(req.params.id);
-  if (!album) return res.status(404).send('Album not found');
-  if (!canModify(req.session, album)) return res.status(403).send('Access denied');
+  if (!album) return errors.notFound(res, 'Album', false);
+  if (!canModify(req.session, album)) return errors.accessDenied(res, false);
 
   upload.array('photos', 200)(req, res, async (err) => {
     if (err) return next(err);

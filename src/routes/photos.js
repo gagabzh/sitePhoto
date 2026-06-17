@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
 const { filterOwnedPhotoIds } = require('../permissions');
+const errors = require('../utils/errors');
 const { extractMetadata } = require('../extractMetadata');
 const {
   upload, parseCoord, sanitizeNextcloudUrl, setTags, deletePhotos, processAndUpload,
@@ -65,7 +66,7 @@ router.get('/', requireEditor, wrapAsync(async (req, res) => {
 router.get('/api/page', requireEditor, wrapAsync(async (req, res) => {
   const cursor = req.query.cursor ? parseInt(req.query.cursor, 10) : null;
   const limit  = Math.min(parseInt(req.query.limit, 10) || 24, 100);
-  if (cursor !== null && !Number.isFinite(cursor)) return res.status(400).json({ error: 'Invalid cursor' });
+  if (cursor !== null && !Number.isFinite(cursor)) return errors.badRequest(res, 'Invalid cursor');
   const { photos, nextCursor } = await fetchPhotoPage(cursor, limit);
   res.json({
     photos: photos.map(p => ({
@@ -169,7 +170,7 @@ router.post('/upload', requireEditor, (req, res, next) => {
 router.get('/:id', wrapAsync(async (req, res) => {
   const from = parseFrom(req.query.from);
   const photo = await fetchPhotoWithTags(req.params.id);
-  if (!photo) return res.status(404).send('Photo not found');
+  if (!photo) return errors.notFound(res, 'Photo', false);
 
   let photoAlbums = [];
   try {
@@ -192,8 +193,8 @@ router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
     fetchPhotoForEdit(req.params.id),
     fetchAlbumsForPhotoEdit(req.params.id, req.session),
   ]);
-  if (!photo) return res.status(404).send('Photo not found');
-  if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
+  if (!photo) return errors.notFound(res, 'Photo', false);
+  if (!canModify(req.session, photo)) return errors.accessDenied(res, false);
 
   res.send(renderPhotoEditPage({ photo, from, albumChoices, session: req.session }));
 }));
@@ -201,8 +202,8 @@ router.get('/:id/edit', requireEditor, wrapAsync(async (req, res) => {
 // US-P3: Save edits
 router.post('/:id', requireEditor, wrapAsync(async (req, res) => {
   const photo = await getPhotoOwner(req.params.id);
-  if (!photo) return res.status(404).send('Photo not found');
-  if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
+  if (!photo) return errors.notFound(res, 'Photo', false);
+  if (!canModify(req.session, photo)) return errors.accessDenied(res, false);
 
   const { title, description, tags, taken_at, latitude, longitude, nextcloud_url } = req.body;
   const ncUrl = sanitizeNextcloudUrl(nextcloud_url);
@@ -268,12 +269,12 @@ router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
   // Validate personName
   const personName = typeof rawName === 'string' ? rawName.trim() : '';
   if (!personName || personName.length > 100) {
-    return res.status(422).json({ error: 'personName is required and must be ≤ 100 characters' });
+    return errors.validation(res, 'personName is required and must be ≤ 100 characters');
   }
 
   // Validate bbox
   if (!bbox || typeof bbox !== 'object') {
-    return res.status(422).json({ error: 'bbox is required' });
+    return errors.validation(res, 'bbox is required');
   }
   const { x, y, width, height } = bbox;
   if (
@@ -282,10 +283,10 @@ router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
     x < 0 || x > 1 || y < 0 || y > 1 ||
     width < 0 || width > 1 || height < 0 || height > 1
   ) {
-    return res.status(422).json({ error: 'bbox fields must be numbers in [0, 1]' });
+    return errors.validation(res, 'bbox fields must be numbers in [0, 1]');
   }
   if (x + width > 1 || y + height > 1) {
-    return res.status(422).json({ error: 'bbox extends beyond image boundary' });
+    return errors.validation(res, 'bbox extends beyond image boundary');
   }
 
   // Fetch photo (include user_id for ownership check)
@@ -293,11 +294,11 @@ router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
     'SELECT id, filename, s3_key, user_id FROM photos WHERE id = $1',
     [photoId]
   );
-  if (!photoRows.length) return res.status(404).json({ error: 'Photo not found' });
+  if (!photoRows.length) return errors.notFound(res, 'Photo');
   const photo = photoRows[0];
 
   // Ownership check — only the photo owner or admin may tag faces
-  if (!canModify(req.session, photo)) return res.status(403).json({ error: 'Access denied' });
+  if (!canModify(req.session, photo)) return errors.accessDenied(res);
 
   // Download full-resolution from S3
   const buffer = await downloadPhoto(photo.s3_key);
@@ -312,7 +313,7 @@ router.post('/:id/tag-person', requireEditor, wrapAsync(async (req, res) => {
   const cropHeight = Math.round(height * imgHeight);
 
   if (cropWidth < 20 || cropHeight < 20) {
-    return res.status(422).json({ error: 'Bounding box is too small (minimum 20×20 px)' });
+    return errors.validation(res, 'Bounding box is too small (minimum 20×20 px)');
   }
 
   // Crop and encode
@@ -360,18 +361,18 @@ router.delete('/:photoId/tag-person/:personFaceId', requireEditor, wrapAsync(asy
     'SELECT id, user_id, crop_s3_key FROM person_faces WHERE id = $1 AND photo_id = $2',
     [faceId, photoId]
   );
-  if (!faceRows.length) return res.status(404).json({ error: 'Face tag not found' });
+  if (!faceRows.length) return errors.notFound(res, 'Face tag');
   const face = faceRows[0];
 
   // Ownership check — owner or admin
   if (face.user_id !== req.session.userId && req.session.role !== 'admin') {
-    return res.status(403).json({ error: 'Access denied' });
+    return errors.accessDenied(res);
   }
 
   // Delete S3 crop — fire and forget, guard against non-face keys
   if (!face.crop_s3_key.startsWith('faces/')) {
     console.error('[tag-person] Refusing to delete non-face S3 key:', face.crop_s3_key);
-    return res.status(500).json({ error: 'Internal error' });
+    return errors.serverError(res);
   }
   deletePhoto(face.crop_s3_key).catch(err => {
     console.warn('[tag-person] S3 crop delete failed:', err.message);
@@ -386,8 +387,8 @@ router.delete('/:photoId/tag-person/:personFaceId', requireEditor, wrapAsync(asy
 // US-P4: Delete
 router.post('/:id/delete', requireEditor, wrapAsync(async (req, res) => {
   const photo = await getPhotoOwner(req.params.id);
-  if (!photo) return res.status(404).send('Photo not found');
-  if (!canModify(req.session, photo)) return res.status(403).send('Access denied');
+  if (!photo) return errors.notFound(res, 'Photo', false);
+  if (!canModify(req.session, photo)) return errors.accessDenied(res, false);
 
   const from = parseFrom(req.body.from);
   await deletePhotos([parseInt(req.params.id)]);

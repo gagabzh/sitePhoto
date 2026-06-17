@@ -8,6 +8,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireEditor, canModify, wrapAsync } = require('../middleware');
+const errors = require('../utils/errors');
 const { indexView, createFormView, editFormView, detailMapView, detailJournalView } = require('./travelsViews');
 const { parseGpx } = require('../gpxParse');
 const {
@@ -119,8 +120,8 @@ router.post('/', requireEditor, gpxUpload.single('gpx'), wrapAsync(async (req, r
 router.get('/:slug', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
   const travel = await fetchTravel(req.params.slug, isViewer ? req.session.userId : null);
-  if (!travel) return res.status(404).send('Travel not found');
-  if (!canView(req.session, travel)) return res.status(403).send('Access denied');
+  if (!travel) return errors.notFound(res, 'Travel', false);
+  if (!canView(req.session, travel)) return errors.accessDenied(res, false);
 
   const [linkedAlbums, linkedPhotos, travelViewers, dateRange] = await Promise.all([
     fetchLinkedAlbums(travel.id),
