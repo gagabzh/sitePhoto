@@ -20,8 +20,7 @@
     "coverageProvider": "v8",
     "collectCoverageFrom": [
       "src/**/*.js",
-      "!src/__tests__/**",
-      "scripts/**/*.js"
+      "!src/__tests__/**"
     ],
     "coverageThreshold": {
       "global": {
