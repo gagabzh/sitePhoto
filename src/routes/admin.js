@@ -4,6 +4,7 @@ const db = require('../db');
 const { page, esc } = require('../layout');
 const { deletePhotos } = require('../uploadHelpers');
 const { wrapAsync } = require('../middleware');
+const errors = require('../utils/errors');
 
 
 function roleOptions(selected) {
@@ -99,8 +100,8 @@ router.post('/', wrapAsync(async (req, res) => {
   const VALID_ROLES = ['admin', 'editor', 'viewer'];
   const { name, email, password } = req.body;
   const role = VALID_ROLES.includes(req.body.role) ? req.body.role : null;
-  if (!role) return res.status(400).send('Invalid role');
-  if (!password || password.length < 8) return res.status(400).send('Password must be at least 8 characters');
+  if (!role) return errors.badRequest(res, 'Invalid role', false);
+  if (!password || password.length < 8) return errors.badRequest(res, 'Password must be at least 8 characters', false);
   try {
     const hash = await bcrypt.hash(password, 10);
     await db.query(
@@ -118,7 +119,7 @@ router.post('/', wrapAsync(async (req, res) => {
 router.get('/:id/edit', wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT id, name, email, role FROM users WHERE id = $1', [req.params.id]);
   const u = rows[0];
-  if (!u) return res.status(404).send('User not found');
+  if (!u) return errors.notFound(res, 'User', false);
   const isSelf = u.id === req.session.userId;
   const error = req.query.error ? '<p class="msg-error">This email is already in use.</p>' : '';
 
@@ -146,7 +147,7 @@ router.post('/:id', wrapAsync(async (req, res) => {
   const VALID_ROLES = ['admin', 'editor', 'viewer'];
   const { name, email } = req.body;
   const role = VALID_ROLES.includes(req.body.role) ? req.body.role : null;
-  if (!role) return res.status(400).send('Invalid role');
+  if (!role) return errors.badRequest(res, 'Invalid role', false);
   try {
     await db.query(
       'UPDATE users SET name = $1, email = $2, role = $3 WHERE id = $4',
@@ -172,7 +173,7 @@ router.post('/:id/delete', wrapAsync(async (req, res) => {
 router.get('/:id/password', wrapAsync(async (req, res) => {
   const { rows } = await db.query('SELECT id, name FROM users WHERE id = $1', [req.params.id]);
   const u = rows[0];
-  if (!u) return res.status(404).send('User not found');
+  if (!u) return errors.notFound(res, 'User', false);
   const success = req.query.done ? '<p class="msg-success">Password updated successfully.</p>' : '';
 
   res.send(page(`Reset password — ${esc(u.name)}`, `
@@ -192,7 +193,7 @@ router.get('/:id/password', wrapAsync(async (req, res) => {
 }));
 
 router.post('/:id/password', wrapAsync(async (req, res) => {
-  if (!req.body.password || req.body.password.length < 8) return res.status(400).send('Password must be at least 8 characters');
+  if (!req.body.password || req.body.password.length < 8) return errors.badRequest(res, 'Password must be at least 8 characters', false);
   const hash = await bcrypt.hash(req.body.password, 10);
   await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.params.id]);
   res.redirect(`/admin/users/${req.params.id}/password?done=1`);

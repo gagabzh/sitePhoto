@@ -5,6 +5,7 @@ const { deletePhotos } = require('../uploadHelpers');
 const { readPhotoBuffer } = require('../storage');
 const { findDuplicates } = require('../photoHash');
 const { wrapAsync } = require('../middleware');
+const errors = require('../utils/errors');
 
 // ── GET /admin/ai ─────────────────────────────────────────────────────────────
 router.get('/', wrapAsync(async (req, res) => {
@@ -97,7 +98,7 @@ router.post('/scan', wrapAsync(async (req, res) => {
 router.post('/delete', wrapAsync(async (req, res) => {
   const gi = parseInt(req.body.groupIndex, 10);
   const photoId = parseInt(req.body.photoId, 10);
-  if (!Number.isInteger(gi) || !Number.isInteger(photoId)) return res.status(400).send('Invalid params');
+  if (!Number.isInteger(gi) || !Number.isInteger(photoId)) return errors.badRequest(res, 'Invalid params', false);
 
   const groups = req.session.duplicateGroups;
   if (!groups || !groups[gi]) return res.redirect('/admin/ai');
@@ -115,7 +116,7 @@ router.post('/delete', wrapAsync(async (req, res) => {
 // ── POST /admin/ai/dismiss ────────────────────────────────────────────────────
 router.post('/dismiss', (req, res) => {
   const gi = parseInt(req.body.groupIndex, 10);
-  if (!Number.isInteger(gi)) return res.status(400).send('Invalid params');
+  if (!Number.isInteger(gi)) return errors.badRequest(res, 'Invalid params', false);
 
   const groups = req.session.duplicateGroups;
   if (groups && groups[gi]) {

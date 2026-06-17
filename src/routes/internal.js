@@ -8,18 +8,19 @@ const { notifyUser } = require('../notifications');
 const { downloadPhoto, uploadPhoto, deletePhoto } = require('../storage');
 const db = require('../db');
 const { downloadFileAsBuffer } = require('../nextcloudWebdav');
+const errors = require('../utils/errors');
 
 function requireWorkerSecret(req, res, next) {
   const secret = process.env.WORKER_API_SECRET;
   if (!secret || req.headers['x-worker-secret'] !== secret) {
-    return res.status(403).json({ error: 'Forbidden' });
+    return errors.forbidden(res);
   }
   next();
 }
 
 router.post('/identification-result', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { photoId, userId, tags } = req.body;
-  if (!photoId || !userId) return res.status(400).json({ error: 'Missing photoId or userId' });
+  if (!photoId || !userId) return errors.badRequest(res, 'Missing photoId or userId');
 
   // Ollama returns a plain string; normalise to a tag list
   const names = String(tags || '')
@@ -48,7 +49,7 @@ router.post('/identification-result', requireWorkerSecret, wrapAsync(async (req,
 // Suggestions format: [{ name, hasReference, bbox }]
 router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { photoId, userId, suggestions, error } = req.body;
-  if (!photoId || !userId) return res.status(400).json({ error: 'Missing photoId or userId' });
+  if (!photoId || !userId) return errors.badRequest(res, 'Missing photoId or userId');
 
   if (error) {
     notifyUser(userId, { photoId, error }, 'identify-people-complete');
@@ -117,7 +118,7 @@ router.post('/identify-people-result', requireWorkerSecret, wrapAsync(async (req
 router.post('/nextcloud-photo', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { userId, s3Key, fileName, mimeType, shareUrl, takenAt, exposureTime, focalLength, latitude, longitude, albumId, tags } = req.body;
   if (!userId || !s3Key) {
-    return res.status(400).json({ error: 'Missing userId or s3Key' });
+    return errors.badRequest(res, 'Missing userId or s3Key');
   }
 
   // Use EXIF GPS if provided, else fallback to user-provided
@@ -167,7 +168,7 @@ router.post('/nextcloud-photo', requireWorkerSecret, wrapAsync(async (req, res) 
 router.post('/nextcloud-import-progress', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { userId, importId, succeeded } = req.body;
   if (!userId || importId == null) {
-    return res.status(400).json({ error: 'Missing userId or importId' });
+    return errors.badRequest(res, 'Missing userId or importId');
   }
 
   const col = succeeded ? 'done' : 'failed';
@@ -175,7 +176,7 @@ router.post('/nextcloud-import-progress', requireWorkerSecret, wrapAsync(async (
     `UPDATE nextcloud_imports SET ${col} = ${col} + 1 WHERE id = $1 RETURNING done, total, failed`,
     [importId],
   );
-  if (!rows.length) return res.status(404).json({ error: 'Import not found' });
+  if (!rows.length) return errors.notFound(res, 'Import');
 
   const { done, total, failed } = rows[0];
   notifyUser(userId, { importId, done, total, failed }, 'nextcloud-import-progress');
@@ -185,7 +186,7 @@ router.post('/nextcloud-import-progress', requireWorkerSecret, wrapAsync(async (
 // AI-4: Fetch known face crops for a user — called by worker before Ollama identification
 router.get('/known-faces/:userId', requireWorkerSecret, wrapAsync(async (req, res) => {
   const userId = parseInt(req.params.userId, 10);
-  if (!Number.isInteger(userId)) return res.status(400).json({ error: 'Invalid userId' });
+  if (!Number.isInteger(userId)) return errors.badRequest(res, 'Invalid userId');
 
   // Fetch most recent crop per distinct person_name, limit 20
   const { rows } = await db.query(
@@ -223,13 +224,13 @@ router.get('/known-faces/:userId', requireWorkerSecret, wrapAsync(async (req, re
 router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { photoId, userId, photoS3Key, suggestions } = req.body;
   if (!photoId || !userId || !photoS3Key) {
-    return res.status(400).json({ error: 'Missing photoId, userId, or photoS3Key' });
+    return errors.badRequest(res, 'Missing photoId, userId, or photoS3Key');
   }
 
   const photoInt = parseInt(photoId, 10);
   const userInt = parseInt(userId, 10);
   if (!Number.isInteger(photoInt) || !Number.isInteger(userInt)) {
-    return res.status(400).json({ error: 'Invalid photoId or userId' });
+    return errors.badRequest(res, 'Invalid photoId or userId');
   }
 
   const validSuggestions = (suggestions || []).filter(s => 
@@ -247,7 +248,7 @@ router.post('/store-people-faces', requireWorkerSecret, wrapAsync(async (req, re
     buffer = await downloadPhoto(photoS3Key);
   } catch (err) {
     console.warn('[internal/store-people-faces] Failed to download photo:', err.message);
-    return res.status(404).json({ error: 'Photo not found' });
+    return errors.notFound(res, 'Photo');
   }
 
   // Get image dimensions
@@ -378,13 +379,13 @@ router.post('/store-identification-proposals', requireWorkerSecret, wrapAsync(as
   const { photoId, userId, suggestions } = req.body;
   console.log(`[internal/store-identification-proposals] Called with photoId=${photoId}, userId=${userId}, suggestions=${suggestions ? suggestions.length : 0}`);
   if (!photoId || !userId) {
-    return res.status(400).json({ error: 'Missing photoId or userId' });
+    return errors.badRequest(res, 'Missing photoId or userId');
   }
 
   const photoInt = parseInt(photoId, 10);
   const userInt = parseInt(userId, 10);
   if (!Number.isInteger(photoInt) || !Number.isInteger(userInt)) {
-    return res.status(400).json({ error: 'Invalid photoId or userId' });
+    return errors.badRequest(res, 'Invalid photoId or userId');
   }
 
   const validSuggestions = (suggestions || []).filter(s =>
@@ -430,7 +431,7 @@ router.post('/store-identification-proposals', requireWorkerSecret, wrapAsync(as
 router.get('/nextcloud-file', requireWorkerSecret, wrapAsync(async (req, res) => {
   const { shareUrl, fileName } = req.query;
   if (!shareUrl || !fileName) {
-    return res.status(400).json({ error: 'Missing shareUrl or fileName' });
+    return errors.badRequest(res, 'Missing shareUrl or fileName');
   }
   
   try {

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db = require('../db');
 const { parseState, buildWhere, buildConditions, SECTIONS, ORDER_SQL } = require('../combinator');
 const { requireEditor, wrapAsync } = require('../middleware');
+const errors = require('../utils/errors');
 
 // ── GET /api/tags/index ───────────────────────────────────────────────────────
 // Returns the full tag vocabulary grouped by category with global photo counts.
@@ -185,7 +186,7 @@ router.post('/recipes', wrapAsync(async (req, res) => {
   const name  = String(req.body.name  || '').trim().slice(0, 100);
   const query = req.body.query;
   if (!name || !query || typeof query !== 'object') {
-    return res.status(400).json({ error: 'name and query are required' });
+    return errors.badRequest(res, 'name and query are required');
   }
   const { rows } = await db.query(
     'INSERT INTO tag_recipes (user_id, name, query_json) VALUES ($1, $2, $3) RETURNING id',
@@ -198,12 +199,12 @@ router.post('/recipes', wrapAsync(async (req, res) => {
 
 router.delete('/recipes/:id', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
 
   const { rows } = await db.query('SELECT user_id FROM tag_recipes WHERE id = $1', [id]);
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
   if (rows[0].user_id !== req.session.userId && req.session.role !== 'admin')
-    return res.status(403).json({ error: 'forbidden' });
+    return errors.forbidden(res);
 
   await db.query('DELETE FROM tag_recipes WHERE id = $1', [id]);
   res.status(204).end();
@@ -213,11 +214,11 @@ router.delete('/recipes/:id', wrapAsync(async (req, res) => {
 
 router.get('/tags/:id/detail', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows } = await db.query(
     'SELECT id, name, category, aliases, description FROM tags WHERE id = $1', [id]
   );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Tag');
   res.json(rows[0]);
 }));
 
@@ -225,7 +226,7 @@ router.get('/tags/:id/detail', requireEditor, wrapAsync(async (req, res) => {
 
 router.get('/tags/:id/photos', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows } = await db.query(`
     SELECT p.id, p.filename, p.title
     FROM photos p
@@ -242,12 +243,12 @@ router.get('/tags/:id/photos', requireEditor, wrapAsync(async (req, res) => {
 router.post('/tags', requireEditor, wrapAsync(async (req, res) => {
   const name     = String(req.body.name || '').trim().toLowerCase().slice(0, 100);
   const category = ['people','places','years','themes'].includes(req.body.category) ? req.body.category : null;
-  if (!name) return res.status(400).json({ error: 'name required' });
+  if (!name) return errors.badRequest(res, 'name required');
   const { rows } = await db.query(
     'INSERT INTO tags (name, category) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING RETURNING id',
     [name, category]
   );
-  if (!rows.length) return res.status(409).json({ error: 'tag already exists' });
+  if (!rows.length) return errors.validation(res, 'tag already exists');
   res.status(201).json({ id: rows[0].id });
 }));
 
@@ -256,7 +257,7 @@ router.post('/tags', requireEditor, wrapAsync(async (req, res) => {
 router.post('/tags/merge', requireEditor, wrapAsync(async (req, res) => {
   const targetId  = parseInt(req.body.targetId, 10);
   const sourceIds = (req.body.sourceIds || []).map(Number).filter(n => !isNaN(n) && n !== targetId);
-  if (isNaN(targetId) || !sourceIds.length) return res.status(400).json({ error: 'invalid params' });
+  if (isNaN(targetId) || !sourceIds.length) return errors.badRequest(res, 'invalid params');
   // Re-point photo_tags from sources to target
   await db.query(
     'INSERT INTO photo_tags (photo_id, tag_id) SELECT photo_id, $1 FROM photo_tags WHERE tag_id = ANY($2::int[]) ON CONFLICT DO NOTHING',
@@ -270,9 +271,9 @@ router.post('/tags/merge', requireEditor, wrapAsync(async (req, res) => {
 
 router.patch('/tags/:id', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows: exist } = await db.query('SELECT id FROM tags WHERE id = $1', [id]);
-  if (!exist.length) return res.status(404).json({ error: 'not found' });
+  if (!exist.length) return errors.notFound(res, 'Tag');
 
   const updates = [];
   const vals    = [];
@@ -306,7 +307,7 @@ router.patch('/tags/:id', requireEditor, wrapAsync(async (req, res) => {
 
 router.delete('/tags/:id', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   await db.query('DELETE FROM tags WHERE id = $1', [id]);
   res.status(204).end();
 }));
@@ -315,11 +316,11 @@ router.delete('/tags/:id', requireEditor, wrapAsync(async (req, res) => {
 
 router.patch('/recipes/:id', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows } = await db.query('SELECT user_id FROM tag_recipes WHERE id = $1', [id]);
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
   if (rows[0].user_id !== req.session.userId && req.session.role !== 'admin')
-    return res.status(403).json({ error: 'forbidden' });
+    return errors.forbidden(res);
 
   const updates = [];
   const vals    = [];
@@ -345,23 +346,23 @@ router.patch('/recipes/:id', wrapAsync(async (req, res) => {
 
 router.post('/recipes/:id/album', requireEditor, wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
 
   const name = String(req.body.name || '').trim().slice(0, 100);
-  if (!name) return res.status(400).json({ error: 'name required' });
+  if (!name) return errors.badRequest(res, 'name required');
 
   const { rows } = await db.query(
     'SELECT query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
     [id, req.session.userId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
 
   const state = rows[0].query_json;
   const hasFilters = SECTIONS.some(s => {
     const sec = state.sections?.[s];
     return sec && (sec.on?.length > 0 || sec.not?.length > 0);
   });
-  if (!hasFilters) return res.status(422).json({ error: 'recipe has no filters' });
+  if (!hasFilters) return errors.validation(res, 'recipe has no filters');
 
   const { where, vals } = buildWhere(state, false, req.session.userId);
 
@@ -390,12 +391,12 @@ router.post('/recipes/:id/album', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/recipes/:id/duplicate', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows } = await db.query(
     'SELECT name, query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
     [id, req.session.userId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
   const { rows: newRows } = await db.query(
     'INSERT INTO tag_recipes (user_id, name, query_json) VALUES ($1, $2, $3) RETURNING id',
     [req.session.userId, rows[0].name + ' (copy)', JSON.stringify(rows[0].query_json)]
@@ -438,12 +439,12 @@ router.get('/people/autocomplete', wrapAsync(async (req, res) => {
 
 router.post('/recipes/:id/share', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows } = await db.query(
     'SELECT share_token FROM tag_recipes WHERE id = $1 AND user_id = $2',
     [id, req.session.userId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
   let token = rows[0].share_token;
   if (!token) {
     const { rows: updated } = await db.query(
@@ -464,7 +465,7 @@ router.post('/recipes/fork/:token', wrapAsync(async (req, res) => {
      FROM tag_recipes tr WHERE tr.share_token = $1`,
     [token]
   );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
   const { rows: newRows } = await db.query(
     'INSERT INTO tag_recipes (user_id, name, query_json, shared_by) VALUES ($1, $2, $3, $4) RETURNING id',
     [req.session.userId, rows[0].name, JSON.stringify(rows[0].query_json), rows[0].user_id]
@@ -476,15 +477,15 @@ router.post('/recipes/fork/:token', wrapAsync(async (req, res) => {
 
 router.post('/recipes/:id/share-to', wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: 'invalid id' });
+  if (isNaN(id)) return errors.badRequest(res, 'invalid id');
   const { rows } = await db.query(
     'SELECT name, query_json FROM tag_recipes WHERE id = $1 AND user_id = $2',
     [id, req.session.userId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  if (!rows.length) return errors.notFound(res, 'Recipe');
 
   if (req.body.everyone) {
-    if (req.session.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
+    if (req.session.role !== 'admin') return errors.forbidden(res);
     const { rows: allUsers } = await db.query(
       'SELECT id FROM users WHERE id != $1', [req.session.userId]
     );
@@ -497,10 +498,10 @@ router.post('/recipes/:id/share-to', wrapAsync(async (req, res) => {
   }
 
   const toUserId = parseInt(req.body.userId, 10);
-  if (isNaN(toUserId)) return res.status(400).json({ error: 'invalid id' });
-  if (toUserId === req.session.userId) return res.status(400).json({ error: 'cannot share with yourself' });
+  if (isNaN(toUserId)) return errors.badRequest(res, 'invalid id');
+  if (toUserId === req.session.userId) return errors.badRequest(res, 'cannot share with yourself');
   const { rows: targetUser } = await db.query('SELECT id FROM users WHERE id = $1', [toUserId]);
-  if (!targetUser.length) return res.status(404).json({ error: 'user not found' });
+  if (!targetUser.length) return errors.notFound(res, 'User');
   await db.query(
     'INSERT INTO tag_recipes (user_id,name,query_json,shared_by) VALUES ($1,$2,$3,$4)',
     [toUserId, rows[0].name, JSON.stringify(rows[0].query_json), req.session.userId]

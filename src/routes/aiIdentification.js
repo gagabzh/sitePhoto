@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireEditor, wrapAsync } = require('../middleware');
 const { notifyUser } = require('../notifications');
 const aiIdentificationRepo = require('../repositories/aiIdentification');
+const errors = require('../utils/errors');
 
 // ── GET /api/ai/identification-queue ────────────────────────────────────
 // Fetch all pending identification proposals for the current user
@@ -27,7 +28,7 @@ router.get('/identification-queue/:photoId', requireEditor, wrapAsync(async (req
   const userId = req.session.userId;
 
   if (!Number.isInteger(photoId)) {
-    return res.status(400).json({ error: 'Invalid photoId' });
+    return errors.badRequest(res, 'Invalid photoId');
   }
 
   // Check if user has permission to view this photo's proposals
@@ -36,7 +37,7 @@ router.get('/identification-queue/:photoId', requireEditor, wrapAsync(async (req
   if (role !== 'admin') {
     const { rows } = await db.query('SELECT user_id FROM photos WHERE id = $1', [photoId]);
     if (!rows.length || rows[0].user_id !== userId) {
-      return res.status(403).json({ error: 'Access denied' });
+      return errors.accessDenied(res);
     }
   }
 
@@ -68,20 +69,20 @@ router.post('/identification/:proposalId/accept', requireEditor, wrapAsync(async
   const { editedName } = req.body;
 
   if (!Number.isInteger(proposalId)) {
-    return res.status(400).json({ error: 'Invalid proposalId' });
+    return errors.badRequest(res, 'Invalid proposalId');
   }
 
   // Get the proposal to verify it exists and check permissions
   const proposal = await aiIdentificationRepo.getProposalById(proposalId);
   if (!proposal) {
-    return res.status(404).json({ error: 'Proposal not found' });
+    return errors.notFound(res, 'Proposal');
   }
 
   // Check if user has permission to review this proposal
   // Admins can review all, editors can only review their own
   const role = req.session.role;
   if (role !== 'admin' && proposal.user_id !== userId) {
-    return res.status(403).json({ error: 'Access denied' });
+    return errors.accessDenied(res);
   }
 
   // Accept the proposal
@@ -112,20 +113,20 @@ router.post('/identification/:proposalId/reject', requireEditor, wrapAsync(async
   const { reason } = req.body;
 
   if (!Number.isInteger(proposalId)) {
-    return res.status(400).json({ error: 'Invalid proposalId' });
+    return errors.badRequest(res, 'Invalid proposalId');
   }
 
   // Get the proposal to verify it exists and check permissions
   const proposal = await aiIdentificationRepo.getProposalById(proposalId);
   if (!proposal) {
-    return res.status(404).json({ error: 'Proposal not found' });
+    return errors.notFound(res, 'Proposal');
   }
 
   // Check if user has permission to review this proposal
   // Admins can review all, editors can only review their own
   const role = req.session.role;
   if (role !== 'admin' && proposal.user_id !== userId) {
-    return res.status(403).json({ error: 'Access denied' });
+    return errors.accessDenied(res);
   }
 
   // Reject the proposal
@@ -154,7 +155,7 @@ router.post('/identification/photo/:photoId/accept-all', requireEditor, wrapAsyn
   const userId = req.session.userId;
 
   if (!Number.isInteger(photoId)) {
-    return res.status(400).json({ error: 'Invalid photoId' });
+    return errors.badRequest(res, 'Invalid photoId');
   }
 
   // Check if user has permission to review proposals for this photo
@@ -162,7 +163,7 @@ router.post('/identification/photo/:photoId/accept-all', requireEditor, wrapAsyn
   if (role !== 'admin') {
     const { rows } = await db.query('SELECT user_id FROM photos WHERE id = $1', [photoId]);
     if (!rows.length || rows[0].user_id !== userId) {
-      return res.status(403).json({ error: 'Access denied' });
+      return errors.accessDenied(res);
     }
   }
 
@@ -185,7 +186,7 @@ router.post('/identification/photo/:photoId/reject-all', requireEditor, wrapAsyn
   const userId = req.session.userId;
 
   if (!Number.isInteger(photoId)) {
-    return res.status(400).json({ error: 'Invalid photoId' });
+    return errors.badRequest(res, 'Invalid photoId');
   }
 
   // Check if user has permission to review proposals for this photo
@@ -193,7 +194,7 @@ router.post('/identification/photo/:photoId/reject-all', requireEditor, wrapAsyn
   if (role !== 'admin') {
     const { rows } = await db.query('SELECT user_id FROM photos WHERE id = $1', [photoId]);
     if (!rows.length || rows[0].user_id !== userId) {
-      return res.status(403).json({ error: 'Access denied' });
+      return errors.accessDenied(res);
     }
   }
 
