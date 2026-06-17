@@ -148,3 +148,13 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | Q-4 | Add rate limiting to /photos/nextcloud-import/confirm endpoint            | Infrastructure | Done | 10 requests per minute per user via confirmLimiter |
 | IMP-6 | Consider parallel file downloads with concurrency limit for Nextcloud import | Performance | Done | AsyncQueue infrastructure with configurable NEXTCLOUD_IMPORT_CONCURRENCY (default 1 for sequential, set to N for parallel) |
 | T-1 | Remove unused addNextcloudImportJob from producer.js                      | Cleanup | Done | Removed unused function and nextcloudImportQueue |
+| RF-1 | Create refactoring directory structure (controllers, services, views)   | Refactoring | Backlog | Phase 1: Infrastructure setup for clean code separation |
+| RF-2 | Extract error handling utilities and middleware                          | Refactoring | Backlog | Phase 1: Centralized error responses and access control |
+| RF-3 | Extract common validation schemas and middleware                        | Refactoring | Backlog | Phase 2: Reduce duplication in validation |
+| RF-4 | Split account.js into routes, controllers, and views                   | Refactoring | Backlog | Phase 3: Split largest file (1449 lines) |
+| RF-5 | Split photosViews.js into separate view components                      | Refactoring | Backlog | Phase 3: Split second largest file (3769 lines) |
+| RF-6 | Extract view components from components.js                             | Refactoring | Backlog | Phase 3: Move HTML generation to views/ |
+| RF-7 | Create service layer for business logic                                | Refactoring | Backlog | Phase 4: Decouple routes from business logic |
+| RF-8 | Standardize error response formats across all routes                 | Refactoring | Backlog | Phase 1: Consistent JSON/HTML error responses |
+| RF-9 | Create access control middleware (requireCanModify)                     | Refactoring | Backlog | Phase 2: Replace repetitive canModify checks |
+| RF-10 | Split albums.js into routes, controllers, repositories                 | Refactoring | Backlog | Phase 3: Continue file splitting |
