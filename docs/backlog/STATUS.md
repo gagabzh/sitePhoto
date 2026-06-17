@@ -148,7 +148,7 @@ Status values: `Done` / `In Progress` / `Backlog` / `Deprecated`
 | Q-4 | Add rate limiting to /photos/nextcloud-import/confirm endpoint            | Infrastructure | Done | 10 requests per minute per user via confirmLimiter |
 | IMP-6 | Consider parallel file downloads with concurrency limit for Nextcloud import | Performance | Done | AsyncQueue infrastructure with configurable NEXTCLOUD_IMPORT_CONCURRENCY (default 1 for sequential, set to N for parallel) |
 | T-1 | Remove unused addNextcloudImportJob from producer.js                      | Cleanup | Done | Removed unused function and nextcloudImportQueue |
-| RF-1 | Create refactoring directory structure (controllers, services, views)   | Refactoring | Backlog | Phase 1: Infrastructure setup for clean code separation |
+| RF-1 | Create refactoring directory structure (controllers, services, views)   | Refactoring | Done | Created src/controllers/, src/services/, src/views/, src/validations/ with index files and documentation |
 | RF-2 | Extract error handling utilities and middleware                          | Refactoring | Done | Created utils/errors.js with notFound, accessDenied, validation, badRequest helpers. Applied across all route files |
 | RF-3 | Extract common validation schemas and middleware                        | Refactoring | Done | Created middleware/validation.js with validateRequest, validateParam, validateIdArray, predefined schemas |
 | RF-4 | Split account.js into routes, controllers, and views                   | Refactoring | Backlog | Phase 3: Split largest file (1449 lines) |
