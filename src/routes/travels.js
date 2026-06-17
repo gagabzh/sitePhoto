@@ -138,8 +138,8 @@ router.get('/:slug', wrapAsync(async (req, res) => {
 
 router.get('/:slug/edit', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).send('Not found');
-  if (!canModify(req.session, travel)) return res.status(403).send('Access denied');
+  if (!travel) return errors.notFound(res, 'Travel', false);
+  if (!canModify(req.session, travel)) return errors.accessDenied(res, false);
 
   const [linkedAlbums, linkedPhotos, allViewers, travelViewers] = await Promise.all([
     fetchLinkedAlbums(travel.id),
@@ -153,8 +153,8 @@ router.get('/:slug/edit', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:slug/edit', requireEditor, gpxUpload.single('gpx'), wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).send('Not found');
-  if (!canModify(req.session, travel)) return res.status(403).send('Access denied');
+  if (!travel) return errors.notFound(res, 'Travel', false);
+  if (!canModify(req.session, travel)) return errors.accessDenied(res, false);
 
   const { title, description } = req.body;
   if (!title || !title.trim()) return res.redirect(`/travels/${req.params.slug}/edit`);
@@ -190,9 +190,9 @@ router.post('/:slug/edit', requireEditor, gpxUpload.single('gpx'), wrapAsync(asy
 // GPX upload (AJAX JSON response)
 router.post('/:slug/gpx', requireEditor, gpxUpload.single('gpx'), wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).json({ error: 'Not found' });
-  if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  if (!travel) return errors.notFound(res, 'Travel');
+  if (!canModify(req.session, travel)) return errors.accessDenied(res);
+  if (!req.file) return errors.badRequest(res, 'No file uploaded');
 
   await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
 
@@ -213,15 +213,15 @@ router.post('/:slug/gpx', requireEditor, gpxUpload.single('gpx'), wrapAsync(asyn
 router.get('/:slug/gpx/file', wrapAsync(async (req, res) => {
   const isViewer = req.session.role === 'viewer';
   const travel = await fetchTravel(req.params.slug, isViewer ? req.session.userId : null);
-  if (!travel || !canView(req.session, travel)) return res.status(403).send('Access denied');
-  if (!travel.gpx_filename) return res.status(404).send('No GPX file');
+  if (!travel || !canView(req.session, travel)) return errors.accessDenied(res, false);
+  if (!travel.gpx_filename) return errors.notFound(res, 'GPX file', false);
   res.download(path.join(GPX_DIR, travel.gpx_filename), travel.slug + '.gpx');
 }));
 
 router.post('/:slug/gpx/remove', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).send('Not found');
-  if (!canModify(req.session, travel)) return res.status(403).send('Access denied');
+  if (!travel) return errors.notFound(res, 'Travel', false);
+  if (!canModify(req.session, travel)) return errors.accessDenied(res, false);
 
   await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
   await clearTravelGpx(travel.id);
@@ -231,8 +231,8 @@ router.post('/:slug/gpx/remove', requireEditor, wrapAsync(async (req, res) => {
 
 router.post('/:slug/delete', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).send('Not found');
-  if (!canModify(req.session, travel)) return res.status(403).send('Access denied');
+  if (!travel) return errors.notFound(res, 'Travel', false);
+  if (!canModify(req.session, travel)) return errors.accessDenied(res, false);
 
   await safeUnlink(path.join(GPX_DIR, travel.gpx_filename || ''));
   await deleteTravel(travel.id);
@@ -243,8 +243,8 @@ router.post('/:slug/delete', requireEditor, wrapAsync(async (req, res) => {
 
 router.get('/:slug/api/linkable', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).json({ error: 'Not found' });
-  if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
+  if (!travel) return errors.notFound(res, 'Travel');
+  if (!canModify(req.session, travel)) return errors.accessDenied(res);
 
   // fetchLinkableAlbums and fetchLinkablePhotos run in parallel
   const [albums, photos] = await Promise.all([
@@ -259,8 +259,8 @@ router.get('/:slug/api/linkable', requireEditor, wrapAsync(async (req, res) => {
 // Only albums/photos owned by the current user (or admin) can be linked
 router.post('/:slug/api/links', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).json({ error: 'Not found' });
-  if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
+  if (!travel) return errors.notFound(res, 'Travel');
+  if (!canModify(req.session, travel)) return errors.accessDenied(res);
 
   const { albumIds = [], photoIds = [] } = req.body;
   const tId = travel.id;
@@ -311,8 +311,8 @@ router.post('/:slug/api/links', requireEditor, wrapAsync(async (req, res) => {
 // Uses dedicated client for transaction (fix #1)
 router.post('/:slug/api/share', requireEditor, wrapAsync(async (req, res) => {
   const travel = await fetchTravel(req.params.slug);
-  if (!travel) return res.status(404).json({ error: 'Not found' });
-  if (!canModify(req.session, travel)) return res.status(403).json({ error: 'Access denied' });
+  if (!travel) return errors.notFound(res, 'Travel');
+  if (!canModify(req.session, travel)) return errors.accessDenied(res);
 
   const rawIds = (req.body.viewerIds || []).map(Number).filter(Number.isFinite);
 
