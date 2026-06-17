@@ -23,6 +23,7 @@ const authLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   handler: (req, res) => res.status(429).json({ error: 'Too many attempts, please try again later.' }),
 });
 
@@ -52,6 +53,8 @@ app.use(helmet({
   hsts: { maxAge: 31536000, includeSubDomains: true },
   frameguard: { action: 'deny' },
   noSniff: true,
+  // Helmet 8 defaults to no-referrer, but we deliberately use strict-origin-when-cross-origin
+  // to forward the Origin header on cross-origin navigations (e.g., map tile providers, share targets).
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 
@@ -66,6 +69,7 @@ app.use(express.json());
 app.use(sessionMiddleware);
 
 // Serve photos: S3 first (new uploads), disk fallback (legacy pre-V4 photos).
+// Intentionally unmetered: S3 keys are UUIDs and not guessable; CDN/Caddy handles egress.
 app.get('/uploads/:filename', async (req, res) => {
   const { filename } = req.params;
   if (filename.includes('/') || filename.includes('..')) return res.status(400).end();

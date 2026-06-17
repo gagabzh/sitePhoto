@@ -10,6 +10,8 @@ jest.mock('../../nextcloudWebdav', () => ({
 }));
 jest.mock('../../notifications', () => ({ notifyUser: jest.fn() }));
 jest.mock('../../storage', () => ({ uploadPhoto: jest.fn().mockResolvedValue() }));
+// HRD-12: prevent express-rate-limit from throttling test runs
+jest.mock('express-rate-limit', () => () => (req, res, next) => next());
 
 const request = require('supertest');
 const express = require('express');

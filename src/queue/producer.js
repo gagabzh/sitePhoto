@@ -10,7 +10,6 @@ const connection = {
 };
 
 const identificationQueue = new Queue('identification', { connection });
-const nextcloudImportQueue = new Queue('nextcloud-import', { connection });
 
 // payload: { photoId, userId, photoS3Key }
 async function addIdentificationJob(payload) {
@@ -22,14 +21,4 @@ async function addIdentificationJob(payload) {
   return job;
 }
 
-// payload: { shareUrl, fileName, mimeType, userId, tags, place, albumId, importId }
-async function addNextcloudImportJob(payload) {
-  const job = await nextcloudImportQueue.add('import-file', payload, {
-    attempts: 2,
-    backoff: { type: 'exponential', delay: 3000 },
-  });
-  onJobAdded(); // non-blocking: unshelve Instance-2 if needed
-  return job;
-}
-
-module.exports = { addIdentificationJob, addNextcloudImportJob };
+module.exports = { addIdentificationJob };

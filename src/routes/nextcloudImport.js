@@ -28,7 +28,56 @@ const previewLimiter = rateLimit({
   validate: { xForwardedForHeader: false },
 });
 
+// Q-4: Rate limit for confirm endpoint - 10 requests per minute per user
+// to prevent excessive concurrent imports which are resource-intensive
+const confirmLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  keyGenerator: (req) => `user:${req.session.userId}`,
+  handler: (req, res) => res.status(429).json({ error: 'Too many import requests — try again in a minute.' }),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipFailedRequests: false,
+  validate: { xForwardedForHeader: false },
+});
+
 const MAX_FILES = 500;
+const CONCURRENCY_LIMIT = parseInt(process.env.NEXTCLOUD_IMPORT_CONCURRENCY || '1', 10); // IMP-6: Max concurrent file downloads (default 1 for sequential, set to >1 for parallel)
+
+// IMP-6: Async queue for parallel processing with concurrency limit
+class AsyncQueue {
+  constructor(concurrency) {
+    this.concurrency = concurrency;
+    this.running = 0;
+    this.queue = [];
+  }
+  
+  add(task) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ task, resolve, reject });
+      this.next();
+    });
+  }
+  
+  next() {
+    while (this.running < this.concurrency && this.queue.length) {
+      const { task, resolve, reject } = this.queue.shift();
+      this.running++;
+      task()
+        .then(resolve, reject)
+        .finally(() => {
+          this.running--;
+          this.next();
+        });
+    }
+  }
+  
+  async onComplete() {
+    while (this.running > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+}
 
 function renderImportPage(session) {
   return page('Import from Nextcloud', `
@@ -277,7 +326,12 @@ router.post('/', requireEditor, previewLimiter, wrapAsync(async (req, res) => {
 }));
 
 // POST /photos/nextcloud-import/confirm — start the actual import
-router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
+router.post('/confirm', requireEditor, confirmLimiter, wrapAsync(async (req, res) => {
+  // INF-4: Start performance monitoring
+  const importStartTime = Date.now();
+  const initialMemory = process.memoryUsage();
+  console.log(`[INF-4] Nextcloud import started by user ${req.session.userId} — initial memory: ${(initialMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+
   const shareUrl  = (req.body.shareUrl  || '').trim();
   const tags      = Array.isArray(req.body.tags) ? req.body.tags.map(String) : [];
   const latitude  = parseCoord(req.body.latitude,  -90,  90);
@@ -331,44 +385,53 @@ router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
   );
   const importId = importRow.id;
 
-  // US-NC6: Process files sequentially on Instance-1 (download + S3 + DB + AI queue)
-  // For each file: download → upload to S3 → insert DB row → enqueue AI job → emit progress
-  for (const file of files) {
-    const ext = EXT_MAP[file.mimeType] || '.jpg';
-    const s3Key = `${uuidv4()}${ext}`;
-    const displayName = file.name;
-    const ncUrl = shareUrl;
+  // IMP-6: Process files in parallel with concurrency limit on Instance-1
+  // Create a queue with CONCURRENCY_LIMIT concurrent downloads
+  const fileQueue = new AsyncQueue(CONCURRENCY_LIMIT);
+  
+  // INF-4: Track per-file processing times
+  const fileProcessingTimes = [];
+  let totalFilesFailed = 0;
+  
+  // Lat/lon values to use for all photos (from user input)
+  const lat = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
+  const lon = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
+  const cleanTags = tags.map(t => String(t).trim().toLowerCase()).filter(Boolean);
 
-    try {
-      // Step 1: Download file from Nextcloud
-      const buffer = await downloadFileAsBuffer(shareUrl, file.name);
+  // Process all files with controlled concurrency
+  const processPromises = files.map((file) =>
+    fileQueue.add(async () => {
+      const fileStartTime = Date.now();
+      const ext = EXT_MAP[file.mimeType] || '.jpg';
+      const s3Key = `${uuidv4()}${ext}`;
+      const displayName = file.name;
+      const ncUrl = shareUrl;
 
-      // Step 2: Upload to S3
-      await uploadPhoto(s3Key, buffer, file.mimeType);
+      try {
+        // Step 1: Download file from Nextcloud
+        const buffer = await downloadFileAsBuffer(shareUrl, file.name);
 
-      // Step 3: Insert photo record into DB (without album_id - use junction table)
-      const lat = Number.isFinite(Number(latitude)) ? Number(latitude) : null;
-      const lon = Number.isFinite(Number(longitude)) ? Number(longitude) : null;
+        // Step 2: Upload to S3
+        await uploadPhoto(s3Key, buffer, file.mimeType);
 
-      const { rows: [photo] } = await db.query(
-        `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-         RETURNING id`,
-        [userId, s3Key, displayName, s3Key, displayName, file.mimeType || 'image/jpeg', buffer.length, ncUrl, lat, lon],
-      );
-      const photoId = photo.id;
-
-      // Step 3.5: Link photo to album via junction table (if albumId is provided)
-      if (albumId) {
-        await db.query(
-          'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-          [albumId, photoId],
+        // Step 3: Insert photo record into DB (without album_id - use junction table)
+        const { rows: [photo] } = await db.query(
+          `INSERT INTO photos (user_id, filename, original_filename, s3_key, title, mime_type, size, nextcloud_url, latitude, longitude, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+           RETURNING id`,
+          [userId, s3Key, displayName, s3Key, displayName, file.mimeType || 'image/jpeg', buffer.length, ncUrl, lat, lon],
         );
-      }
+        const photoId = photo.id;
 
-      // Step 4: Insert tags for this photo
-      if (tags && tags.length) {
-        const cleanTags = tags.map(t => String(t).trim().toLowerCase()).filter(Boolean);
+        // Step 3.5: Link photo to album via junction table (if albumId is provided)
+        if (albumId) {
+          await db.query(
+            'INSERT INTO album_photos (album_id, photo_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [albumId, photoId],
+          );
+        }
+
+        // Step 4: Insert tags for this photo
         if (cleanTags.length) {
           const { rows: tagRows } = await db.query(
             'INSERT INTO tags (name) SELECT unnest($1::text[]) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
@@ -379,27 +442,59 @@ router.post('/confirm', requireEditor, wrapAsync(async (req, res) => {
             [photoId, tagRows.map(r => r.id)],
           );
         }
+
+        // Step 5: Enqueue AI identification job for Instance-2
+        await addIdentificationJob({ photoId, userId, photoS3Key: s3Key });
+
+        // Step 6: Update progress and emit event
+        const { rows: [progress] } = await db.query(
+          `UPDATE nextcloud_imports SET done = done + 1 WHERE id = $1 RETURNING done, total, failed`,
+          [importId],
+        );
+        notifyUser(userId, { importId, done: progress.done, total: progress.total, failed: progress.failed }, 'nextcloud-import-progress');
+        
+        // INF-4: Track successful file processing time
+        const fileTime = Date.now() - fileStartTime;
+        fileProcessingTimes.push({ file: file.name, time: fileTime, success: true });
+        
+        return { success: true, file: file.name };
+
+      } catch (err) {
+        // Error state: increment failed count, emit progress, continue with next file
+        console.error(`[nextcloud-import] file ${file.name} failed:`, err.message);
+        const { rows: [progress] } = await db.query(
+          `UPDATE nextcloud_imports SET failed = failed + 1 WHERE id = $1 RETURNING done, total, failed`,
+          [importId],
+        );
+        notifyUser(userId, { importId, done: progress.done, total: progress.total, failed: progress.failed }, 'nextcloud-import-progress');
+        
+        // INF-4: Track failed file processing time
+        const fileTime = Date.now() - fileStartTime;
+        fileProcessingTimes.push({ file: file.name, time: fileTime, success: false, error: err.message });
+        totalFilesFailed++;
+        
+        return { success: false, file: file.name, error: err.message };
       }
+    })
+  );
 
-      // Step 5: Enqueue AI identification job for Instance-2
-      await addIdentificationJob({ photoId, userId, photoS3Key: s3Key });
+  // Wait for all files to be processed
+  await Promise.all(processPromises);
 
-      // Step 6: Update progress and emit event
-      const { rows: [progress] } = await db.query(
-        `UPDATE nextcloud_imports SET done = done + 1 WHERE id = $1 RETURNING done, total, failed`,
-        [importId],
-      );
-      notifyUser(userId, { importId, done: progress.done, total: progress.total, failed: progress.failed }, 'nextcloud-import-progress');
-
-    } catch (err) {
-      // Error state: increment failed count, emit progress, continue with next file
-      console.error(`[nextcloud-import] file ${file.name} failed:`, err.message);
-      const { rows: [progress] } = await db.query(
-        `UPDATE nextcloud_imports SET failed = failed + 1 WHERE id = $1 RETURNING done, total, failed`,
-        [importId],
-      );
-      notifyUser(userId, { importId, done: progress.done, total: progress.total, failed: progress.failed }, 'nextcloud-import-progress');
-    }
+  // INF-4: Log performance summary
+  const totalTime = Date.now() - importStartTime;
+  const finalMemory = process.memoryUsage();
+  const avgTime = fileProcessingTimes.reduce((sum, f) => sum + f.time, 0) / fileProcessingTimes.length;
+  const successfulFiles = fileProcessingTimes.filter(f => f.success).length;
+  
+  console.log(`[INF-4] Nextcloud import completed for user ${req.session.userId} — ` +
+    `Total: ${totalTime}ms, Files: ${files.length} (${successfulFiles} succeeded, ${totalFilesFailed} failed), ` +
+    `Avg per file: ${avgTime.toFixed(0)}ms, Memory: ${(finalMemory.heapUsed / 1024 / 1024).toFixed(2)} MB`);
+  
+  // Log slow files (> 10 seconds)
+  const slowFiles = fileProcessingTimes.filter(f => f.time > 10000);
+  if (slowFiles.length > 0) {
+    console.log(`[INF-4] Slow files (>10s): ${slowFiles.map(f => `${f.file} (${f.time}ms)`).join(', ')}`);
   }
 
   return res.json({ importId, total: files.length });

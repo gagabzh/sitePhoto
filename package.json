@@ -14,7 +14,8 @@
   "jest": {
     "testEnvironment": "node",
     "testMatch": [
-      "**/__tests__/**/*.test.js"
+      "**/__tests__/**/*.test.js",
+      "**/scripts/*.test.js"
     ],
     "coverageProvider": "v8",
     "collectCoverageFrom": [
@@ -24,8 +25,8 @@
     "coverageThreshold": {
       "global": {
         "statements": 85,
-        "branches": 70,
-        "functions": 60,
+        "branches": 75,
+        "functions": 65,
         "lines": 85
       }
     },
